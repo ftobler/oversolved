@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, act } from '@testing-library/react'
 import { useSketchEditorStore, setSketchCallback, useSketchUiStore } from '@/stores/sketchEditorStore'
+import { dimensionEditorIcon } from '@/stores/dimensionEditor'
 import type { DragState } from '@/stores/sketchEditorStore'
 
 /**
@@ -170,12 +171,19 @@ describe('AngleDimension supplement label', () => {
     act(() => lastDispatch().onDoubleClick({ stopPropagation: () => {}, clientX: 0, clientY: 0 }))
     const dialog = useSketchUiStore.getState().pendingDialog
     expect(dialog?.defaultValue).toBe('60')
+    // Production passes the kind in the slot that selects the editor glyph: the
+    // angle's editor carries dimension-angle, not the dimension tool's icon.
+    expect(dialog?.icon).toBe(dimensionEditorIcon('angle'))
 
-    // The label shows 60, so the edit carries 60; the applier reads the
-    // constraint's stored pos and stores the 120 theta those directions need.
+    // Accepting the shown number changes nothing: the stored theta stays exact.
     act(() => dialog!.onConfirm('60'))
+    expect(onMutation).not.toHaveBeenCalled()
+
+    // An edited label shows 50, so the edit carries 50; the applier reads the
+    // constraint's stored pos and stores the supplement those directions need.
+    act(() => dialog!.onConfirm('50'))
     expect(onMutation).toHaveBeenCalledWith({
-      type: 'set_constraint_value', featureId: 'S1', constraintId: 'c1', value: 60,
+      type: 'set_constraint_value', featureId: 'S1', constraintId: 'c1', value: 50,
     })
   })
 })

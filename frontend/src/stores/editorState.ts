@@ -28,37 +28,31 @@ import { freezeSelectionPlan } from '@/utils/yamlMutations/freezeProjection'
 import { planBrepDimensionPick, planProjectedOperand, classifyBrepOperand, refreshProjectedPickKinds, type PlannedProjection, type PlannedProjectionMutation } from '@/tools/operandProjection'
 import { commitDrawGesture } from '@/tools/commitDrawGesture'
 import { computeDrawFinish } from '@/utils/geometry/drawFinish'
-import { randomId, canonicalLineDistanceTargets, isPointLikeEntityKind, pointDistanceZeroProblem } from '@/utils/yamlMutations/helpers'
+import { randomId, canonicalLineDistanceTargets, isPointLikeEntityKind, pointDistanceZeroProblem, uniqueConstraintId } from '@/utils/yamlMutations/helpers'
 import { groupMembersFromSelection } from '@/utils/groupMembers'
 import { COLINEAR_SHAPE_REASON, colinearShapeProblem } from '@/utils/constraintOperands'
 import { isConstraintOperandRef } from '@/utils/constraintProblems'
-import { dimensionValueRule } from '@/utils/core/dimensionValueRules'
 import { isConstraintKindName } from '@/wasm-kernel/codec'
-import type { DialogState, SketchEditorState } from './sketchEditorTypes'
+import { dimensionPromptLabel } from '@/registry/constraintRegistry'
+import type { SketchEditorState } from './sketchEditorTypes'
 import { filletSelectionPlan, mirrorSelectionPlan, patternSelectionPlan } from '@/utils/geometry/selectionPlans'
 import { sketchCallbacks, requireMutation, dispatchWithheldDelete, pickProjectionEntityId, CANNOT_APPLY_TITLE, type PendingConstraint } from './sketchEditorCallbacks'
 import { samePoint, validateWithRepair, prunePickClaims } from './sketchEditorHelpers'
 import { activateTool, deactivateTool } from './sketchEditorToolLifecycle'
 import { clampRollbackPosition } from '@/session/DocSession'
 import { useSectionStore } from './sectionStore'
+import { dimensionEditorAvailable, openDimensionEditor } from './dimensionEditor'
 
 export { filletSelectionPlan, mirrorSelectionPlan, patternSelectionPlan } from '@/utils/geometry/selectionPlans'
 export type { FilletSelectionPlan, MirrorSelectionPlan } from '@/utils/geometry/selectionPlans'
-import { refusalText } from '@/utils/core/statusMark'
-import { cannotEvaluate, positive } from '@/utils/core/valueRules'
-
-// The value dialog is UI-store state (sketchEditorStore registers the ports at
-// module scope). A headless consumer of this store that never imported the UI
-// store has no port; a silent `?.()` would drop the prompt with nothing shown.
-// Fail loud instead (dev/test harness tier: throws in test, warns in dev).
-// Closing stays deliberately optional: aborting a gesture is safe when no
-// dialog can have been opened, and a loud close would break headless aborts.
-function openDialogOrFail(dialog: DialogState): void {
-  if (!sketchCallbacks.openDialog) {
-    failLoud('[editorState] openDialog: no dialog port registered, the value dialog cannot open (import stores/sketchEditorStore in the editor build)')
-    return
-  }
-  sketchCallbacks.openDialog(dialog)
+// The created ids of a session Result, or null when the sink does not report
+// one (a store test's `vi.fn`, a headless port). Only a reported empty list
+// means the insert was refused.
+function createdIdsOfResult(result: unknown): string[] | null {
+  if (result === null || typeof result !== 'object') return null
+  const r = result as { ok?: unknown; createdIds?: unknown }
+  if (r.ok !== true) return []
+  return Array.isArray(r.createdIds) ? r.createdIds as string[] : []
 }
 
 // The sketch-half of a Delete selection: entity, vertex and constraint targets
@@ -242,6 +236,7 @@ export const editorState = createStore<EditorState>((set, get) => ({
   drawSnapRefs: [],
   dimensionPicks: [],
   pendingBrepProjectionIds: [],
+  pendingPlacementConstraintId: null,
   dimensionCursorWorld: null,
   modeStack: [],
   activePickField: null,
@@ -467,13 +462,14 @@ export const editorState = createStore<EditorState>((set, get) => ({
   setActiveTool: (tool) => {
     const prevTool = get().activeTool
 
-    // Switching tools abandons any in-flight brep dimension gesture: the
-    // projections it materialised were scratch work for that gesture. Cancelled
-    // before the deactivate below, the order setActivePickField already uses, so
-    // the pending bookkeeping is empty by the time the old tool's mode entry
-    // pops and the store revalidates on an empty stack.
-    if (get().pendingBrepProjectionIds.length > 0) {
-      get().cancelBrepProjectionGesture()
+    // Switching tools abandons any in-flight dimension placement: the
+    // projections and the inserted constraint were scratch work for that
+    // gesture. Cancelled before the deactivate below, the order
+    // setActivePickField already uses, so the pending bookkeeping is empty by
+    // the time the old tool's mode entry pops and the store revalidates on an
+    // empty stack.
+    if (get().pendingBrepProjectionIds.length > 0 || get().pendingPlacementConstraintId !== null) {
+      get().cancelPlacementGesture()
     }
 
     // Deactivate previous tool (lifecycle hook)
@@ -557,12 +553,12 @@ export const editorState = createStore<EditorState>((set, get) => ({
 
   setActiveFeatureId: (id) => {
     const state = get()
-    // Leaving the sketch abandons any in-flight brep dimension gesture, same
-    // as a tool switch. Runs outside the set updater below because it
-    // dispatches a delete mutation (a side effect, and StrictMode must not
-    // replay it).
-    if (state.activeFeatureId !== null && id === null && state.pendingBrepProjectionIds.length > 0) {
-      state.cancelBrepProjectionGesture()
+    // Leaving the sketch abandons any in-flight dimension placement, same as a
+    // tool switch. Runs outside the set updater below because it rewinds the
+    // placement transaction (a side effect, and StrictMode must not replay it).
+    if (state.activeFeatureId !== null && id === null
+      && (state.pendingBrepProjectionIds.length > 0 || state.pendingPlacementConstraintId !== null)) {
+      state.cancelPlacementGesture()
     }
     // Leaving the sketch disarms the tool through its lifecycle hook rather than
     // by nulling the field below: a plain write strands the tool's `tool:<id>`
@@ -1052,10 +1048,18 @@ export const editorState = createStore<EditorState>((set, get) => ({
   // vertex picked with the dimension tool is projected into the active sketch
   // first and the pick targets that projection.
   addBrepDimensionPick: (query, { isVertexPick, sourceKind }) => {
-    const { activeFeatureId, dimensionPicks } = get()
+    const { activeFeatureId } = get()
     if (!activeFeatureId) return
     const onMutation = requireMutation('addBrepDimensionPick')
     if (!onMutation) return
+    // A finished placement (its insert already landed) is banked by
+    // beginPlacement below. Resolve the store's copy first: otherwise its
+    // marker, prompt and pending projection ids would survive the bank, a later
+    // pick could delete a committed projection and the stale prompt would
+    // confirm into a second entry. A projection-only gesture carries no marker
+    // and must stay open: its next pick belongs to the same dimension.
+    if (get().pendingPlacementConstraintId !== null) get().commitPlacementGesture()
+    const dimensionPicks = get().dimensionPicks
     const sketch = sketchCallbacks.getSketch?.(activeFeatureId) ?? null
     const { mutations, pick } = planBrepDimensionPick({
       query,
@@ -1067,9 +1071,9 @@ export const editorState = createStore<EditorState>((set, get) => ({
       newEntityId: () => randomId(12),
     })
     if (mutations.length > 0) {
-      // A new projection: its undo entry waits for the dimension commit (or a
-      // compensating delete on cancel), so pick and commit read as one step.
-      sketchCallbacks.beginBrepProjection?.()
+      // A new projection: its undo entry waits for the dimension commit, so
+      // pick and commit read as one step.
+      sketchCallbacks.beginPlacement?.()
       for (const m of mutations) onMutation(m)
       const newIds: string[] = []
       for (const m of mutations) {
@@ -1084,40 +1088,47 @@ export const editorState = createStore<EditorState>((set, get) => ({
 
   clearDimensionPicks: () => set({ dimensionPicks: [] }),
 
-  cancelBrepProjectionGesture: () => {
-    const { pendingBrepProjectionIds, activeFeatureId } = get()
-    const targets = activeFeatureId
-      ? pendingBrepProjectionIds.map(id => `entity:${activeFeatureId}:${id}`)
-      : []
-    // The delete is withheld so the aborted gesture leaves neither the
-    // projections nor the cleanup in the undo history.
-    dispatchWithheldDelete(targets)
-    // The gesture is over for real: null the withhold's captured doc too, or a
-    // dimension committed later would restore a stale pre-gesture world.
-    sketchCallbacks.cancelBrepProjection?.()
+  cancelPlacementGesture: () => {
+    // The transaction owns the whole gesture: cancelling it restores the doc it
+    // began on, so the inserted constraint and every scratch projection go with
+    // no compensating delete and no undo entry.
+    sketchCallbacks.cancelPlacement?.()
     // The value prompt this gesture opened must not outlive it. This is the one
     // funnel every abort already goes through -- a tool switch, leaving the
-    // sketch, arming a pick field -- and each of them just deleted the
-    // projections the prompt was measuring, so a prompt that survived would let
-    // Enter commit an add_constraint naming an entity the doc no longer has
-    // (dangling, and flagged unresolved by the solver). Closed without running
-    // its onCancel: this action IS that cancel for the dimension dialog, and
-    // re-entering it from here would dispatch the withheld delete twice. The
-    // other producers (apply_offset, the feature-handle value editor, a dim
-    // label's edit prompt) own no gesture state to unwind, so dropping the
-    // prompt whole is all they need. The port is optional by design: a headless
-    // abort with no dialog open is a no-op, not a fault.
+    // sketch, arming a pick field -- and each of them just rewound the doc the
+    // prompt was measuring, so a prompt that survived would let Enter address a
+    // constraint the doc no longer has. Closed without running its onCancel:
+    // this action IS that cancel for the dimension dialog, and re-entering it
+    // from here would cancel the transaction twice. The other producers
+    // (apply_offset, the feature-handle value editor, a dim label's edit prompt)
+    // own no gesture state to unwind, so dropping the prompt whole is all they
+    // need. The port is optional by design: a headless abort with no dialog open
+    // is a no-op, not a fault.
     sketchCallbacks.closeDialog?.()
-    set({ pendingBrepProjectionIds: [] })
+    set({
+      dimensionPicks: [],
+      pendingBrepProjectionIds: [],
+      pendingPlacementConstraintId: null,
+    })
   },
 
-  // Drops the brep gesture bookkeeping without touching the doc: used where the
-  // doc is already being replaced (undo), so a compensating delete would only
-  // chase entities that are already gone.
-  clearBrepProjectionState: () => {
-    sketchCallbacks.cancelBrepProjection?.()
-    set({ pendingBrepProjectionIds: [] })
+  commitPlacementGesture: () => {
+    sketchCallbacks.commitPlacement?.()
+    // The prompt belongs to the gesture: a commit reached from a second pick,
+    // a redo or a double-click must not leave it open over a constraint the
+    // store no longer names. The dialog shell's own confirm already closes it;
+    // closeDialog is idempotent.
+    sketchCallbacks.closeDialog?.()
+    set({ pendingBrepProjectionIds: [], pendingPlacementConstraintId: null })
   },
+
+  // Drops the placement bookkeeping without touching the doc: used where the
+  // doc is already being replaced (undo), so a rewind would only chase a
+  // transaction the session has already resolved.
+  clearPlacementState: () => set({
+    pendingBrepProjectionIds: [],
+    pendingPlacementConstraintId: null,
+  }),
 
   setDimensionCursorWorld: (p) => set({ dimensionCursorWorld: p }),
 
@@ -1141,6 +1152,13 @@ export const editorState = createStore<EditorState>((set, get) => ({
     }
     const onMutation = requireMutation('finalizeDimensionPlacement')
     if (!onMutation) return
+    // The editor is the gesture's other half: without the dialog port the insert
+    // would commit a dimension nobody can edit, behind a placement transaction
+    // that would never close. Refuse before anything is written.
+    if (!dimensionEditorAvailable()) {
+      failLoud('[editorState] finalizeDimensionPlacement: no openDialog port registered, the value dialog cannot open (import stores/sketchEditorStore in the editor build)')
+      return
+    }
     const featureId = activeFeatureId
     let constraintKind = resolved.constraintKind
     // Canonicalise before the natural value, the sign and the placement all
@@ -1192,139 +1210,146 @@ export const editorState = createStore<EditorState>((set, get) => ({
       }
     }
 
-    // Clear picks immediately so the next pointer event can't double-fire the
-    // dialog, but stay in the dimension tool until OK / Cancel resolves.
-    set({ dimensionPicks: [], dimensionCursorWorld: null })
-
-    // Pre-fill the dialog with the current measured value so Enter accepts
-    // it unchanged. Falls back to empty when the sketch isn't available
-    // (e.g. tests without getSketch registered) or the geometry can't be
-    // resolved.
+    // The measured value the insert carries. An angle label placed in a
+    // supplement quadrant shows (and edits against) 180 - theta, so the insert
+    // carries that displayed supplement to match the live preview label; the
+    // applier reads it against the label's wedge and stores theta, the one
+    // place that conversion lives.
     const naturalValue = sketch
       ? computeNaturalDimensionValue(constraintKind, targets, sketch, featureId, activeOriginLocal)
       : null
-    // An angle label placed in a supplement quadrant shows (and edits against)
-    // 180 - theta, so the dialog pre-fills that displayed supplement to match
-    // the live preview label. The commit carries the displayed number itself:
-    // the applier reads it against the label's wedge and stores theta, the one
-    // place that conversion lives.
     const isSupplement = (constraintKind === 'angle' && sketch)
       ? computeAnglePlacementIsSupplement(targets, sketch, featureId, placementWorld, activeOriginLocal)
       : false
-    const displayValue = (v: number) => isSupplement ? 180 - v : v
-    const displayedNatural = naturalValue !== null ? displayValue(naturalValue) : null
-    const defaultValue = displayedNatural !== null
-      ? (Number.isInteger(displayedNatural) ? String(displayedNatural) : displayedNatural.toFixed(2))
+    const displayedNatural = naturalValue !== null && isSupplement ? 180 - naturalValue : naturalValue
+    // The pos written by the placement click anchors the dim label where the
+    // user clicked instead of the renderer's default offset. Compute it
+    // relative to the dim's natural anchor so the dimension components, which
+    // interpret pos as an anchor-relative offset, render it at the requested
+    // world point.
+    const pos = (placementWorld && sketch)
+      ? computeAnchorRelativePos(constraintKind, targets, sketch, featureId, placementWorld, activeOriginLocal)
+      : null
+    // Pin the side/handedness the user drew so the solver cannot mirror the
+    // geometry to the other (equally valid) solution. Directional dims only;
+    // null for length/radius/diameter/euclidean distance.
+    const sign = sketch
+      ? computeDimensionSign(constraintKind, targets, sketch, featureId, activeOriginLocal)
+      : null
+    const pending: PendingConstraint = {
+      featureId, kind: constraintKind, targets,
+      ...(displayedNatural !== null && { value: displayedNatural }),
+      ...(pos && { pos }),
+      ...(sign !== null && { sign }),
+    }
+    // The same authoring gate applyConstraint runs, now BEFORE the insert so a
+    // refused dimension leaves nothing in the document. Until the
+    // driven-dimension plan lands there is no driven fallback: a redundant
+    // placement refuses exactly as the command door does.
+    const verdict = sketchCallbacks.checkRedundantAdd?.(pending)
+    if (verdict === true) {
+      sketchCallbacks.showMessage?.({
+        title: CANNOT_APPLY_TITLE,
+        message: overconstrainReason(constraintKind),
+        variant: 'error',
+      })
+      get().cancelPlacementGesture()
+      return
+    }
+    if (verdict === null) {
+      // The probe found the add would append nothing: drop the gesture (and
+      // its scratch projections) without authoring a dead constraint.
+      get().cancelPlacementGesture()
+      return
+    }
+    // A zero euclidean distance asks for two coincident points: the one row has
+    // no direction there and would remove no degree of freedom. The editor's
+    // validate refuses it with the coincident hint, but the insert happens
+    // before the editor opens, so the gate answers here too.
+    const zeroProblem = displayedNatural !== null && isConstraintKindName(constraintKind)
+      ? pointDistanceZeroProblem(constraintKind, displayedNatural)
+      : null
+    if (zeroProblem !== null) {
+      sketchCallbacks.showMessage?.({
+        title: CANNOT_APPLY_TITLE,
+        message: zeroProblem,
+        variant: 'error',
+      })
+      get().cancelPlacementGesture()
+      return
+    }
+
+    // The id is minted here so the editor can address the row it is about to
+    // open for: the insert and the prompt are one gesture, and the prompt must
+    // name the exact constraint the insert created. Mint against the live
+    // sketch's rows, which the solved sketch map does not carry.
+    const liveFeature = sketchCallbacks.getDoc?.()?.features?.find(f => f.id === featureId)
+    const liveConstraints = liveFeature?.kind === 'sketch' ? liveFeature.constraints ?? [] : []
+    const cid = uniqueConstraintId(liveConstraints, constraintKind)
+    // A brep pick began the placement at its projection; a sketch-only
+    // placement begins here. Both share the baseline-restoring cancel and the
+    // single-entry commit.
+    sketchCallbacks.beginPlacement?.()
+    const result: unknown = onMutation({
+      type: 'add_constraint',
+      id: cid,
+      featureId, kind: constraintKind, targets,
+      ...(displayedNatural !== null && { value: displayedNatural }),
+      ...(pos && { pos }),
+      ...(sign !== null && { sign }),
+    })
+    // The insert takes the gesture's picks with it: the ghost hands over to the
+    // real dimension in this same commit, so nothing disappears while the
+    // prompt is open.
+    set({ dimensionPicks: [], dimensionCursorWorld: null })
+    // A refused insert (a duplicate the probe could not see, a stale operand)
+    // reports no created id; the gesture goes back to the baseline rather than
+    // opening an editor for a row that does not exist. If the applier minted a
+    // different id on a collision, the editor addresses the row that landed.
+    const created = createdIdsOfResult(result)
+    if (created !== null && created.length === 0) {
+      get().cancelPlacementGesture()
+      return
+    }
+    const effectiveCid = created !== null && !created.includes(cid) ? (created[0] ?? cid) : cid
+    set({ pendingPlacementConstraintId: effectiveCid })
+
+    // A directional dimension's Flip side swaps the side the value pins, then
+    // commits the placement: the prompt closes on the click, so the gesture
+    // must not be left open behind it.
+    const directional = constraintKind === 'point_distance_x'
+      || constraintKind === 'point_distance_y'
+      || constraintKind === 'line_distance'
+      || constraintKind === 'angle'
+    const onFlip = directional && sign !== null
+      ? () => {
+        onMutation({ type: 'set_constraint_sign', featureId, constraintId: effectiveCid, sign: -sign })
+        get().commitPlacementGesture()
+      }
       : undefined
 
-    // The value dialog is UI store state; the port is registered by
-    // stores/sketchEditorStore.ts, the module that owns it.
-    openDialogOrFail({
-      position: clientPos,
-      label: 'Dimension value',
-      defaultValue,
+    openDimensionEditor({
+      featureId,
+      cid: effectiveCid,
+      clientPos,
+      value: displayedNatural,
+      kind: constraintKind,
+      // The constraint's own prompt label, the same words a label's
+      // double-click shows: the "Dimension value" wording is gone.
+      label: dimensionPromptLabel(CONSTRAINT_BY_KIND.get(constraintKind)?.renderKind ?? ''),
       // The freshly placed box states what it measures, the same unit the
       // double-click editor shows. Angle is the only angular dimension kind;
       // every other one (length, point distances, radius, diameter) is a length.
       quantity: constraintKind === 'angle' ? 'angle' : 'length',
-      // Cancelling the value dialog abandons the gesture: the projections it
-      // materialised were scratch work and are removed with no undo entries.
-      onCancel: () => get().cancelBrepProjectionGesture(),
-      // A plain number, not an expression: onConfirm commits parseFloat.
-      validate: (input) => {
-        const val = parseFloat(input)
-        if (isNaN(val)) return refusalText('Value', cannotEvaluate(input))
-        // The rule follows the dimension kind: zero is a real constraint for
-        // the axis distances and the radial gap, and a coincident hint for a
-        // euclidean point_distance.
-        const rule = isConstraintKindName(constraintKind) ? dimensionValueRule(constraintKind) : positive
-        return refusalText('Value', rule(val))
-      },
-      onConfirm: (input) => {
-        // Accepting the rounded default unchanged commits the exact measured
-        // value, so an already-satisfied dimension is not nudged by the
-        // display rounding. Any edit commits the typed value. Both are the
-        // number the label shows; the applier converts an angle to its stored
-        // theta for this label's wedge.
-        const value = (displayedNatural !== null && input === defaultValue)
-          ? displayedNatural
-          : parseFloat(input)
-        // The pos written by the placement click anchors the dim label where
-        // the user clicked instead of the renderer's default offset. Compute
-        // it relative to the dim's natural anchor so the LinearDimension /
-        // RadiusDimension / DiameterDimension / AngleDimension components,
-        // which interpret pos as an anchor-relative offset, render it at the
-        // requested world point.
-        const pos = (placementWorld && sketch)
-          ? computeAnchorRelativePos(constraintKind, targets, sketch, featureId, placementWorld, activeOriginLocal)
-          : null
-        // Pin the side/handedness the user drew so the solver cannot mirror the
-        // geometry to the other (equally valid) solution. Directional dims only;
-        // null for length/radius/diameter/euclidean distance.
-        const sign = sketch
-          ? computeDimensionSign(constraintKind, targets, sketch, featureId, activeOriginLocal)
-          : null
-        // The same authoring gate applyConstraint runs, now with the value the
-        // dialog collected: without it a duplicate dimension could never be
-        // seen (a value-less dimension contributes no solver rows), and the
-        // dimension tool would be the one door around the refusal. The reason
-        // rides the same cannot-apply message as a command rejection, and the
-        // gesture's projections are scratch work, so a refusal cleans them up
-        // like any other abort instead of leaving them in the doc.
-        // A zero euclidean distance asks for two coincident points: the one
-        // row has no direction there and would remove no degree of freedom.
-        // The dialog's validate already refuses it with the coincident hint;
-        // this is the belt for a confirm path that bypasses the shell. The
-        // gesture's projections are scratch work and are cleaned up like any
-        // other aborted authoring.
-        const zeroProblem = isConstraintKindName(constraintKind)
-          ? pointDistanceZeroProblem(constraintKind, value)
-          : null
-        if (zeroProblem !== null) {
-          sketchCallbacks.showMessage?.({
-            title: CANNOT_APPLY_TITLE,
-            message: zeroProblem,
-            variant: 'error',
-          })
-          get().cancelBrepProjectionGesture()
-          return
-        }
-        const pending: PendingConstraint = {
-          featureId, kind: constraintKind, targets, value,
-          ...(pos && { pos }),
-          ...(sign !== null && { sign }),
-        }
-        const verdict = sketchCallbacks.checkRedundantAdd?.(pending)
-        if (verdict === true) {
-          sketchCallbacks.showMessage?.({
-            title: CANNOT_APPLY_TITLE,
-            message: overconstrainReason(constraintKind),
-            variant: 'error',
-          })
-          get().cancelBrepProjectionGesture()
-          return
-        }
-        // The probe found the add would append nothing: drop the gesture (and
-        // its scratch projections) without authoring a dead constraint.
-        if (verdict === null) {
-          get().cancelBrepProjectionGesture()
-          return
-        }
-        onMutation({
-          type: 'add_constraint',
-          featureId, kind: constraintKind, targets, value,
-          ...(pos && { pos }),
-          ...(sign !== null && { sign }),
-        })
-        // The projections are now part of the committed dimension, so nothing
-        // is pending cleanup any more; the withhold was consumed by the
-        // constraint's undo push.
-        get().clearBrepProjectionState()
-        // The dimension tool stays armed so the user can place several dims
-        // without re-pressing 'd'. They exit explicitly (Escape / different
-        // tool / tool button), matching standard CAD behaviour.
+      onFlip,
+      placement: {
+        onCommit: () => get().commitPlacementGesture(),
+        onCancel: () => get().cancelPlacementGesture(),
       },
     })
+    // The dimension tool stays armed so the user can place several dims without
+    // re-pressing 'd'. They exit explicitly (Escape / different tool / tool
+    // button), matching standard CAD behaviour.
   },
 
   setActivePickField: (field) => {
@@ -1358,13 +1383,14 @@ export const editorState = createStore<EditorState>((set, get) => ({
     // alone.
     useSectionStore.getState().cancelPicking()
 
-    // Entering a pick abandons any in-flight brep dimension gesture, same as a
-    // tool switch: the projections it materialised were scratch work for that
-    // gesture, and leaving them armed would let the next unrelated mutation be
-    // swallowed as "the projection". Cancel it before deactivating the tool so
-    // the pending bookkeeping is empty when popMode re-validates the store.
-    if (get().pendingBrepProjectionIds.length > 0) {
-      get().cancelBrepProjectionGesture()
+    // Entering a pick abandons any in-flight dimension placement, same as a
+    // tool switch: the projections and the inserted constraint were scratch
+    // work for that gesture, and leaving them open would let the next unrelated
+    // mutation be swallowed as part of it. Cancel it before deactivating the
+    // tool so the pending bookkeeping is empty when popMode re-validates the
+    // store.
+    if (get().pendingBrepProjectionIds.length > 0 || get().pendingPlacementConstraintId !== null) {
+      get().cancelPlacementGesture()
     }
 
     // Entering a pick: deactivate any active tool first. Unguarded, like every
@@ -1484,6 +1510,7 @@ export const editorState = createStore<EditorState>((set, get) => ({
       dimensionPicks: [],
       dimensionCursorWorld: null,
       pendingBrepProjectionIds: [],
+      pendingPlacementConstraintId: null,
       // Derived from the open document, so it belongs to the wipe for the same
       // reason the selection does: a remount or a fresh harness must not read
       // the previous document's entity kinds.

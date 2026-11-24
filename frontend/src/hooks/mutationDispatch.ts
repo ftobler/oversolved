@@ -240,7 +240,7 @@ export const mutationHandlers: MutationHandlers = {
   resize_circle: (next, m) =>
     applyResizeCircle(next, m.featureId, m.entityId, m.radius, m.solvedGeometry),
   add_constraint: (next, m) => {
-    applyAddConstraint(next, m.featureId, m.kind, m.targets, m.value, m.pos, m.sign)
+    applyAddConstraint(next, m.featureId, m.kind, m.targets, m.value, m.pos, m.sign, m.id)
   },
   set_constraint_value: (next, m) =>
     applySetConstraintValue(next, m.featureId, m.constraintId, m.value),

@@ -576,16 +576,19 @@ describe('sketchEditorStore', () => {
         expect(useSketchEditorStore.getState().activeTool).toBeNull()  // tool was already cleared when entering pick mode
       })
 
-      // Entering a pick mid-gesture strands the armed brep withhold otherwise:
-      // the pending projections survive and the next unrelated mutation gets
-      // swallowed as "the projection". Same contract as a tool switch.
+      // Entering a pick mid-gesture leaves the placement open otherwise: the
+      // pending projections and the inserted constraint survive and the next
+      // unrelated mutation gets swallowed as part of it. Same contract as a
+      // tool switch.
       it('cancels an armed brep projection gesture when entering a pick', () => {
         const handler = vi.fn()
         setSketchCallback('onMutation', handler)
         setSketchCallback('getSketch', () => ({}))
+        const cancelPlacement = vi.fn()
+        setSketchCallback('cancelPlacement', cancelPlacement)
         useEditorState.setState({
-    activeFeatureId: 'S1',
-  })
+          activeFeatureId: 'S1',
+        })
         useSketchEditorStore.getState().setActiveTool('dimension')
         useSketchEditorStore.getState().addBrepDimensionPick('?b1/edge:3', { isVertexPick: false, sourceKind: 'line' })
         const eid = handler.mock.calls[0][0].entityId
@@ -594,12 +597,14 @@ describe('sketchEditorStore', () => {
 
         useSketchEditorStore.getState().setActivePickField({ featureId: 'S1', field: 'plane' })
 
-        // The withheld delete removed the projection with no undo entry and
+        // The placement cancel rewinds the projection with no undo entry and
         // the gesture's pending state is gone.
-        expect(handler).toHaveBeenCalledWith({ type: 'delete', targets: [`entity:S1:${eid}`] })
+        expect(cancelPlacement).toHaveBeenCalledTimes(1)
+        expect(handler).not.toHaveBeenCalled()
         expect(useSketchEditorStore.getState().pendingBrepProjectionIds).toEqual([])
         expect(useSketchEditorStore.getState().activePickField).toEqual({ featureId: 'S1', field: 'plane' })
         setSketchCallback('getSketch', null)
+        setSketchCallback('cancelPlacement', null)
       })
     })
   })

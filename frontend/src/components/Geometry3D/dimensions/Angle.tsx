@@ -54,7 +54,7 @@ export function AngleDimension({ cid, dim, interaction, planeTransform }: {
   const displayedValue = isSupplement ? 180 - dim.value : dim.value
 
   const { color, hovered, title, onOver, onOut, onClick, onDoubleClick, resetDragMoved, isDragged } =
-    useDimInteraction(cid, displayedValue, interaction, false, onFlip, undefined, 'angle')
+    useDimInteraction(cid, displayedValue, interaction, false, onFlip, 'angle', 'angle')
 
   // Arc endpoint ray directions (radians) for arrowhead tangents.
   const angle1 = a0deg * (Math.PI / 180)

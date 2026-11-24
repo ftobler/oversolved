@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import type { PlaneTransform } from '@/types/cad'
+import { dimensionPromptLabel } from '@/registry/constraintRegistry'
 import type { DimInteraction } from './useDimInteraction'
 import { LinearDimension } from './Linear'
 import { RadiusDimension, DiameterDimension } from './Radial'
@@ -31,20 +32,20 @@ export function renderDimension(
   switch (r.kind) {
     case 'dim_linear': {
       const dim = r as { kind: string; dimKind?: string; p1: [number, number]; p2: [number, number]; normal: [number, number]; value: number; pos?: [number, number] }
-      return <LinearDimension key={cid} cid={cid} dim={dim} dimOffset={dimOffset} interaction={interactionFor(base, cid, 'dimension')} planeTransform={planeTransform} />
+      return <LinearDimension key={cid} cid={cid} dim={dim} dimOffset={dimOffset} interaction={interactionFor(base, cid, dimensionPromptLabel('dim_linear'))} planeTransform={planeTransform} />
     }
     case 'dim_radius': {
       const dim = r as { kind: string; p1: [number, number]; p2: [number, number]; value: number; pos?: [number, number] }
-      return <RadiusDimension key={cid} cid={cid} dim={dim} interaction={interactionFor(base, cid, 'radius')} planeTransform={planeTransform} />
+      return <RadiusDimension key={cid} cid={cid} dim={dim} interaction={interactionFor(base, cid, dimensionPromptLabel('dim_radius'))} planeTransform={planeTransform} />
     }
     case 'dim_diameter': {
       const dim = r as { kind: string; p1: [number, number]; p2: [number, number]; value: number; pos?: [number, number] }
-      return <DiameterDimension key={cid} cid={cid} dim={dim} interaction={interactionFor(base, cid, 'diameter')} planeTransform={planeTransform} />
+      return <DiameterDimension key={cid} cid={cid} dim={dim} interaction={interactionFor(base, cid, dimensionPromptLabel('dim_diameter'))} planeTransform={planeTransform} />
     }
     case 'dim_angle': {
       const dim = r as { kind: string; p1: [number, number]; p2: [number, number]; p3: [number, number]; p4: [number, number]; value: number; pos?: [number, number] }
       if (!dim.p3 || !dim.p4) return null
-      return <AngleDimension key={cid} cid={cid} dim={dim} interaction={interactionFor(base, cid, 'angle in degrees')} planeTransform={planeTransform} />
+      return <AngleDimension key={cid} cid={cid} dim={dim} interaction={interactionFor(base, cid, dimensionPromptLabel('dim_angle'))} planeTransform={planeTransform} />
     }
     default:
       return null

@@ -222,7 +222,7 @@ describe('group preview scope and suppression', () => {
     act(() => { result.current.startEditSession(true) })
     // A brep projection withhold armed at the session boundary must be consumed
     // by the swallowed group rather than leak past it.
-    act(() => { result.current.beginBrepProjection() })
+    act(() => { result.current.beginPlacement() })
     act(() => {
       result.current.commitMutationGroup([
         { type: 'set_part_color', bodyId: 'b1', color: '#00ff00' },

@@ -1,11 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
-import { useSketchEditorStore, useSketchUiStore, getSketchCallback } from '@/stores/sketchEditorStore'
-import { evalExpr } from '@/kernel/evalExpr'
+import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { openDimensionEditor } from '@/stores/dimensionEditor'
 import type { Quantity } from '@/utils/fieldUnit'
-import { refusalText } from '@/utils/core/statusMark'
-import { expressionRefusal, positive } from '@/utils/core/valueRules'
-import { dimensionValueRule } from '@/utils/core/dimensionValueRules'
-import { isConstraintKindName } from '@/wasm-kernel/codec'
 import { COLOR_CONSTRAINT, COLOR_CONSTRAINT_DIM } from '@/utils/geometry/sketchHelpers'
 import { COLOR_SELECTED, COLOR_ERROR_DEEP, COLOR_CONSTRAINT_WEAK, LABEL_Z_OFFSET } from '@/components/Geometry3D/constants'
 import { useDimensionLabelIdRegistration } from '@/picking/useDimensionLabelIdRegistration'
@@ -101,22 +97,25 @@ export function useDimInteraction(
     if (consumeClick()) return
     if (!interaction) return
     ev.stopPropagation()
-    const rule = !validatePositive
-      ? undefined
-      : constraintKind !== undefined && isConstraintKindName(constraintKind)
-        ? dimensionValueRule(constraintKind)
-        : positive
-    useSketchUiStore.getState().openDialog({
-      position: [ev.clientX, ev.clientY],
+    // A placement whose prompt is still up owns the one dialog slot: resolve it
+    // as an accepted placement before the edit editor takes that slot, or the
+    // open transaction would outlive its prompt and a later tool switch would
+    // cancel the wrong dimension.
+    const store = useSketchEditorStore.getState()
+    if (store.pendingPlacementConstraintId !== null) store.commitPlacementGesture()
+    // The same editor a fresh placement opens: the label, the expression input,
+    // the kind's value rule and Flip side are one implementation, so the two
+    // entry points cannot drift apart.
+    openDimensionEditor({
+      featureId: interaction.featureId,
+      cid,
+      clientPos: [ev.clientX, ev.clientY],
+      value,
+      kind: constraintKind,
       label: interaction.promptLabel,
-      defaultValue: String(value),
       quantity,
-      validate: (input) => refusalText('Value', expressionRefusal(input, rule)),
-      onConfirm: (input) => {
-        const edited = evalExpr(input)
-        getSketchCallback('onMutation')?.({ type: 'set_constraint_value', featureId: interaction.featureId, constraintId: cid, value: edited })
-      },
-      ...(onFlip && { extraAction: { label: 'Flip side', onClick: onFlip } }),
+      validatePositive,
+      onFlip,
     })
   }, [interaction, cid, value, validatePositive, constraintKind, quantity, consumeClick, onFlip])
   // Called at the start of each pointer-down so a fresh drag begins with the flag clear.

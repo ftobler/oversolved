@@ -3,17 +3,15 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 const PART_CSS = readFileSync(join(__dirname, '../Part.css'), 'utf8')
-
-function rulePart(selector: string): string {
-  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  const match = PART_CSS.match(new RegExp(`(?:^|\\n)${escaped}\\s*\\{([^}]*)\\}`))
-  expect(match, `${selector} rule in pages/Part.css`).not.toBeNull()
-  return match![1]
-}
+const GLASS_CSS = readFileSync(join(__dirname, '../../components/layout/Glass.css'), 'utf8')
 
 describe('field layout invariant', () => {
   it('gives the field input a min-width floor', () => {
-    expect(rulePart('.feature-field-input')).toMatch(/min-width:/)
+    // The shared field primitives live in Glass.css so dialogs can use them
+    // without importing a page stylesheet.
+    expect(GLASS_CSS).toMatch(/\.feature-field-input\s*\{[^}]*min-width:/)
+    // Part.css no longer owns the rule.
+    expect(PART_CSS).not.toMatch(/(?:^|\n)\.feature-field-input\s*\{/)
   })
 
   it('does not give a non-stacked field row child flex-basis 100%', () => {

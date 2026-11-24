@@ -71,7 +71,8 @@ export const resetHarness = (): void => {
   useSketchEditorStore.getState().resetTransientState()
   setSketchCallback('onMutation', null)
   setSketchCallback('onMutationBatch', null)
-  setSketchCallback('beginBrepProjection', null)
-  setSketchCallback('cancelBrepProjection', null)
+  setSketchCallback('beginPlacement', null)
+  setSketchCallback('commitPlacement', null)
+  setSketchCallback('cancelPlacement', null)
   setSketchCallback('getSketch', null)
 }

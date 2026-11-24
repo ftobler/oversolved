@@ -2,7 +2,7 @@ import math
 
 from icon_cairo import icon, px, stroke
 
-from .helpers import _draw_arrow, _question_mark, draw_dotted_line
+from .helpers import _draw_arc_arrow, _draw_arrow, _question_mark, draw_dotted_line
 
 
 @icon("frontend/src/assets/icons/constraint-angle.svg", angle=-20)
@@ -87,6 +87,28 @@ def constraint_dimension(ctx):
 
     # Draw dimension arrow between two points
     _draw_arrow(ctx, x0, y_dim, x1, y_dim, arr)
+
+
+# The drawn bbox (legs, arc and both heads) centres on (0.55, 0.553); the
+# offset lands it on (0.5, 0.5) so the pair with constraint-dimension fills the
+# same 20px slot.
+@icon("frontend/src/assets/icons/dimension-angle.svg", offset_x=-0.05, offset_y=-0.053)
+def dimension_angle(ctx):
+    # The angular sibling of constraint_dimension: the two measured legs meet at
+    # a vertex, and the dimension line is an arc between them carrying the same
+    # arrowheads. Same scale and stroke as the linear icon so the pair reads as
+    # one family in the 20px slot.
+    vx, vy = 0.2, 0.8
+    ax, ay = 0.9, 0.8
+    leg = 0.7
+    bx = vx + leg * math.cos(math.radians(45))
+    by = vy - leg * math.sin(math.radians(45))
+    ctx.move_to(ax, ay)
+    ctx.line_to(vx, vy)
+    ctx.line_to(bx, by)
+    stroke(ctx, 1.5)
+
+    _draw_arc_arrow(ctx, vx, vy, 0.34, -45, 0, px(6))
 
 
 @icon("frontend/src/assets/icons/constraint-square.svg")  # double use: toolbar (normal)

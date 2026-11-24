@@ -300,14 +300,18 @@ describe('a dimension placement click that never moved', () => {
 
     const dialog = useSketchUiStore.getState().pendingDialog
     expect(dialog).not.toBeNull()
-    dialog!.onConfirm('10')
 
     // Length anchor = midpoint(L1) = (5, 0); the press point (4, 4.2) is the
-    // label's anchor-relative pos, not the 10% extent default.
-    expect(onMutation).toHaveBeenCalledWith({
+    // label's anchor-relative pos, not the 10% extent default. The insert
+    // happens on the click, so the dimension is already there.
+    expect(onMutation).toHaveBeenCalledWith(expect.objectContaining({
       type: 'add_constraint',
       featureId: 'feat1', kind: 'length', targets: ['entity:feat1:L1'], value: 10,
       pos: [-1, 4.2],
-    })
+    }))
+    // Accepting the shown number changes nothing.
+    onMutation.mockClear()
+    dialog!.onConfirm('10')
+    expect(onMutation).not.toHaveBeenCalled()
   })
 })

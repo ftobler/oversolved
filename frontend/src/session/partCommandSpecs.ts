@@ -54,12 +54,12 @@ export function escapeStage(fields: {
 export function cancelInProgressGesture(st: {
   clearDraw: () => void
   dimensionPicks: { length: number }
-  cancelBrepProjectionGesture: () => void
+  cancelPlacementGesture: () => void
   clearDimensionPicks: () => void
 }) {
   st.clearDraw()
   if (st.dimensionPicks.length > 0) {
-    st.cancelBrepProjectionGesture()
+    st.cancelPlacementGesture()
     st.clearDimensionPicks()
   }
 }
@@ -82,13 +82,19 @@ export interface PartCommandState {
   activeTool: ActiveTool
   drawPoints: readonly [number, number][]
   dimensionPicks: readonly unknown[]
+  // The constraint id a placement prompt is open for (null when no placement
+  // editor is up) and the projections the gesture materialized. Undo and redo
+  // resolve that gesture before they pop or reach history.
+  pendingPlacementConstraintId: string | null
+  pendingBrepProjectionIds: readonly string[]
   activePickField: unknown
   pendingDialog: unknown
   setActiveTool(tool: ActiveTool): void
   setActivePickField(field: unknown): void
   clearDraw(): void
   finishDraw(): boolean
-  cancelBrepProjectionGesture(): void
+  cancelPlacementGesture(): void
+  commitPlacementGesture(): void
   clearDimensionPicks(): void
   toggleConstruction(): void
   mirrorSelection(): string | null
@@ -174,6 +180,17 @@ function toolSpec(id: CommandName, label: string, tool: ActiveTool): PartCommand
   }
 }
 
+// A dimension placement is open when the store still names its prompt or holds
+// the projections the gesture materialized. This is the tool switch's condition:
+// every path that abandons a placement (undo, redo, a tool switch, leaving the
+// sketch, arming a pick) resolves the same gesture.
+function placementOpen(st: {
+  pendingPlacementConstraintId: string | null
+  pendingBrepProjectionIds: readonly string[]
+}): boolean {
+  return st.pendingPlacementConstraintId !== null || st.pendingBrepProjectionIds.length > 0
+}
+
 const undoSpec: PartCommandSpec = {
   id: 'undo',
   label: 'Undo',
@@ -182,8 +199,13 @@ const undoSpec: PartCommandSpec = {
   undoable: false,
   // The session owns the floor: inside a sketch with nothing of its own left to
   // revert this reads unavailable, so the toolbar and the shortcut grey out
-  // instead of offering a keystroke that resolves to nothing.
-  enabled: ctx => (!ctx.session || !ctx.session.canUndo() ? 'nothing to undo' : true),
+  // instead of offering a keystroke that resolves to nothing. An open placement
+  // is always undoable: the press cancels it even when no entry sits above the
+  // session floor.
+  enabled: ctx => {
+    if (placementOpen(ctx.state())) return true
+    return !ctx.session || !ctx.session.canUndo() ? 'nothing to undo' : true
+  },
   run: ctx => {
     const st = ctx.state()
     // Undo shares Escape's cancel_gesture first stage: a half-placed draw
@@ -198,6 +220,14 @@ const undoSpec: PartCommandSpec = {
     // there is "commit the open work, then pop" -- Part.addFeatureCancel
     // pins Ctrl+Z removing the feature that armed the field. Escape's 'pick'
     // arm is about abandoning a gesture, so it stays with cancel_draw only.
+    // A placement whose prompt is open owns the gesture: undo cancels it and
+    // stops there, exactly as the keyboard path would. Without this the toolbar
+    // undo would cancel the transaction in the session while the store's
+    // pending id and the dialog survived against a constraint the rewind removed.
+    if (placementOpen(st)) {
+      st.cancelPlacementGesture()
+      return okResult()
+    }
     if (st.drawPoints.length > 0 || st.dimensionPicks.length > 0) {
       cancelInProgressGesture(st)
       return okResult()
@@ -215,6 +245,14 @@ const redoSpec: PartCommandSpec = {
   undoable: false,
   enabled: ctx => (!ctx.session || !ctx.session.canRedo() ? 'nothing to redo' : true),
   run: ctx => {
+    const st = ctx.state()
+    // Redo resolves a placement the way the session does: the finished
+    // dimension is kept by committing it. Clearing only in the session would
+    // leave the store believing a prompt is still up.
+    if (placementOpen(st)) {
+      st.commitPlacementGesture()
+      return okResult()
+    }
     ctx.redo()
     return okResult()
   },

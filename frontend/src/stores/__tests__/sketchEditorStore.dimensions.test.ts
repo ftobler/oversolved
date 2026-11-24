@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { useSketchEditorStore, setSketchCallback, useSketchUiStore } from '@/stores/sketchEditorStore'
+import { useSketchEditorStore, setSketchCallback, useSketchUiStore, getSketchCallback } from '@/stores/sketchEditorStore'
 import type { Mutation } from '@/types/cad'
 import { installSketchStoreSetup } from './helpers/sketchEditorStoreTestSetup'
 import { useEditorState } from '@/hooks/useEditorState'
+import { dimensionEditorIcon } from '@/stores/dimensionEditor'
 
 describe('sketchEditorStore', () => {
   installSketchStoreSetup()
@@ -105,6 +106,61 @@ describe('sketchEditorStore', () => {
       expect(useSketchEditorStore.getState().dimensionPicks).toEqual([])
     })
 
+    it('opens the editor for the id the applier actually created', () => {
+      // A caller id that collided with a live row is substituted by the
+      // applier; the editor must address the row that landed, not the one it
+      // asked for, or every edit would hit an id that does not exist.
+      const handler = vi.fn(() => ({ ok: true, createdIds: ['c_substituted'] }))
+      setSketchCallback('onMutation', handler)
+      setSketchCallback('getSketch', () => ({
+        L1: { start: [0, 0], end: [10, 0] },
+      } as never))
+      useEditorState.setState({
+        dimensionPicks: [{ isVertex: false, target: 'entity:S1:L1', entityKind: 'line' }],
+      })
+      useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
+
+      expect(useSketchEditorStore.getState().pendingPlacementConstraintId).toBe('c_substituted')
+      useSketchUiStore.getState().pendingDialog!.onConfirm('20')
+      expect(handler).toHaveBeenLastCalledWith({
+        type: 'set_constraint_value', featureId: 'S1', constraintId: 'c_substituted', value: 20,
+      })
+      setSketchCallback('getSketch', null)
+    })
+
+    it('evaluates a variable expression on confirm and sets the inserted row', () => {
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      setSketchCallback('getDoc', () => ({
+        kind: 'part',
+        features: [
+          { id: 'v1', kind: 'variable', label: 'w', variable: { expression: '5' } },
+          { id: 'S1', kind: 'sketch' },
+        ],
+      } as never))
+      setSketchCallback('getSketch', () => ({
+        L1: { start: [0, 0], end: [10, 0] },
+      } as never))
+      useEditorState.setState({
+        dimensionPicks: [{ isVertex: false, target: 'entity:S1:L1', entityKind: 'line' }],
+      })
+      useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
+      const insert = handler.mock.calls[0][0] as Extract<Mutation, { type: 'add_constraint' }>
+      const dialog = useSketchUiStore.getState().pendingDialog!
+      expect(dialog.validate!('2*w')).toBeNull()
+      handler.mockClear()
+
+      dialog.onConfirm('2*w')
+
+      // The placement editor is an expression box: the variable scope is the
+      // document's own, the same one a feature field reads.
+      expect(handler).toHaveBeenCalledWith({
+        type: 'set_constraint_value', featureId: 'S1', constraintId: insert.id, value: 10,
+      })
+      setSketchCallback('getDoc', null)
+      setSketchCallback('getSketch', null)
+    })
+
     it('replacing the second brep pick deletes the orphaned projection', () => {
       const handler = vi.fn()
       setSketchCallback('onMutation', handler)
@@ -159,122 +215,141 @@ describe('sketchEditorStore', () => {
       setSketchCallback('getSketch', null)
     })
 
-    it('cancelling the value dialog deletes the pending projection', () => {
+    it('cancelling the value dialog cancels the placement', () => {
       const handler = vi.fn()
       setSketchCallback('onMutation', handler)
       setSketchCallback('getSketch', () => ({}))
+      const cancelPlacement = vi.fn()
+      setSketchCallback('cancelPlacement', cancelPlacement)
       useSketchEditorStore.getState().addBrepDimensionPick('?b1/edge:3', { isVertexPick: false, sourceKind: 'line' })
-      const eid = handler.mock.calls[0][0].entityId
       useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
       const dialog = useSketchUiStore.getState().pendingDialog!
       handler.mockClear()
 
       dialog.onCancel!()
 
-      expect(handler).toHaveBeenCalledWith({ type: 'delete', targets: [`entity:S1:${eid}`] })
+      // The transaction owns the whole gesture: cancelling it rewinds the
+      // projection and the inserted constraint with no compensating delete.
+      expect(cancelPlacement).toHaveBeenCalledTimes(1)
+      expect(handler).not.toHaveBeenCalled()
       expect(useSketchEditorStore.getState().pendingBrepProjectionIds).toEqual([])
+      expect(useSketchEditorStore.getState().pendingPlacementConstraintId).toBeNull()
       setSketchCallback('getSketch', null)
+      setSketchCallback('cancelPlacement', null)
     })
 
     // The reported bug: the value prompt outlived the gesture abort that
-    // deleted the projection it was measuring. Arm the dimension tool, click a
-    // body edge (the projection is withheld), click empty space (the prompt
-    // opens, the picks drop), then click Line in the sketch toolbar. The tool
-    // switch deletes the projection with no undo entry, so the prompt must die
-    // with it: a later Enter on a surviving prompt commits an add_constraint
-    // naming an entity the doc no longer has, which the solver reports
-    // unresolved.
-    it('a tool switch drops the value dialog whose own gesture abort deleted its projection', () => {
+    // cancelled the placement it was measuring. Arm the dimension tool, click a
+    // body edge, click empty space (the prompt opens), then click Line in the
+    // sketch toolbar. The tool switch cancels the placement with no undo entry,
+    // so the prompt must die with it: a later Enter on a surviving prompt would
+    // address a constraint the rewind removed.
+    it('a tool switch drops the value dialog whose own gesture it cancels', () => {
       const handler = vi.fn()
       setSketchCallback('onMutation', handler)
       setSketchCallback('getSketch', () => ({}))
+      const cancelPlacement = vi.fn()
+      setSketchCallback('cancelPlacement', cancelPlacement)
       // Arm through the store so the mode stack matches the armed tool.
       useEditorState.setState({
-    activeTool: null,
-    modeStack: [],
-  })
+        activeTool: null,
+        modeStack: [],
+      })
       const store = useSketchEditorStore.getState()
       store.setActiveTool('dimension')
       store.addBrepDimensionPick('?b1/edge:3', { isVertexPick: false, sourceKind: 'line' })
-      const eid = handler.mock.calls[0][0].entityId
       store.finalizeDimensionPlacement([0, 0])
       expect(useSketchUiStore.getState().pendingDialog).not.toBeNull()
+      expect(useSketchEditorStore.getState().pendingPlacementConstraintId).not.toBeNull()
+      cancelPlacement.mockClear()
 
       useSketchEditorStore.getState().setActiveTool('line')
 
-      // The abort removed the projection, and the prompt did not survive it.
-      expect(handler).toHaveBeenLastCalledWith({ type: 'delete', targets: [`entity:S1:${eid}`] })
+      // The abort cancelled the placement, and the prompt did not survive it.
+      expect(cancelPlacement).toHaveBeenCalledTimes(1)
       expect(useSketchEditorStore.getState().pendingBrepProjectionIds).toEqual([])
+      expect(useSketchEditorStore.getState().pendingPlacementConstraintId).toBeNull()
       expect(useSketchUiStore.getState().pendingDialog).toBeNull()
 
-      // The whole sequence dispatched the projection and its compensating
-      // delete, and nothing else: no add_constraint naming a removed entity.
-      expect(handler.mock.calls.map(c => c[0].type)).toEqual(['add_projected_entity', 'delete'])
+      // The whole sequence dispatched the projection and the insert, and
+      // nothing else: no delete chased the rewind.
+      expect(handler.mock.calls.map(c => c[0].type)).toEqual(['add_projected_entity', 'add_constraint'])
       setSketchCallback('getSketch', null)
+      setSketchCallback('cancelPlacement', null)
     })
 
     // Same defect by a second door: leaving the sketch is also a gesture abort
-    // (setActiveFeatureId cancels the pending projections), and the Viewport
+    // (setActiveFeatureId cancels the pending placement), and the Viewport
     // keeps the prompt mounted across the editor switch.
     it('leaving the sketch drops the value dialog too', () => {
       const handler = vi.fn()
       setSketchCallback('onMutation', handler)
       setSketchCallback('getSketch', () => ({}))
+      setSketchCallback('cancelPlacement', vi.fn())
       useEditorState.setState({
-    activeTool: null,
-    modeStack: [],
-  })
+        activeTool: null,
+        modeStack: [],
+      })
       const store = useSketchEditorStore.getState()
       store.setActiveTool('dimension')
       store.addBrepDimensionPick('?b1/edge:3', { isVertexPick: false, sourceKind: 'line' })
-      const eid = handler.mock.calls[0][0].entityId
       store.finalizeDimensionPlacement([0, 0])
 
       useSketchEditorStore.getState().setActiveFeatureId(null)
 
-      expect(handler).toHaveBeenLastCalledWith({ type: 'delete', targets: [`entity:S1:${eid}`] })
       expect(useSketchUiStore.getState().pendingDialog).toBeNull()
-      expect(handler.mock.calls.map(c => c[0].type)).toEqual(['add_projected_entity', 'delete'])
+      expect(useSketchEditorStore.getState().pendingPlacementConstraintId).toBeNull()
+      expect(handler.mock.calls.map(c => c[0].type)).toEqual(['add_projected_entity', 'add_constraint'])
       setSketchCallback('getSketch', null)
+      setSketchCallback('cancelPlacement', null)
     })
 
-    it('committing the dimension clears the pending projections', () => {
+    it('committing the dimension clears the placement bookkeeping', () => {
       const handler = vi.fn()
       setSketchCallback('onMutation', handler)
       setSketchCallback('getSketch', () => ({}))
+      const commitPlacement = vi.fn()
+      setSketchCallback('commitPlacement', commitPlacement)
       useSketchEditorStore.getState().addBrepDimensionPick('?b1/edge:3', { isVertexPick: false, sourceKind: 'line' })
+      // The projection's solve has landed by the placement click.
+      const eid = handler.mock.calls[0][0].entityId
+      setSketchCallback('getSketch', () => ({ [eid]: { start: [0, 0], end: [10, 0] } } as never))
       useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
       const dialog = useSketchUiStore.getState().pendingDialog!
       handler.mockClear()
 
       dialog.onConfirm('10')
 
-      // The projection is now part of the committed dimension, so nothing is
-      // pending cleanup any more.
+      // The insert already happened; an unchanged confirm only commits the
+      // placement, so no second mutation and nothing is pending any more.
+      expect(commitPlacement).toHaveBeenCalledTimes(1)
+      expect(handler).not.toHaveBeenCalled()
       expect(useSketchEditorStore.getState().pendingBrepProjectionIds).toEqual([])
-      expect(handler).toHaveBeenCalledWith(expect.objectContaining({ type: 'add_constraint' }))
+      expect(useSketchEditorStore.getState().pendingPlacementConstraintId).toBeNull()
       setSketchCallback('getSketch', null)
+      setSketchCallback('commitPlacement', null)
     })
 
-    it('a duplicate dimension is refused at confirm with the cannot-apply message', () => {
+    it('a duplicate dimension is refused before the insert with the cannot-apply message', () => {
       // The dimension tool is the canonical dimension path, so the authoring
-      // gate has to answer here too: the dialog's value is what makes the
-      // duplicate a probe candidate (a value-less dimension adds no solver
-      // rows), and the refusal must arrive before any mutation exists.
+      // gate has to answer here too: the natural value makes the duplicate a
+      // probe candidate, and the refusal arrives before any mutation exists,
+      // leaving no constraint and no prompt.
       const handler = vi.fn()
       setSketchCallback('onMutation', handler)
       const gate = vi.fn(() => true)
       setSketchCallback('checkRedundantAdd', gate)
       const messages = vi.fn()
       setSketchCallback('showMessage', messages)
+      const cancelPlacement = vi.fn()
+      setSketchCallback('cancelPlacement', cancelPlacement)
       setSketchCallback('getSketch', () => ({
         L1: { start: [0, 0], end: [10, 0] },
       } as never))
       useEditorState.setState({
-    dimensionPicks: [{ isVertex: false, target: 'entity:S1:L1', entityKind: 'line' }],
-  })
+        dimensionPicks: [{ isVertex: false, target: 'entity:S1:L1', entityKind: 'line' }],
+      })
       useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
-      useSketchUiStore.getState().pendingDialog!.onConfirm('10')
 
       expect(gate).toHaveBeenCalledWith({
         featureId: 'S1', kind: 'length', targets: ['entity:S1:L1'], value: 10,
@@ -286,10 +361,14 @@ describe('sketchEditorStore', () => {
         variant: 'error',
       })
       expect(useSketchUiStore.getState().pendingDialog).toBeNull()
+      expect(cancelPlacement).toHaveBeenCalledTimes(1)
       setSketchCallback('getSketch', null)
+      setSketchCallback('checkRedundantAdd', null)
+      setSketchCallback('showMessage', null)
+      setSketchCallback('cancelPlacement', null)
     })
 
-    it('hands the gate the label pos the dialog collected, and authors on a false answer', () => {
+    it('hands the gate the label pos the placement collected, and inserts on a false answer', () => {
       const handler = vi.fn()
       setSketchCallback('onMutation', handler)
       const gate = vi.fn(() => false)
@@ -298,43 +377,85 @@ describe('sketchEditorStore', () => {
         L1: { start: [0, 0], end: [10, 0] },
       } as never))
       useEditorState.setState({
-    dimensionPicks: [{ isVertex: false, target: 'entity:S1:L1', entityKind: 'line' }],
-    dimensionCursorWorld: [5, 7],
-  })
+        dimensionPicks: [{ isVertex: false, target: 'entity:S1:L1', entityKind: 'line' }],
+        dimensionCursorWorld: [5, 7],
+      })
       useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
-      useSketchUiStore.getState().pendingDialog!.onConfirm('10')
 
-      // The probe sees exactly what the mutation would carry (pos relative to
-      // the dim anchor), so it judges the dimension that is about to land.
+      // The probe sees exactly what the mutation carries (pos relative to the
+      // dim anchor), so it judges the dimension that is about to land.
       expect(gate).toHaveBeenCalledWith({
         featureId: 'S1', kind: 'length', targets: ['entity:S1:L1'], value: 10, pos: [0, 7],
       })
       expect(handler).toHaveBeenCalledWith({
-        type: 'add_constraint',
-        featureId: 'S1', kind: 'length', targets: ['entity:S1:L1'], value: 10, pos: [0, 7],
+        type: 'add_constraint', featureId: 'S1', kind: 'length', targets: ['entity:S1:L1'],
+        value: 10, pos: [0, 7], id: expect.any(String),
       })
+      // The prompt opens for that exact id.
+      expect(useSketchUiStore.getState().pendingDialog).not.toBeNull()
+      expect(useSketchEditorStore.getState().pendingPlacementConstraintId)
+        .toBe((handler.mock.calls[0][0] as { id: string }).id)
       setSketchCallback('getSketch', null)
+      setSketchCallback('checkRedundantAdd', null)
     })
 
-    it('a refused projected dimension deletes the gesture projection and adds nothing', () => {
+    it('a refused projected dimension cancels the placement and inserts nothing', () => {
       const handler = vi.fn()
       setSketchCallback('onMutation', handler)
       setSketchCallback('checkRedundantAdd', () => true)
       setSketchCallback('showMessage', vi.fn())
+      const cancelPlacement = vi.fn()
+      setSketchCallback('cancelPlacement', cancelPlacement)
       setSketchCallback('getSketch', () => ({}))
       useSketchEditorStore.getState().addBrepDimensionPick('?b1/edge:3', { isVertexPick: false, sourceKind: 'line' })
-      const eid = handler.mock.calls[0][0].entityId
-      useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
       handler.mockClear()
+      useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
 
-      useSketchUiStore.getState().pendingDialog!.onConfirm('10')
-
-      // The projection was scratch work for a gesture that committed nothing,
-      // so it goes with no undo entry exactly like a cancel.
-      expect(handler.mock.calls.map(c => (c[0] as Mutation).type)).toEqual(['delete'])
-      expect(handler).toHaveBeenCalledWith({ type: 'delete', targets: [`entity:S1:${eid}`] })
+      // The projection was scratch work for a gesture that committed nothing;
+      // the placement cancel rewinds it with no delete mutation and no prompt.
+      expect(handler).not.toHaveBeenCalled()
+      expect(cancelPlacement).toHaveBeenCalledTimes(1)
+      expect(useSketchUiStore.getState().pendingDialog).toBeNull()
       expect(useSketchEditorStore.getState().pendingBrepProjectionIds).toEqual([])
       setSketchCallback('getSketch', null)
+      setSketchCallback('checkRedundantAdd', null)
+      setSketchCallback('showMessage', null)
+      setSketchCallback('cancelPlacement', null)
+    })
+
+    it('a second brep pick after an insert banks the placement and clears its bookkeeping', () => {
+      // The commit in finalize leaves the projection id pending and the prompt
+      // open. Starting a new brep pick must resolve that gesture first: a later
+      // delete must not remove the now-committed projection, and the stale
+      // prompt must not confirm a second entry.
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      const commitPlacement = vi.fn()
+      setSketchCallback('commitPlacement', commitPlacement)
+      setSketchCallback('getSketch', () => ({}))
+      const store = useSketchEditorStore.getState()
+      store.addBrepDimensionPick('?b1/edge:3', { isVertexPick: false, sourceKind: 'line' })
+      const eid = handler.mock.calls[0][0].entityId
+      store.finalizeDimensionPlacement([0, 0])
+      expect(useSketchEditorStore.getState().pendingBrepProjectionIds).toEqual([eid])
+      expect(useSketchEditorStore.getState().pendingPlacementConstraintId).not.toBeNull()
+      // Once the insert commits, the projection is solved on the sketch, so a
+      // second pick of the same edge reuses it instead of projecting again.
+      setSketchCallback('getSketch', () => ({
+        [eid]: { start: [0, 0], end: [1, 0], projected: true, source: '?b1/edge:3' },
+      } as never))
+      handler.mockClear()
+
+      useSketchEditorStore.getState().addBrepDimensionPick('?b1/edge:3', { isVertexPick: false, sourceKind: 'line' })
+
+      expect(commitPlacement).toHaveBeenCalledTimes(1)
+      expect(useSketchEditorStore.getState().pendingPlacementConstraintId).toBeNull()
+      expect(useSketchEditorStore.getState().pendingBrepProjectionIds).toEqual([])
+      expect(useSketchUiStore.getState().pendingDialog).toBeNull()
+      // The banked projection is not deleted: the new pick reused it.
+      expect(handler).not.toHaveBeenCalled()
+      setSketchCallback('getSketch', null)
+      setSketchCallback('commitPlacement', null)
     })
 
     it('a projected body edge dimensions as a length once solved', () => {
@@ -385,42 +506,61 @@ describe('sketchEditorStore', () => {
       expect(useSketchEditorStore.getState().dimensionPicks).toEqual([])
     })
 
-    it('finalizeDimensionPlacement: single line → dialog opens; OK dispatches add_constraint(length)', () => {
+    it('finalizeDimensionPlacement: inserts on the click, then OK edits the inserted row', () => {
       const handler = vi.fn()
       setSketchCallback('onMutation', handler)
       useEditorState.setState({
-    dimensionPicks: [{ isVertex: false, target: 'entity:S1:L1', entityKind: 'line' }],
-  })
+        dimensionPicks: [{ isVertex: false, target: 'entity:S1:L1', entityKind: 'line' }],
+      })
       useSketchEditorStore.getState().finalizeDimensionPlacement([200, 300])
+
+      // The insert lands with the click, before any confirm: one mutation with
+      // a caller id and the measured value.
+      expect(handler).toHaveBeenCalledTimes(1)
+      const insert = handler.mock.calls[0][0] as Extract<Mutation, { type: 'add_constraint' }>
+      expect(insert).toMatchObject({
+        type: 'add_constraint', featureId: 'S1', kind: 'length', targets: ['entity:S1:L1'],
+      })
+      expect(insert.id).toEqual(expect.any(String))
 
       const dialog = useSketchUiStore.getState().pendingDialog
       expect(dialog).not.toBeNull()
-      expect(dialog!.label).toBe('Dimension value')
+      // The constraint's own prompt label, the same words a double-click shows,
+      // and the dimension tool's glyph for a linear size.
+      expect(dialog!.label).toBe('dimension')
+      expect(dialog!.icon).toBe(dimensionEditorIcon('length'))
       expect(dialog!.position).toEqual([200, 300])
-      // Picks are dropped immediately so a second click can't double-fire.
+      // Picks are dropped at insertion so a second click can't double-fire.
       expect(useSketchEditorStore.getState().dimensionPicks).toEqual([])
 
       dialog!.onConfirm('42')
-      expect(handler).toHaveBeenCalledWith({
-        type: 'add_constraint', featureId: 'S1', kind: 'length', targets: ['entity:S1:L1'], value: 42,
+      expect(handler).toHaveBeenLastCalledWith({
+        type: 'set_constraint_value', featureId: 'S1', constraintId: insert.id, value: 42,
       })
     })
 
-    it('finalizeDimensionPlacement: two lines → angle on OK', () => {
+    it('finalizeDimensionPlacement: two lines insert an angle, then OK edits it', () => {
       const handler = vi.fn()
       setSketchCallback('onMutation', handler)
       useEditorState.setState({
-    dimensionPicks: [
+        dimensionPicks: [
           { isVertex: false, target: 'entity:S1:L1', entityKind: 'line' },
           { isVertex: false, target: 'entity:S1:L2', entityKind: 'line' },
         ],
-  })
+      })
       useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
-      const dialog = useSketchUiStore.getState().pendingDialog!
-      dialog.onConfirm('45')
-      expect(handler).toHaveBeenCalledWith({
+      const insert = handler.mock.calls[0][0] as Extract<Mutation, { type: 'add_constraint' }>
+      expect(insert).toMatchObject({
         type: 'add_constraint', featureId: 'S1', kind: 'angle',
-        targets: ['entity:S1:L1', 'entity:S1:L2'], value: 45,
+        targets: ['entity:S1:L1', 'entity:S1:L2'],
+      })
+      const dialog = useSketchUiStore.getState().pendingDialog!
+      expect(dialog.label).toBe('angle in degrees')
+      // The angular dimension is the one kind with its own editor glyph.
+      expect(dialog.icon).toBe(dimensionEditorIcon('angle'))
+      dialog.onConfirm('45')
+      expect(handler).toHaveBeenLastCalledWith({
+        type: 'set_constraint_value', featureId: 'S1', constraintId: insert.id, value: 45,
       })
     })
 
@@ -446,36 +586,12 @@ describe('sketchEditorStore', () => {
       expect(useSketchUiStore.getState().pendingDialog!.quantity).toBe('angle')
     })
 
-    it('finalizeDimensionPlacement: a supplement-wedge label pre-fills and commits the displayed number', () => {
+    it('finalizeDimensionPlacement: a supplement-wedge label inserts and edits the displayed number', () => {
       const handler = vi.fn()
       setSketchCallback('onMutation', handler)
       // The bug-1 trapezoid corner: the stored directions make theta 135 and the
       // corner drawn at the vertex is its supplement, 45. A click in that wedge
-      // must show 45 and carry 45 with the label pos; the applier stores theta.
-      setSketchCallback('getSketch', () => ({
-        L1: { start: [2.5, 0], end: [6.5, 0] },
-        L2: { start: [6.5, 0], end: [6, 0.5] },
-      } as never))
-      useEditorState.setState({
-    dimensionPicks: [
-          { isVertex: false, target: 'entity:S1:L1', entityKind: 'line' },
-          { isVertex: false, target: 'entity:S1:L2', entityKind: 'line' },
-        ],
-        dimensionCursorWorld: [5.5, 0.5],
-  })
-      useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
-      const dialog = useSketchUiStore.getState().pendingDialog!
-      expect(Number(dialog.defaultValue)).toBeCloseTo(45, 6)
-      dialog.onConfirm(dialog.defaultValue!)
-      const mutation = handler.mock.calls.at(-1)![0] as Mutation
-      expect(mutation.type).toBe('add_constraint')
-      if (mutation.type !== 'add_constraint') return
-      expect(mutation.value).toBeCloseTo(45, 6)
-      expect(mutation.pos?.[0]).toBeCloseTo(-1, 6)
-      expect(mutation.pos?.[1]).toBeCloseTo(0.5, 6)
-
-      // Typing 40 in the same wedge carries 40, not 140.
-      handler.mockClear()
+      // must insert 45 with the label pos; the applier stores theta.
       setSketchCallback('getSketch', () => ({
         L1: { start: [2.5, 0], end: [6.5, 0] },
         L2: { start: [6.5, 0], end: [6, 0.5] },
@@ -488,11 +604,33 @@ describe('sketchEditorStore', () => {
         dimensionCursorWorld: [5.5, 0.5],
       })
       useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
+      const dialog = useSketchUiStore.getState().pendingDialog!
+      const insert = handler.mock.calls[0][0] as Extract<Mutation, { type: 'add_constraint' }>
+      expect(Number(insert.value)).toBeCloseTo(45, 6)
+      expect(insert.pos?.[0]).toBeCloseTo(-1, 6)
+      expect(insert.pos?.[1]).toBeCloseTo(0.5, 6)
+      expect(Number(dialog.defaultValue)).toBeCloseTo(45, 6)
+
+      // Accepting the pre-filled number changes nothing: the exact stored theta
+      // survives because no set is dispatched.
+      handler.mockClear()
+      dialog.onConfirm(dialog.defaultValue!)
+      expect(handler).not.toHaveBeenCalled()
+
+      // Typing 40 in the same wedge carries 40, not 140.
+      useEditorState.setState({
+        dimensionPicks: [
+          { isVertex: false, target: 'entity:S1:L1', entityKind: 'line' },
+          { isVertex: false, target: 'entity:S1:L2', entityKind: 'line' },
+        ],
+        dimensionCursorWorld: [5.5, 0.5],
+      })
+      useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
+      const second = handler.mock.calls[0][0] as Extract<Mutation, { type: 'add_constraint' }>
       useSketchUiStore.getState().pendingDialog!.onConfirm('40')
-      const edited = handler.mock.calls.at(-1)![0] as Mutation
-      expect(edited.type).toBe('add_constraint')
-      if (edited.type !== 'add_constraint') return
-      expect(edited.value).toBe(40)
+      expect(handler).toHaveBeenLastCalledWith({
+        type: 'set_constraint_value', featureId: 'S1', constraintId: second.id, value: 40,
+      })
       setSketchCallback('getSketch', null)
     })
 
@@ -501,15 +639,17 @@ describe('sketchEditorStore', () => {
       setSketchCallback('onMutation', handler)
       const pick = { isVertex: false, target: 'entity:S1:L1', entityKind: 'line' }
       useEditorState.setState({
-    dimensionPicks: [pick, pick],
-  })
-      useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
-      const dialog = useSketchUiStore.getState().pendingDialog!
-      dialog.onConfirm('10')
-      expect(handler).toHaveBeenCalledWith({
-        type: 'add_constraint', featureId: 'S1', kind: 'length',
-        targets: ['entity:S1:L1'], value: 10,
+        dimensionPicks: [pick, pick],
       })
+      useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
+      expect(handler).toHaveBeenCalledWith(expect.objectContaining({
+        type: 'add_constraint', featureId: 'S1', kind: 'length',
+        targets: ['entity:S1:L1'],
+      }))
+      useSketchUiStore.getState().pendingDialog!.onConfirm('10')
+      expect(handler).toHaveBeenLastCalledWith(expect.objectContaining({
+        type: 'set_constraint_value', value: 10,
+      }))
     })
 
     it('finalizeDimensionPlacement: vertex alone is undimensionable, no dialog opens', () => {
@@ -525,8 +665,36 @@ describe('sketchEditorStore', () => {
       expect(handler).not.toHaveBeenCalled()
     })
 
-    it('finalizeDimensionPlacement: empty picks is a no-op', () => {
+    it('finalizeDimensionPlacement: refuses to insert without the dialog port', () => {
+      // The prompt is the gesture's other half; without it the insert would
+      // leave a dimension nobody can edit behind an open placement.
       const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      const beginPlacement = vi.fn()
+      setSketchCallback('beginPlacement', beginPlacement)
+      const openDialog = getSketchCallback('openDialog')
+      setSketchCallback('openDialog', null)
+      useEditorState.setState({
+        dimensionPicks: [{ isVertex: false, target: 'entity:S1:L1', entityKind: 'line' }],
+        pendingPlacementConstraintId: null,
+      })
+      try {
+        // The loud refusal is dev/test only; in every build the insert and the
+        // placement begin are behind it.
+        expect(() => useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0]))
+          .toThrow(/openDialog port/)
+
+        expect(handler).not.toHaveBeenCalled()
+        expect(beginPlacement).not.toHaveBeenCalled()
+        expect(useSketchUiStore.getState().pendingDialog).toBeNull()
+        expect(useSketchEditorStore.getState().pendingPlacementConstraintId).toBeNull()
+      } finally {
+        setSketchCallback('openDialog', openDialog)
+        setSketchCallback('beginPlacement', null)
+      }
+    })
+
+    it('finalizeDimensionPlacement: empty picks is a no-op', () => {      const handler = vi.fn()
       setSketchCallback('onMutation', handler)
       useEditorState.setState({
     dimensionPicks: [],
@@ -536,15 +704,24 @@ describe('sketchEditorStore', () => {
       expect(handler).not.toHaveBeenCalled()
     })
 
-    it('finalizeDimensionPlacement: Cancel (dialog onConfirm not called) dispatches nothing', () => {
+    it('finalizeDimensionPlacement: a dialog Cancel dispatches no editing mutation', () => {
       const handler = vi.fn()
       setSketchCallback('onMutation', handler)
+      const cancelPlacement = vi.fn()
+      setSketchCallback('cancelPlacement', cancelPlacement)
       useEditorState.setState({
-    dimensionPicks: [{ isVertex: false, target: 'entity:S1:C1', entityKind: 'circle' }],
-  })
+        dimensionPicks: [{ isVertex: false, target: 'entity:S1:C1', entityKind: 'circle' }],
+      })
       useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
-      useSketchUiStore.getState().closeDialog()
+      expect(handler).toHaveBeenCalledTimes(1)
+      handler.mockClear()
+
+      useSketchUiStore.getState().pendingDialog!.onCancel!()
+
+      // Cancel is the transaction's rewind, not a mutation: nothing new lands.
       expect(handler).not.toHaveBeenCalled()
+      expect(cancelPlacement).toHaveBeenCalledTimes(1)
+      setSketchCallback('cancelPlacement', null)
     })
 
     it('finalizeDimensionPlacement: OK keeps the tool armed for the next dim', () => {
@@ -580,42 +757,50 @@ describe('sketchEditorStore', () => {
         PT: { x: 7, y: 1 },
       } as never))
       useEditorState.setState({
-    activeOriginLocal: [5, -2],
-    dimensionPicks: [
+        activeOriginLocal: [5, -2],
+        dimensionPicks: [
           { isVertex: true, target: '@builtin_origin' },
           { isVertex: true, target: 'vertex:S1:PT:xy' },
         ],
-  })
+      })
       useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
       const dialog = useSketchUiStore.getState().pendingDialog!
       // PT (7,1) to the face origin (5,-2): hypot(2,3), not hypot(7,1) from the
-      // plane's local origin. The preview reads this same store field.
-      expect(dialog.defaultValue).toBe((Math.hypot(2, 3)).toFixed(2))
-      dialog.onConfirm(dialog.defaultValue!)
+      // plane's local origin. The insert carries the exact measured value; the
+      // box shows its five-decimal form.
       expect(handler).toHaveBeenCalledWith(expect.objectContaining({
         kind: 'point_distance',
         targets: ['@builtin_origin', 'vertex:S1:PT:xy'],
         value: Math.hypot(2, 3),
       }))
+      expect(Number(dialog.defaultValue)).toBeCloseTo(Math.hypot(2, 3), 5)
+      // Unchanged confirm keeps the exact value: no set is dispatched.
+      handler.mockClear()
+      dialog.onConfirm(dialog.defaultValue!)
+      expect(handler).not.toHaveBeenCalled()
       setSketchCallback('getSketch', null)
     })
 
-    it('finalizeDimensionPlacement: accepting the rounded default commits the exact measured value', () => {
+    it('finalizeDimensionPlacement: the insert carries the exact measured value and an unchanged confirm writes nothing', () => {
       const handler = vi.fn()
       setSketchCallback('onMutation', handler)
-      // Length 12.345... -> default displays rounded to 2 decimals.
+      // Length 12.3456 -> the box shows five decimals; the document keeps the
+      // exact measurement from the insert.
       setSketchCallback('getSketch', () => ({
         L1: { start: [0, 0], end: [12.3456, 0] },
       } as never))
       useEditorState.setState({
-    dimensionPicks: [{ isVertex: false, target: 'entity:S1:L1', entityKind: 'line' }],
-  })
+        dimensionPicks: [{ isVertex: false, target: 'entity:S1:L1', entityKind: 'line' }],
+      })
       useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
+      const insert = handler.mock.calls[0][0] as Extract<Mutation, { type: 'add_constraint' }>
+      expect(insert.value).toBe(12.3456)
       const dialog = useSketchUiStore.getState().pendingDialog!
-      expect(dialog.defaultValue).toBe('12.35')
-      // Submitting the default unchanged commits the full-precision value, not 12.35.
+      expect(dialog.defaultValue).toBe('12.3456')
+      // Submitting the default unchanged is the commit, not a second write.
+      handler.mockClear()
       dialog.onConfirm(dialog.defaultValue!)
-      expect(handler).toHaveBeenCalledWith(expect.objectContaining({ value: 12.3456 }))
+      expect(handler).not.toHaveBeenCalled()
       setSketchCallback('getSketch', null)
     })
 
@@ -664,20 +849,16 @@ describe('sketchEditorStore', () => {
       setSketchCallback('getSketch', () => ({
         L1: { start: [0, 0], end: [10, 0] },
       } as never))
-      useSketchEditorStore.setState({
-    // 5 along the line, 7 above it,
-  })
-  useEditorState.setState({
-    dimensionPicks: [{ isVertex: false, target: 'entity:S1:L1', entityKind: 'line' }],
-    dimensionCursorWorld: [5, 7],
-  })
+      useEditorState.setState({
+        dimensionPicks: [{ isVertex: false, target: 'entity:S1:L1', entityKind: 'line' }],
+        dimensionCursorWorld: [5, 7],
+      })
       useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
-      useSketchUiStore.getState().pendingDialog!.onConfirm('10')
       // Length anchor = midpoint(L1) = (5, 0). Pos = world - anchor = (0, 7).
       expect(handler).toHaveBeenCalledWith({
         type: 'add_constraint',
         featureId: 'S1', kind: 'length', targets: ['entity:S1:L1'], value: 10,
-        pos: [0, 7],
+        pos: [0, 7], id: expect.any(String),
       })
       setSketchCallback('getSketch', null)
     })
@@ -689,15 +870,17 @@ describe('sketchEditorStore', () => {
         L1: { start: [0, 0], end: [10, 0] },
       } as never))
       useEditorState.setState({
-    dimensionPicks: [{ isVertex: false, target: 'entity:S1:L1', entityKind: 'line' }],
-    dimensionCursorWorld: null,
-  })
+        dimensionPicks: [{ isVertex: false, target: 'entity:S1:L1', entityKind: 'line' }],
+        dimensionCursorWorld: null,
+      })
       useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
-      useSketchUiStore.getState().pendingDialog!.onConfirm('10')
       expect(handler).toHaveBeenCalledWith({
         type: 'add_constraint',
         featureId: 'S1', kind: 'length', targets: ['entity:S1:L1'], value: 10,
+        id: expect.any(String),
       })
+      const insert = handler.mock.calls[0][0] as Extract<Mutation, { type: 'add_constraint' }>
+      expect(insert).not.toHaveProperty('pos')
       setSketchCallback('getSketch', null)
     })
 
@@ -712,10 +895,10 @@ describe('sketchEditorStore', () => {
       expect(useSketchEditorStore.getState().dimensionCursorWorld).toBeNull()
     })
 
-    it('finalizeDimensionPlacement: a press point on the line commits a zero offset, not the default', () => {
+    it('finalizeDimensionPlacement: a press point on the line inserts a zero offset, not the default', () => {
       // The reported gesture: the line is picked by a click, then the
       // placement click lands right on the line with no move in between. The
-      // press itself records dimensionCursorWorld (Drawing.tsx), so the finalize
+      // press itself records dimensionCursorWorld (Drawing.tsx), so the insert
       // must carry it instead of falling back to the renderer's far offset.
       const handler = vi.fn()
       setSketchCallback('onMutation', handler)
@@ -723,17 +906,16 @@ describe('sketchEditorStore', () => {
         L1: { start: [0, 0], end: [10, 0] },
       } as never))
       useEditorState.setState({
-    dimensionPicks: [{ isVertex: false, target: 'entity:S1:L1', entityKind: 'line' }],
-    dimensionCursorWorld: [2, 0],
-  })
+        dimensionPicks: [{ isVertex: false, target: 'entity:S1:L1', entityKind: 'line' }],
+        dimensionCursorWorld: [2, 0],
+      })
       useSketchEditorStore.getState().finalizeDimensionPlacement([200, 300])
-      useSketchUiStore.getState().pendingDialog!.onConfirm('10')
       // Length anchor = midpoint(L1) = (5, 0), so the press point is 3 left of
-      // it. A zero y offset is still a real pos and must survive the commit.
+      // it. A zero y offset is still a real pos and must survive the insert.
       expect(handler).toHaveBeenCalledWith({
         type: 'add_constraint',
         featureId: 'S1', kind: 'length', targets: ['entity:S1:L1'], value: 10,
-        pos: [-3, 0],
+        pos: [-3, 0], id: expect.any(String),
       })
       setSketchCallback('getSketch', null)
     })
@@ -756,58 +938,67 @@ describe('sketchEditorStore', () => {
     // Two-vertex picks with a placementWorld offset switch the constraint kind:
     //   vertical drag → point_distance_x, horizontal drag → point_distance_y
 
-    it('finalizeDimensionPlacement: two vertices with vertical drag switches to point_distance_x', () => {
+    it('finalizeDimensionPlacement: two vertices with vertical drag switch to point_distance_x', () => {
       const handler = vi.fn()
       setSketchCallback('onMutation', handler)
       setSketchCallback('getSketch', () => ({
         L1: { start: [0, 0], end: [10, 0] },
       } as never))
       useEditorState.setState({
-    dimensionPicks: [
+        dimensionPicks: [
           { isVertex: true, target: 'vertex:S1:L1:start' },
           { isVertex: true, target: 'vertex:S1:L1:end' },
         ],
-    dimensionCursorWorld: [5, 7],
-  })
+        dimensionCursorWorld: [5, 7],
+      })
       useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
-      const dialog = useSketchUiStore.getState().pendingDialog!
-      dialog.onConfirm('10')
-      // Vertical drag (y offset > x offset) → point_distance_x
-      expect(handler).toHaveBeenCalledWith(expect.objectContaining({
+      const insert = handler.mock.calls[0][0] as Extract<Mutation, { type: 'add_constraint' }>
+      // Vertical drag (y offset > x offset) -> point_distance_x. The measured
+      // x distance is the line's own length, so the insert already carries it.
+      expect(insert).toMatchObject({
         featureId: 'S1', kind: 'point_distance_x',
-        targets: ['vertex:S1:L1:start', 'vertex:S1:L1:end'], value: 10,
-      }))
+        targets: ['vertex:S1:L1:start', 'vertex:S1:L1:end'],
+        value: 10,
+      })
+      const dialog = useSketchUiStore.getState().pendingDialog!
+      expect(dialog.defaultValue).toBe('10')
+      handler.mockClear()
+      dialog.onConfirm('10')
+      expect(handler).not.toHaveBeenCalled()
       setSketchCallback('getSketch', null)
     })
 
-    it('finalizeDimensionPlacement: two vertices with horizontal drag switches to point_distance_y', () => {
+    it('finalizeDimensionPlacement: two vertices with horizontal drag switch to point_distance_y', () => {
       const handler = vi.fn()
       setSketchCallback('onMutation', handler)
       setSketchCallback('getSketch', () => ({
         L1: { start: [0, 0], end: [10, 0] },
       } as never))
       useEditorState.setState({
-    dimensionPicks: [
+        dimensionPicks: [
           { isVertex: true, target: 'vertex:S1:L1:start' },
           { isVertex: true, target: 'vertex:S1:L1:end' },
         ],
-    dimensionCursorWorld: [12, 0],
-  })
+        dimensionCursorWorld: [12, 0],
+      })
       useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
-      const dialog = useSketchUiStore.getState().pendingDialog!
-      dialog.onConfirm('10')
-      // Horizontal drag (x offset > y offset) → point_distance_y
-      expect(handler).toHaveBeenCalledWith(expect.objectContaining({
+      const insert = handler.mock.calls[0][0] as Extract<Mutation, { type: 'add_constraint' }>
+      // Horizontal drag (x offset > y offset) -> point_distance_y
+      expect(insert).toMatchObject({
         featureId: 'S1', kind: 'point_distance_y',
-        targets: ['vertex:S1:L1:start', 'vertex:S1:L1:end'], value: 10,
+        targets: ['vertex:S1:L1:start', 'vertex:S1:L1:end'],
+      })
+      useSketchUiStore.getState().pendingDialog!.onConfirm('10')
+      expect(handler).toHaveBeenLastCalledWith(expect.objectContaining({
+        type: 'set_constraint_value', constraintId: insert.id, value: 10,
       }))
       setSketchCallback('getSketch', null)
     })
 
-    it('a zero euclidean distance is refused by validate with the coincident hint', () => {
+    it('a zero euclidean distance is refused before the insert with the coincident hint', () => {
       // A zero measured distance is a coincident, not a dimension: the row has
-      // no direction there, so the dialog's validate refuses it before confirm
-      // and the user reads why. The onConfirm belt must also author nothing.
+      // no direction there, so the placement gate refuses it before any
+      // mutation exists and the user reads why.
       const handler = vi.fn()
       setSketchCallback('onMutation', handler)
       const messages = vi.fn()
@@ -816,18 +1007,13 @@ describe('sketchEditorStore', () => {
         L1: { start: [0, 0], end: [0, 0] },
       } as never))
       useEditorState.setState({
-    dimensionPicks: [
+        dimensionPicks: [
           { isVertex: true, target: 'vertex:S1:L1:start' },
           { isVertex: true, target: 'vertex:S1:L1:end' },
         ],
-    dimensionCursorWorld: [0, 0],
-  })
+        dimensionCursorWorld: [0, 0],
+      })
       useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
-      const dialog = useSketchUiStore.getState().pendingDialog!
-
-      expect(dialog.validate!('0')).toContain('coincident')
-      expect(dialog.validate!('10')).toBeNull()
-      dialog.onConfirm('0')
 
       expect(handler).not.toHaveBeenCalled()
       expect(messages).toHaveBeenCalledWith({
@@ -835,7 +1021,9 @@ describe('sketchEditorStore', () => {
         message: expect.stringContaining('coincident'),
         variant: 'error',
       })
+      expect(useSketchUiStore.getState().pendingDialog).toBeNull()
       setSketchCallback('getSketch', null)
+      setSketchCallback('showMessage', null)
     })
 
     it('the placement validate accepts zero for the zero-legal dimension kinds', () => {
@@ -874,6 +1062,39 @@ describe('sketchEditorStore', () => {
       setSketchCallback('getSketch', null)
     })
 
+    it('flips a placed directional dimension and commits it', () => {
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      setSketchCallback('getSketch', () => ({
+        L1: { start: [0, 0], end: [10, 0] },
+      } as never))
+      const commitPlacement = vi.fn()
+      setSketchCallback('commitPlacement', commitPlacement)
+      useEditorState.setState({
+        dimensionPicks: [
+          { isVertex: true, target: 'vertex:S1:L1:start' },
+          { isVertex: true, target: 'vertex:S1:L1:end' },
+        ],
+        dimensionCursorWorld: [5, 7],
+      })
+      useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
+      const insert = handler.mock.calls[0][0] as Extract<Mutation, { type: 'add_constraint' }>
+      expect(insert.sign).toBe(1)
+      const dialog = useSketchUiStore.getState().pendingDialog!
+      expect(dialog.extraAction?.label).toBe('Flip side')
+
+      dialog.extraAction!.onClick()
+
+      expect(handler).toHaveBeenLastCalledWith({
+        type: 'set_constraint_sign', featureId: 'S1', constraintId: insert.id, sign: -1,
+      })
+      // The prompt closes on the flip, so the placement commits with it rather
+      // than staying open behind a dismissed dialog.
+      expect(commitPlacement).toHaveBeenCalledTimes(1)
+      setSketchCallback('getSketch', null)
+      setSketchCallback('commitPlacement', null)
+    })
+
     it('finalizeDimensionPlacement: two vertices with no clear direction stays point_distance', () => {
       const handler = vi.fn()
       setSketchCallback('onMutation', handler)
@@ -881,19 +1102,23 @@ describe('sketchEditorStore', () => {
         L1: { start: [0, 0], end: [10, 0] },
       } as never))
       useEditorState.setState({
-    dimensionPicks: [
+        dimensionPicks: [
           { isVertex: true, target: 'vertex:S1:L1:start' },
           { isVertex: true, target: 'vertex:S1:L1:end' },
         ],
-    // cursor exactly at midpoint: no clear direction
+        // cursor exactly at midpoint: no clear direction
         dimensionCursorWorld: [5, 0],
-  })
+      })
       useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
+      const insert = handler.mock.calls[0][0] as Extract<Mutation, { type: 'add_constraint' }>
+      expect(insert).toMatchObject({
+        featureId: 'S1', kind: 'point_distance', value: 10,
+      })
       const dialog = useSketchUiStore.getState().pendingDialog!
+      expect(dialog.defaultValue).toBe('10')
+      handler.mockClear()
       dialog.onConfirm('10')
-      expect(handler).toHaveBeenCalledWith(expect.objectContaining({
-        featureId: 'S1', kind: 'point_distance',
-      }))
+      expect(handler).not.toHaveBeenCalled()
       setSketchCallback('getSketch', null)
     })
 

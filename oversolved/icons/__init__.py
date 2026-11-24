@@ -10,4 +10,4 @@ individual icon functions stay in their family modules (`icons.toolbar`,
 
 from icon_cairo import draw_all, icon, px, stroke  # noqa: F401
 from . import constraints, features, mate, toolbar, ui  # noqa: F401
-from .helpers import _arrowhead, _copy_icon_back_rect, _draw_arrow, _draw_plane_grid, _draw_rect_outline, _draw_x, _pencil, _rotation_arc, _trashcan, draw_dotted_line  # noqa: F401
+from .helpers import _arrowhead, _copy_icon_back_rect, _draw_arc_arrow, _draw_arrow, _draw_plane_grid, _draw_rect_outline, _draw_x, _pencil, _rotation_arc, _trashcan, draw_dotted_line  # noqa: F401

@@ -133,11 +133,11 @@ export function runSessionTranscript(
         mirrorDirty()
         return
       }
-      case 'brepArm':
-        session.begin('brep')
+      case 'placementArm':
+        session.begin('placement')
         return
-      case 'brepCancel': {
-        const id = findId('brep')
+      case 'placementCancel': {
+        const id = findId('placement')
         if (id) session.cancel(id)
         return
       }

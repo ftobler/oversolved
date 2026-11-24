@@ -1,98 +1,49 @@
+/* The value dialog is one compact row positioned at the label. Its surface,
+   verdict buttons and field look come from the shared stylesheets (Glass.css
+   and the feature card's field rules); only the row layout and the input's
+   width live here. */
 .context-menu-dialog {
   position: fixed;
   z-index: 20000000;
   display: flex;
   align-items: center;
   gap: 8px;
-  background: #1e1e1e;
-  border: 1px solid #444;
-  border-radius: 4px;
-  padding: 5px 10px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
+  padding: 6px 10px;
   font-size: 12px;
-  color: #aaa;
+  color: #ddd;
   white-space: nowrap;
   pointer-events: all;
 }
 
-.context-menu-label {
-  color: #888;
-  user-select: none;
+/* The card's 80px label column would swallow the row; the dialog sizes its
+   label to the words. */
+.context-menu-dialog .context-menu-label {
+  width: auto;
+  padding-left: 0;
 }
 
-.context-menu-input {
-  background: #2a2a2a;
-  border: 1px solid #555;
-  border-radius: 3px;
-  color: #eee;
-  font-size: 14px;
-  padding: 3px 6px;
-  width: 80px;
-  outline: none;
-}
-
-.context-menu-input:focus {
-  border-color: #4fc3f7;
-}
-
-.context-menu-input.invalid {
-  border-color: #e57373;
+/* The widest formatted value is `-12345.12345` (12 characters, five decimals).
+   The monospace face makes `ch` mean a digit, 14ch holds that value with two
+   characters to spare, and the extra 34px is the input's own 8px left padding
+   plus the unit slot's 26px right padding, so the `mm` suffix never runs under
+   the digits. A typed formula longer than this may scroll; a formatted default
+   never does. */
+.context-menu-dialog .context-menu-input {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  /* The card's field tint, the same var the open editor uses; the border,
+     radius and focus colour come from the shared `.feature-field-input`. */
+  background: var(--glass-field-bg);
+  width: calc(14ch + 34px);
+  min-width: calc(14ch + 34px);
+  flex: none;
 }
 
 .context-menu-error {
-  color: #e57373;
+  font-size: 11px;
+  color: #f44336;
   user-select: none;
 }
 
-.context-menu-btn {
-  background: #2a2a2a;
-  border: 1px solid #555;
-  border-radius: 3px;
-  padding: 2px 5px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.context-menu-btn img {
-  width: 14px;
-  height: 14px;
-  filter: invert(60%);
-  display: block;
-}
-
-.context-menu-btn:hover {
-  border-color: #888;
-}
-
-.context-menu-btn:hover img {
-  filter: invert(80%);
-}
-
-.context-menu-btn-ok:hover img {
-  filter: invert(70%) sepia(100%) saturate(300%) hue-rotate(170deg);
-}
-
-/* Text action button (e.g. "Flip side" on a directional dimension). */
 .context-menu-btn-extra {
-  color: #ccc;
-  font-size: 12px;
-  padding: 2px 8px;
   white-space: nowrap;
-}
-
-.context-menu-btn-extra:hover {
-  color: #fff;
-}
-
-/* Hide the number input spinner arrows */
-.context-menu-input::-webkit-outer-spin-button,
-.context-menu-input::-webkit-inner-spin-button {
-  -webkit-appearance: none;
-  margin: 0;
-}
-
-.context-menu-input[type='number'] {
-  -moz-appearance: textfield;
 }

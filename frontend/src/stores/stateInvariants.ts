@@ -345,6 +345,9 @@ export interface SketchEditorInvariantState extends SelectionInvariantState {
   // outside the dimension tool the list must be empty or the orphaned ids would
   // outlive the gesture that made them.
   pendingBrepProjectionIds: unknown
+  // The dimension editor a placement opened, keyed by the constraint it just
+  // inserted. Like the projection ids, it belongs to the dimension gesture.
+  pendingPlacementConstraintId: unknown
 }
 
 export function validateSketchEditorState(state: SketchEditorInvariantState): void {
@@ -425,6 +428,12 @@ export function validateSketchEditorState(state: SketchEditorInvariantState): vo
   if (state.activeTool !== 'dimension' && pending.length > 0) {
     failLoud(
       `[invariant] pendingBrepProjectionIds has ${pending.length} entries but activeTool is '${state.activeTool}', expected 'dimension'`,
+    )
+  }
+  if (state.activeTool !== 'dimension' && state.pendingPlacementConstraintId != null) {
+    failLoud(
+      `[invariant] pendingPlacementConstraintId is '${String(state.pendingPlacementConstraintId)}' `
+      + `but activeTool is '${state.activeTool}', expected 'dimension'`,
     )
   }
 }

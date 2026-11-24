@@ -293,8 +293,9 @@ export default function Part() {
     requestSolve,
     handleMutation,
     commitMutationGroup,
-    beginBrepProjection,
-    cancelBrepProjection,
+    beginPlacement,
+    commitPlacement,
+    cancelPlacement,
     handleUndo,
     handleRedo,
     saveDoc,
@@ -503,11 +504,11 @@ export default function Part() {
     setPartColorPopover(null)
   }, [setPartColorPopover])
 
-  // `clearBrepProjectionState` stays explicit ahead of the store resets: unlike
-  // the plain wipe it fires the R3F-side gesture-abort callback, and an undone
-  // doc has no place for a pending dimension gesture's projections anyway --
-  // dropped without a compensating delete, the doc being already replaced by
-  // the undo's own restore.
+  // `clearPlacementState` stays explicit ahead of the store resets: unlike the
+  // plain wipe it drops the placement bookkeeping (the pending projection ids
+  // and the constraint the open editor named), and an undone doc has no place
+  // for them anyway -- the session already resolved the gesture the move
+  // replaced.
   //
   // The transient half of a move that stays inside the open sketch: the chrome
   // above plus the sketch editor's own sweep. The store keeps the open feature,
@@ -516,7 +517,7 @@ export default function Part() {
   // sketch does not unmount); its window pointerup reads the store live and
   // finds the drag the sweep nulled, so the stale gesture cannot commit.
   const resetInSessionEditorState = useCallback(() => {
-    useSketchEditorStore.getState().clearBrepProjectionState()
+    useSketchEditorStore.getState().clearPlacementState()
     useSketchEditorStore.getState().resetSessionTransients()
     resetSketchChrome()
   }, [resetSketchChrome])
@@ -549,7 +550,7 @@ export default function Part() {
     // listener -- so without the wipe the residue either commits onto the
     // restored doc's stale ids or gets stuck non-null forever. Mirrors the
     // assembly editor's identical mid-drag-undo guard.
-    useSketchEditorStore.getState().clearBrepProjectionState()
+    useSketchEditorStore.getState().clearPlacementState()
     useSketchEditorStore.getState().resetTransientState()
     resetSketchChrome()
     // The sketch toolbar has nothing left to act on once the sketch edit is gone.
@@ -1138,8 +1139,9 @@ export default function Part() {
       return session.idle()
     })
     setSketchCallback('onMutationBatch', commitMutationGroup)
-    setSketchCallback('beginBrepProjection', beginBrepProjection)
-    setSketchCallback('cancelBrepProjection', cancelBrepProjection)
+    setSketchCallback('beginPlacement', beginPlacement)
+    setSketchCallback('commitPlacement', commitPlacement)
+    setSketchCallback('cancelPlacement', cancelPlacement)
     setSketchCallback('onRebuild', handleRebuild)
     setSketchCallback('onExitSketch', handleExitSketch)
     setSketchCallback('checkRedundantAdd', checkRedundantAdd)
@@ -1185,7 +1187,7 @@ export default function Part() {
     return () => {
       clearSketchCallbacks()
     }
-  }, [handleMutation, commitMutationGroup, beginBrepProjection, cancelBrepProjection, handleRebuild, handleExitSketch, checkRedundantAdd, showMessage, solveResults, docRef, session])
+  }, [handleMutation, commitMutationGroup, beginPlacement, commitPlacement, cancelPlacement, handleRebuild, handleExitSketch, checkRedundantAdd, showMessage, solveResults, docRef, session])
 
   // The sketch editor store is module-level and survives a Part unmount, so a
   // remounted Part (WorkspacePage keys it by entry) would otherwise inherit the

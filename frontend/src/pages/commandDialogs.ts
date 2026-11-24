@@ -3,8 +3,9 @@
 // needs the dialog. They read the sketch UI store directly because opening a
 // dialog is UI state, not a document mutation.
 import { useSketchUiStore } from '@/stores/sketchEditorStore'
+import { evalExpr } from '@/kernel/evalExpr'
 import { refusalText } from '@/utils/core/statusMark'
-import { cannotEvaluate } from '@/utils/core/valueRules'
+import { expressionRefusal } from '@/utils/core/valueRules'
 import { parsePatternInput } from '@/session/partCommandSpecs'
 
 function dialogPoint(): [number, number] {
@@ -22,9 +23,9 @@ export function openFilletDialog(onRadius: (radius: number) => void): void {
     label: 'Fillet radius',
     defaultValue: '5',
     quantity: 'length',
-    validate: (input) => refusalText('Value', isNaN(parseFloat(input)) ? cannotEvaluate(input) : null),
+    validate: (input) => refusalText('Value', expressionRefusal(input)),
     onConfirm: (input) => {
-      onRadius(parseFloat(input))
+      onRadius(evalExpr(input))
       st.closeDialog()
     },
     onCancel: () => st.closeDialog(),
@@ -62,9 +63,9 @@ export function openOffsetDialog(onDistance: (distance: number) => void): void {
     label: 'Offset distance',
     defaultValue: '5',
     quantity: 'length',
-    validate: (input) => refusalText('Value', isNaN(parseFloat(input)) ? cannotEvaluate(input) : null),
+    validate: (input) => refusalText('Value', expressionRefusal(input)),
     onConfirm: (input) => {
-      onDistance(parseFloat(input))
+      onDistance(evalExpr(input))
       st.closeDialog()
     },
     onCancel: () => st.closeDialog(),

@@ -10,6 +10,7 @@ import { PART_COMMAND_SPECS } from '@/pages/commandEntries'
 import { createDocSession, type DocSession } from '@/session/DocSession'
 import type { PartDoc, SketchData } from '@/types/cad'
 import { createFakeSolveScheduler } from '@/session/__tests__/fakeSolveScheduler'
+import { useEditorState } from '@/hooks/useEditorState'
 import { partContext } from './commandFixtures'
 
 const makeDoc = (id = 'a'): PartDoc =>
@@ -55,8 +56,30 @@ describe('undo/redo availability from the session', () => {
     expect(redoEnabled(session)).toBe('nothing to redo')
   })
 
-  it('a redo branch made only of pre-session entries is unavailable inside the session', () => {
+  it('an open placement is undoable even at the session floor', () => {
     const { session } = makeSession()
+    session.begin('edit', { suppressed: false })
+    expect(undoEnabled(session)).toBe('nothing to undo')
+
+    useEditorState.setState({ pendingPlacementConstraintId: 'c_placed' })
+    try {
+      // The press resolves the placement, so the toolbar must not grey it out
+      // just because the session floor has nothing else above it.
+      expect(undoEnabled(session)).toBe(true)
+    } finally {
+      useEditorState.setState({ pendingPlacementConstraintId: null })
+    }
+
+    // A projection-only gesture is the same condition the tool switch uses.
+    useEditorState.setState({ pendingBrepProjectionIds: ['proj1'] })
+    try {
+      expect(undoEnabled(session)).toBe(true)
+    } finally {
+      useEditorState.setState({ pendingBrepProjectionIds: [] })
+    }
+  })
+
+  it('a redo branch made only of pre-session entries is unavailable inside the session', () => {    const { session } = makeSession()
     session.pushUndo('pre', makeDoc('floor'))
     session.undo()
     expect(redoEnabled(session)).toBe(true)

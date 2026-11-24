@@ -350,20 +350,29 @@ describe('the session undo engine', () => {
     expect(e.session.transactions()).toHaveLength(1)
   })
 
-  it('a pending brep projection is banked and then reverted by the in-session undo', () => {
-    const e = makeEngine(makeDoc('a'))
+  it('a pending placement is cancelled by the in-session undo and records nothing', () => {
+    const e = makeEngine({
+      version: 1,
+      kind: 'part',
+      features: [
+        { id: 'sk', kind: 'sketch', entities: [{ id: 'l1', kind: 'line' }], initial: { l1: [0, 0, 10, 0] } },
+      ],
+    } as PartDoc)
     e.session.begin('edit', { suppressed: false })
     e.session.execute({ type: 'add_sketch', featureId: 'sb', label: 'B' })
-    const beforeProjection = structuredClone(e.cell.current)
-    e.session.begin('brep')
-    e.session.execute({ type: 'add_sketch', featureId: 'sproj', label: 'Proj' })
+    const beforePlacement = structuredClone(e.cell.current)
+    e.session.begin('placement')
+    e.session.execute({
+      type: 'add_constraint', id: 'c_len_1', featureId: 'sk', kind: 'length',
+      targets: ['entity:sk:l1'], value: 5,
+    })
     expect(e.session.historyEntries().undo).toHaveLength(1)
 
     expect(e.session.undo()).toBe(true)
 
-    // The bank put the projection on its own entry, and the move reverts
-    // exactly it; the sketch session is still open.
-    expect(e.cell.current).toEqual(beforeProjection)
+    // Undo cancels the open gesture rather than banking it: its work is gone
+    // with no entry, and the sketch session never sees the move.
+    expect(e.cell.current).toEqual(beforePlacement)
     expect(e.session.transactions().map(txn => txn.kind)).toEqual(['edit'])
     expect(undoLabels(e)).toEqual(['add B'])
   })

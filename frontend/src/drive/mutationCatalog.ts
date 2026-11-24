@@ -1271,6 +1271,7 @@ export const MUTATION_CATALOG = {
       value: optNum(),
       pos: optPoint(),
       sign: optNum(CONSTRAINT_SIGN_NOTE),
+      id: optStr('A caller-supplied constraint id (the editor names the row it opens for the value it just placed); omitted mints a unique one.'),
     },
   },
   set_constraint_value: {

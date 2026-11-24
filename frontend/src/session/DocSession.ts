@@ -131,7 +131,7 @@ export interface SessionDiagnostic {
 }
 
 export type TransactionId = string
-export type TransactionKind = 'preview' | 'edit' | 'brep'
+export type TransactionKind = 'preview' | 'edit' | 'placement'
 
 export interface TransactionSummary {
   id: TransactionId
@@ -233,6 +233,19 @@ function rollbackAfterInsertions(doc: PartDoc, insertedIds: readonly string[]): 
 // The label a preview commit falls back to when no caller mutation is handed
 // in and the part_style diff is empty.
 const PREVIEW_COMMIT_FALLBACK: Mutation = { type: 'preview_commit', description: 'apply previewed color' }
+
+// A placement that only materialized a brep projection (no dimension landed)
+// labels its commit like the projection it banked before placements existed.
+const PLACEMENT_COMMIT_FALLBACK: Mutation = { type: 'preview_commit', description: 'add projected edge' }
+
+// The sketch target a projection mutation names in a scratch delete. A face
+// projection has no entity row, but the planner still mints a phantom entity id
+// and a replaced pick's delete names that same phantom; tracking it keeps the
+// harmless cleanup inside the gesture. Returning null for a face source would
+// resolve the placement on that delete instead.
+function projectionTarget(m: Extract<Mutation, { type: 'add_projected_entity' }>): string | null {
+  return m.entityId === undefined ? null : `entity:${m.featureId}:${m.entityId}`
+}
 
 // The mutations that can add a doc-addressable id (a feature, an entity, a
 // constraint). The id set is only diffed for dispatches that contain one, so
@@ -417,16 +430,29 @@ interface EditTransaction extends TransactionBase {
   foreignRedo: number
 }
 
-// The brep pick/commit pair. `armed` applies the next mutation without an
-// entry; a consumed arm leaves `doc` as the pre-gesture doc the dimension
-// commit restores.
-interface BrepTransaction extends TransactionBase {
-  kind: 'brep'
-  armed: boolean
-  doc: PartDoc | null
+// The dimension-placement gesture. A brep pick projects an edge into the sketch
+// and the placement click inserts the dimension that measures it; both are one
+// gesture from the user's point of view, so neither records an entry until the
+// editor commits. `baseline` is the doc the gesture started from (captured at
+// begin), so cancel restores it with nothing on the undo stack, and commit
+// banks exactly one entry from it to the live doc. `mutation` is the dimension
+// add, kept to label that entry; a projection-only placement labels the
+// projection instead. `constraintIds` are the ids the insert minted, so the
+// editor's follow-up value/sign edit stays inside the gesture while any other
+// constraint's edit resolves it first.
+interface PlacementTransaction extends TransactionBase {
+  kind: 'placement'
+  baseline: PartDoc
+  dirty: DirtyPin
+  mutation: Mutation | null
+  constraintIds: Set<string>
+  // The projected entity targets this gesture materialized (`entity:<fid>:<eid>`).
+  // A scratch delete is only part of the gesture when every one of its targets
+  // is in here; a Delete of an ordinary selected entity is a steal.
+  projectionTargets: Set<string>
 }
 
-type Transaction = PreviewTransaction | EditTransaction | BrepTransaction
+type Transaction = PreviewTransaction | EditTransaction | PlacementTransaction
 
 // The framework-free L1 session: it owns the history, the transaction stack,
 // the dirty policy and solve scheduling; every doc write goes through execute,
@@ -439,7 +465,9 @@ export class DocSession {
   private readonly listeners = new Set<(event: SessionEvent) => void>()
   private readonly diagnosticsLog: SessionDiagnostic[] = []
   // The stack of open transactions, oldest first. Preview and edit are
-  // mutually exclusive by begin's rules; a brep arm nests inside either.
+  // mutually exclusive by begin's rules; a placement nests inside either (a
+  // sketch edit is unsuppressed, and its dimension gesture records no entry of
+  // its own until the editor commits).
   private openTransactions: Transaction[] = []
   // Retained pruned solve results, keyed by feature id, held across the undo
   // boundary. Edits hand their pruned snapshot to their own re-solve, but an
@@ -547,7 +575,7 @@ export class DocSession {
     switch (kind) {
       case 'preview': return this.beginPreview(opts)
       case 'edit': return this.beginEdit(opts)
-      case 'brep': return this.beginBrep()
+      case 'placement': return this.beginPlacement()
     }
   }
 
@@ -559,7 +587,7 @@ export class DocSession {
     switch (txn.kind) {
       case 'preview': return this.commitPreviewTransaction(txn, opts.mutation)
       case 'edit': return this.commitEditTransaction(txn)
-      case 'brep': return this.commitBrepTransaction(txn)
+      case 'placement': return this.commitPlacementTransaction(txn)
     }
   }
 
@@ -571,12 +599,7 @@ export class DocSession {
     switch (txn.kind) {
       case 'preview': return this.cancelPreviewTransaction(txn)
       case 'edit': return this.cancelEditTransaction(txn)
-      case 'brep':
-        // The caller already ran the compensating delete: dropping the
-        // withhold is the whole cancel, no rewind and no entry.
-        this.removeTransaction(txn)
-        this.emit({ type: 'changed' })
-        return okResult()
+      case 'placement': return this.cancelPlacementTransaction(txn)
     }
   }
 
@@ -677,11 +700,10 @@ export class DocSession {
     const applied = this.runMutations(current, mutations)
     const appliedMutations = applied.mutations
     if (this.isNoOp(appliedMutations, current, applied.next, group)) {
-      // A no-op is still "the next mutation" as far as the brep arm is
-      // concerned, so the arm is consumed here too. The result says so
-      // explicitly: a headless step has to report a refused creator instead of
-      // the ok the UI wants (a refused add must record no undo entry).
-      this.consumeBrepArm(current)
+      // The result says so explicitly: a headless step has to report a refused
+      // creator instead of the ok the UI wants (a refused add must record no
+      // undo entry). A placement stays open: its gesture's next mutation may
+      // still land.
       return noOpResult()
     }
     const result = this.landMutations(appliedMutations, current, applied)
@@ -729,8 +751,21 @@ export class DocSession {
     if (preview && !inPreviewScope) {
       this.commitPreviewTransaction(preview, mutations[0])
     }
-    // Re-read the stack after the escape: the commit above removed the
-    // transaction, so the branches below see the world the mutation is
+    // A placement resolves before the ordinary push. Its own gesture mutations
+    // (the projection, a scratch delete, the insert and the editor's edit of
+    // the inserted constraint) are withheld; anything else commits the placement
+    // first, so half a gesture can never be left open behind an unrelated edit.
+    const created = this.createdIdsFor(mutations, current, applied.next)
+    const placement = this.findTransaction('placement')
+    const placementScope = placement !== null && this.placementSwallows(placement, mutations)
+    if (placement && !placementScope) {
+      this.commitPlacementTransaction(placement)
+    }
+    if (placementScope) {
+      this.recordPlacementMutations(placement, mutations, created.ok ? created.createdIds : [])
+    }
+    // Re-read the stack after the escapes: the commits above removed their
+    // transactions, so the branches below see the world the mutation is
     // actually landing in.
     const edit = this.findTransaction('edit')
     if (edit?.suppressed) {
@@ -741,8 +776,6 @@ export class DocSession {
       if (mutations.some(m => PART_STYLE_MUTATION_TYPES.has(m.type))) {
         edit.styleTouched = true
       }
-      // A swallow still fulfils the withhold's "next mutation" contract.
-      this.consumeBrepArm(current)
     } else {
       const livePreview = this.findTransaction('preview')
       if (livePreview) {
@@ -751,17 +784,16 @@ export class DocSession {
         // the commit gate tell a user color change from a part_style entry the
         // solve fabricated.
         livePreview.touched = true
-        this.consumeBrepArm(current)
-      } else {
+      } else if (!placementScope) {
         // The first mutation names the entry so the undo tooltip has a label;
         // redo round-trips it, so only the doc matters, never the list itself.
-        this.applyWithholdOrPush(mutations[0], current)
+        this.pushHistory(describeMutation(mutations[0]), current, mutations[0], false)
       }
     }
 
     this.landApplied(current, mutations, applied)
     this.emit({ type: 'changed' })
-    return this.createdIdsFor(mutations, current, applied.next)
+    return created
   }
 
   // The doc swap and the solve request, shared by every path that lands a
@@ -977,6 +1009,18 @@ export class DocSession {
   }
 
   private move(direction: 'undo' | 'redo'): boolean {
+    // An open placement resolves before the history move: undo cancels the
+    // gesture (the dimension and its projections go back to the baseline with
+    // no entry) and is that gesture's undo, while redo keeps the dimension by
+    // committing it first.
+    const placement = this.findTransaction('placement')
+    if (placement) {
+      if (direction === 'undo') {
+        this.cancelPlacementTransaction(placement)
+        return true
+      }
+      this.commitPlacementTransaction(placement)
+    }
     const committed = this.commitOpenWorkBeforeHistory()
     const current = this.deps.doc.get()
     // An unsuppressed edit session (a sketch) owns its own per-action entries,
@@ -987,8 +1031,7 @@ export class DocSession {
       if (!this.moveAvailable(direction) || !current) {
         // At the floor (or with only a foreign redo branch left) the keystroke
         // is dead: the session stays open, nothing is emitted and no editor is
-        // torn down. A brep projection banked just above the floor is the only
-        // work the attempt resolved, and it keeps its own entry.
+        // torn down.
         return false
       }
       return this.moveInSession(direction, current)
@@ -1053,19 +1096,12 @@ export class DocSession {
   }
 
   // An undo or redo mid-edit first commits the open work as its own entry, so
-  // the history move reverts (undo) or reaches (redo) exactly that work.
-  // Returns true exactly when it pushed open work.
+  // the history move reverts (undo) or reaches (redo) exactly that work. The
+  // placement gesture is resolved by move() itself (undo cancels it, redo
+  // commits it), so it is not open work here. Returns true exactly when it
+  // pushed open work.
   private commitOpenWorkBeforeHistory(): boolean {
     let committed = false
-    // A brep pick's projection is applied without an entry until its dimension
-    // commits. Outside a suppressed session (whose aggregate already covers it)
-    // it is open work like any other: bank it so the move reverts exactly the
-    // projection.
-    const brep = this.findTransaction('brep')
-    const edit = this.findTransaction('edit')
-    if (brep?.doc && edit?.suppressed !== true) {
-      committed = this.bankBrepProjection(brep) || committed
-    }
     const editNow = this.findTransaction('edit')
     if (editNow?.suppressed) {
       if (this.sessionWouldPush(editNow)) {
@@ -1149,16 +1185,30 @@ export class DocSession {
     return openedResult(txn.id)
   }
 
-  private beginBrep(): OpenedResult {
-    const existing = this.findTransaction('brep')
-    if (existing) {
-      // Re-arming for a later pick in the same gesture must not forget the doc
-      // captured before the first one.
-      existing.armed = true
-      this.emit({ type: 'changed' })
+  private beginPlacement(): OpenedResult {
+    const existing = this.findTransaction('placement')
+    if (existing?.constraintIds.size === 0) {
+      // A later pick in the same gesture joins the open placement: re-beginning
+      // must not move the baseline the cancel path promised to restore.
       return openedResult(existing.id)
     }
-    const txn: BrepTransaction = { id: this.freshId(), kind: 'brep', armed: true, doc: null }
+    if (existing) {
+      // The previous insert's editor was never resolved (a stray second
+      // placement or a double-clicked label): its gesture is finished and banks
+      // its entry, and the new placement starts from the doc it leaves behind.
+      this.commitPlacementTransaction(existing)
+    }
+    const current = this.deps.doc.get()
+    if (!current) return this.fault('no-document', 'placement refused: no document')
+    const txn: PlacementTransaction = {
+      id: this.freshId(),
+      kind: 'placement',
+      baseline: this.deps.cloneDoc(current),
+      dirty: this.pinDirty(),
+      mutation: null,
+      constraintIds: new Set(),
+      projectionTargets: new Set(),
+    }
     this.openTransaction(txn)
     return openedResult(txn.id)
   }
@@ -1187,6 +1237,16 @@ export class DocSession {
   }
 
   private commitEditTransaction(txn: EditTransaction): Result {
+    // A placement still open at the session boundary is resolved here: its
+    // entry must land before the aggregate's cancel point, or it would outlive
+    // the session and bank a second entry later. A suppressed session already
+    // swallowed the placement's mutations, so its aggregate covers them and the
+    // transaction is only dropped.
+    const placement = this.findTransaction('placement')
+    if (placement) {
+      if (txn.suppressed) this.removeTransaction(placement)
+      else this.commitPlacementTransaction(placement)
+    }
     const push = this.sessionWouldPush(txn)
     this.removeTransaction(txn)
     if (push) {
@@ -1220,21 +1280,20 @@ export class DocSession {
     return docDiffersForSession(txn.baseline, current) || txn.styleTouched
   }
 
-  private commitBrepTransaction(txn: BrepTransaction): Result {
-    this.bankBrepProjection(txn)
-    return okResult()
-  }
-
-  // Banks a pending projection (an edge projected by a brep dimension pick) as
-  // its own entry, keyed to the pre-pick doc, so a history move reverts exactly
-  // the projection. An armed-but-unconsumed pick has nothing to bank.
-  private bankBrepProjection(txn: BrepTransaction): boolean {
-    if (!txn.doc) return false
-    const mutation: Mutation = { type: 'preview_commit', description: 'add projected edge' }
-    this.pushHistory(describeMutation(mutation), txn.doc, mutation, false)
+  private commitPlacementTransaction(txn: PlacementTransaction): Result {
+    const current = this.deps.doc.get()
+    const changed = current !== null && docDiffersForSession(txn.baseline, current)
     this.removeTransaction(txn)
+    if (changed) {
+      // The insert names the entry exactly like an ordinary add; a placement
+      // that only projected an edge keeps the projection's own label. The
+      // baseline is already the transaction's own clone and the transaction is
+      // dropped below, so the push takes it without cloning the whole doc again.
+      const mutation = txn.mutation ?? PLACEMENT_COMMIT_FALLBACK
+      this.pushHistory(describeMutation(mutation), txn.baseline, mutation, true)
+    }
     this.emit({ type: 'changed' })
-    return true
+    return okResult()
   }
 
   // A preview cancel rewinds to its baseline. Doc rewind and the dirty
@@ -1258,6 +1317,11 @@ export class DocSession {
   }
 
   private cancelEditTransaction(txn: EditTransaction): Result {
+    // The session baseline predates any open placement, so the rewind below
+    // removes that gesture's work too; dropping it keeps a cancelled boundary
+    // from leaving a transaction open against a doc it no longer describes.
+    const placement = this.findTransaction('placement')
+    if (placement) this.removeTransaction(placement)
     const current = this.deps.doc.get()
     // Doc rewind and stack restore are ONE unit (the pairing contract): the
     // stacks only describe the pre-session doc again once the live doc has
@@ -1280,47 +1344,82 @@ export class DocSession {
     return okResult()
   }
 
-  // Mutations that change nothing still count as "the next mutation" for the
-  // brep arm: it applies the projection without an entry, so consuming the arm
-  // keeps it from outliving the gesture it covers.
-  private consumeBrepArm(fallback: PartDoc): void {
-    const brep = this.findTransaction('brep')
-    if (brep?.armed) {
-      brep.armed = false
-      brep.doc = brep.doc ?? fallback
-    }
+  // A placement cancel rewinds to its baseline with no entry, which removes
+  // the inserted constraint and every scratch projection in one doc write. The
+  // dirty reconcile and the re-solve mirror the preview cancel.
+  private cancelPlacementTransaction(txn: PlacementTransaction): Result {
+    const current = this.deps.doc.get()
+    const rewound = JSON.stringify(txn.baseline) !== JSON.stringify(current)
+    this.deps.doc.set(txn.baseline)
+    if (rewound) this.deps.journal?.onDocReset()
+    this.reconcile(txn.dirty, rewound, txn.baseline)
+    this.removeTransaction(txn)
+    const doc = this.deps.doc.get()
+    if (doc) void this.deps.solve.request(doc)
+    this.emit({ type: 'changed' })
+    return okResult()
   }
 
-  // The shared "does this mutation earn an undo entry?" branch for both
-  // funnels. `preDoc` is the doc the entry restores when no withhold is
-  // pending; the withhold, when pending, overrides it with the pre-gesture doc.
-  private applyWithholdOrPush(mutation: Mutation, preDoc: PartDoc): void {
-    const brep = this.findTransaction('brep')
-    if (brep?.armed) {
-      // The projection, or the compensating delete of a cancelled pick: apply
-      // without an entry and remember the pre-gesture doc so the commit that
-      // follows can restore past it. A later pick in the same gesture keeps the
-      // EARLIEST captured doc, or the first pick's projection would be orphaned
-      // by the commit's undo.
-      brep.armed = false
-      brep.doc = brep.doc ?? preDoc
-      return
+  // Which mutations the open placement withholds. The gesture is a brep pick's
+  // projection, the scratch delete that replaces such a projection, the
+  // dimension insert, and the editor's own edit of the constraint that insert
+  // minted. Anything else is a steal that resolves the placement first: a
+  // constraint command, a Delete of an ordinary selected entity, a rename.
+  private placementSwallows(txn: PlacementTransaction, mutations: Mutation[]): boolean {
+    const projections = new Set(txn.projectionTargets)
+    const constraintIds = new Set(txn.constraintIds)
+    for (const m of mutations) {
+      switch (m.type) {
+        case 'add_projected_entity': {
+          const target = projectionTarget(m)
+          if (target !== null) projections.add(target)
+          break
+        }
+        case 'delete':
+          // Every target must be a projection this placement materialized; a
+          // delete that touches authored geometry is not scratch cleanup.
+          if (!m.targets.every(t => projections.has(t))) return false
+          break
+        case 'add_constraint':
+          // A dimension add the caller named (the editor addresses that id).
+          // A value-less or id-less add is a command or a script, not this
+          // gesture's insert.
+          if (!isDimensionKind(m.kind) || m.id === undefined) return false
+          constraintIds.add(m.id)
+          break
+        case 'set_constraint_value':
+        case 'set_constraint_sign':
+          if (!constraintIds.has(m.constraintId)) return false
+          break
+        default:
+          return false
+      }
     }
-    if (brep?.doc && mutation.type === 'add_constraint' && isDimensionKind(mutation.kind)) {
-      // The brep dimension commit: one entry restoring the pre-projection doc,
-      // so undo removes the dimension and its projection in a single step. The
-      // kind gate stops a geometric add_constraint (e.g. a coincident applied
-      // mid-gesture) from being mistaken for the commit.
-      const withheldDoc = brep.doc
-      this.removeTransaction(brep)
-      this.pushHistory(describeMutation(mutation), withheldDoc, mutation, false)
-      return
+    return true
+  }
+
+  // Remembers the dimension add (for the commit label), the ids it minted (the
+  // applier may substitute on collision, so the created id is the real one) and
+  // the projection targets a following scratch delete may name.
+  private recordPlacementMutations(
+    txn: PlacementTransaction,
+    mutations: Mutation[],
+    createdIds: readonly string[],
+  ): void {
+    for (const m of mutations) {
+      if (m.type === 'add_projected_entity') {
+        const target = projectionTarget(m)
+        if (target !== null) txn.projectionTargets.add(target)
+        continue
+      }
+      if (m.type !== 'add_constraint') continue
+      txn.mutation = m
+      if (createdIds.length > 0) {
+        for (const id of createdIds) txn.constraintIds.add(id)
+      } else if (m.id !== undefined) {
+        txn.constraintIds.add(m.id)
+      }
     }
-    this.pushHistory(describeMutation(mutation), preDoc, mutation, false)
-    // A non-dimension mutation landing mid-gesture (a "steal", e.g. a rename or
-    // a delete) clears the withhold: the steal's entry owns the projection from
-    // here, so it can never be orphaned.
-    if (brep) this.removeTransaction(brep)
   }
 
   // ─── Solve-result retention ───

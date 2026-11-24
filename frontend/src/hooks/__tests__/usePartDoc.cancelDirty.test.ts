@@ -141,8 +141,35 @@ describe('usePartDoc cancel restores the unsaved-changes flag', () => {
     expect(dirty()).toBe(false)
   })
 
-  it('cancelling a color preview on a clean doc leaves it clean', () => {
+  it('cancelling a placement on a clean doc leaves it clean', () => {
     docRef.current = {
+      version: 1,
+      kind: 'part',
+      features: [{
+        id: 'sk1', kind: 'sketch',
+        entities: [{ id: 'l1', kind: 'line' }],
+        initial: { l1: [0, 0, 10, 0] },
+      }],
+    } as unknown as PartDoc
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
+
+    act(() => { result.current.beginPlacement() })
+    act(() => {
+      result.current.handleMutation({
+        type: 'add_constraint', id: 'c_len_1', featureId: 'sk1', kind: 'length',
+        targets: ['entity:sk1:l1'], value: 10,
+      })
+    })
+    expect(dirty()).toBe(true)
+
+    act(() => { result.current.cancelPlacement() })
+
+    // The placement rewind puts back the doc the save (or the initial clean
+    // state) describes, so the header must not keep warning about it.
+    expect(dirty()).toBe(false)
+  })
+
+  it('cancelling a color preview on a clean doc leaves it clean', () => {    docRef.current = {
       version: 1,
       kind: 'part',
       part_style: { b1: { color: '#ff0000' } },

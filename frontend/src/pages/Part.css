@@ -533,13 +533,6 @@
   user-select: none;
 }
 
-.feature-icon {
-  width: 20px;
-  height: 20px;
-  flex-shrink: 0;
-  filter: invert(0.8);
-}
-
 .feature-item-title {
   display: flex;
   align-items: center;
@@ -582,9 +575,6 @@
 }
 
 .feature-edit-btn,
-.feature-ok-btn,
-.feature-cancel-btn,
-.feature-rename-btn,
 .feature-visibility-btn,
 .feature-context-btn,
 .part-visibility-btn,
@@ -601,9 +591,6 @@
 }
 
 .feature-edit-btn img,
-.feature-ok-btn img,
-.feature-cancel-btn img,
-.feature-rename-btn img,
 .feature-visibility-btn img,
 .feature-context-btn img,
 .part-visibility-btn img,
@@ -635,36 +622,6 @@
 
 .feature-edit-btn .material-icons-outlined {
   font-size: 20px;
-}
-
-.feature-ok-btn {
-  background: #1a3a1a;
-  border-radius: 4px;
-  color: #4caf50;
-}
-
-.feature-ok-btn:hover {
-  background: #1e4a1e;
-}
-
-.feature-cancel-btn {
-  background: #3a1a1a;
-  border-radius: 4px;
-  color: #f44336;
-}
-
-.feature-cancel-btn:hover {
-  background: #4a1e1e;
-}
-
-/* Neutral, so a third icon beside the verdict pair does not read as one. */
-.feature-rename-btn {
-  background: none;
-  border-radius: 4px;
-}
-
-.feature-rename-btn:hover {
-  background: var(--glass-hover-bg);
 }
 
 .feature-item.editing {
@@ -1485,18 +1442,6 @@
   width: 100%;
 }
 
-.feature-field-label {
-  font-size: 12px;
-  color: #999;
-  flex-shrink: 0;
-  width: 80px;
-  text-align: left;
-  padding-left: 6px;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
 .feature-field-select {
   flex: 1;
   font-size: 12px;
@@ -1519,32 +1464,6 @@
   color: #e060b0;
 }
 
-.feature-field-input {
-  flex: 1;
-  font-size: 12px;
-  background: #1a0f1a;
-  border: 1px solid #3a2a3a;
-  border-radius: 3px;
-  color: #bbb;
-  padding: 0px 8px;
-  height: 24px;
-  line-height: 14px;
-  width: 0;
-  min-width: 8ch;
-  box-sizing: border-box;
-}
-
-.feature-field-input:focus {
-  outline: none;
-  border-color: #b83b88;
-  color: #e060b0;
-}
-
-.feature-field-input--error {
-  border-color: #c0392b;
-  color: #e07b6b;
-}
-
 .feature-field-eval {
   font-size: 12px;
   color: #6a5a6a;
@@ -1554,43 +1473,6 @@
   max-width: 45%;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-/* A number box carries its unit inside the input's own right padding, so a row
-   with a unit and a row without keep the same box width. The slot fits the
-   longest label ('pcs', 'deg', 'mm', 'in') at the unit's size; the input's text
-   stops at the padding edge, so a long value or a formula cannot run under it.
-   The unit is not a target: a click lands on the input behind it. */
-.field-unit-box {
-  --field-unit-slot: 26px;
-  position: relative;
-  display: inline-flex;
-  min-width: 0;
-}
-
-.field-unit-box--grow {
-  flex: 1;
-}
-
-.field-unit-box--with-unit > input {
-  padding-right: var(--field-unit-slot);
-}
-
-.field-unit {
-  font-size: 10px;
-  line-height: 1;
-  letter-spacing: 0.3px;
-  color: #6a5a6a;
-  white-space: nowrap;
-  user-select: none;
-}
-
-.field-unit-box > .field-unit {
-  position: absolute;
-  right: 7px;
-  top: 50%;
-  transform: translateY(-50%);
-  pointer-events: none;
 }
 
 .feature-field-row--stacked {
