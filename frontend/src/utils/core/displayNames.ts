@@ -108,15 +108,60 @@ export function featureKindWord(kind: string): string {
   return FEATURE_KIND_WORDS[kind] ?? kind.replace(/_/g, ' ')
 }
 
+/** The word for a 1-based position in a list: `first`, `second`, ... `tenth`,
+ *  then the number. Multi-target refusals use it to say which pick failed
+ *  without printing the pick's id. */
+const POSITION_WORDS = [
+  'first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth', 'ninth', 'tenth',
+] as const
+
+export function positionWord(index: number): string {
+  return POSITION_WORDS[index] ?? String(index + 1)
+}
+
+/** Normalise a label or kind spelling for the default-label comparison:
+ *  underscores and runs of spaces both read as one space, case-insensitive. */
+function normaliseKindText(text: string): string {
+  return text.trim().replace(/_/g, ' ').replace(/\s+/g, ' ').toLowerCase()
+}
+
+/** The add commands' default label for a kind: the kind word, title-cased
+ *  (`Move Face`, `Linear Pattern`, `Sweep`). */
+function defaultKindLabel(word: string): string {
+  return word.replace(/(^|\s)\S/g, (match) => match.toUpperCase())
+}
+
+/** Default labels that differ from the kind word (`Pattern` for the three
+ *  pattern kinds). */
+const DEFAULT_LABEL_ALIASES: Readonly<Record<string, readonly string[]>> = {
+  linear_pattern: ['Pattern'],
+  circular_pattern: ['Pattern'],
+  curve_pattern: ['Pattern'],
+}
+
 /**
  * Whether a label merely repeats the kind (an add command's default label:
- * `Sweep` on a sweep, `Plane` on a plane, `Sketch 1` on a sketch). Such a label
- * says nothing the kind ordinal does not, and its baked number can be stale, so
- * the display name falls back to the ordinal instead.
+ * `Sweep` on a sweep, `Move Face` on a move_face, `linear_pattern 1` on a linear
+ * pattern). Such a label says nothing the kind ordinal does not, and its baked
+ * number can be stale, so the display name falls back to the ordinal instead.
+ *
+ * The comparison normalises `_` to a space, so the raw spelling counts too. A
+ * deliberate label survives: the capitalised default is matched exactly, but
+ * `SKETCH` (different case) and a user-typed `Sweep 7` (the default has no
+ * number) are not the default shape.
  */
-function repeatsKindWord(label: string, word: string): boolean {
-  const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  return new RegExp(`^${escaped}(\\s+\\d+)?$`, 'i').test(label)
+function repeatsKindWord(kind: string, label: string, word: string): boolean {
+  const match = /^(.+?)(?:\s+(\d+))?$/.exec(label.trim())
+  if (match === null) return false
+  const [, labelKind, ordinal] = match
+  if (normaliseKindText(labelKind) !== normaliseKindText(word)) return false
+  if (ordinal !== undefined) {
+    // Generated `kind N` labels are written in the raw (lowercase/snake)
+    // spelling; a capitalised `Sweep 7` is the author's own label.
+    return labelKind === labelKind.toLowerCase()
+  }
+  const defaults = [defaultKindLabel(word), word, ...(DEFAULT_LABEL_ALIASES[kind] ?? [])]
+  return defaults.includes(label)
 }
 
 /**
@@ -142,7 +187,7 @@ export function featureDisplayName(
   const kind = rowKind ?? featureKind ?? 'feature'
   const word = featureKindWord(kind)
   const label = typeof row?.label === 'string' ? row.label.trim() : ''
-  if (label !== '' && !repeatsKindWord(label, word)) return `${word} '${label}'`
+  if (label !== '' && !repeatsKindWord(kind, label, word)) return `${word} '${label}'`
   let ordinal = 0
   for (const candidate of features) {
     if (candidate.kind !== kind) continue

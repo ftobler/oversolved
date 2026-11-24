@@ -12,7 +12,6 @@
 import {
   circleDrillSiteReason,
   constructionOnlyPointsReason,
-  entityKindForRefusal,
   noPointDrillSiteReason,
   HOLE_SITE_WORDING,
   type SketchNaming,
@@ -79,15 +78,16 @@ export function pickedPointSite(
   if (picked.kind === 'point') {
     if (picked.construction === true) {
       throw new Error(
-        `${subject} of ${sketchSubject(sketchId, naming)} is a construction point, which names no ${wording.site}; ` +
+        `${subject} of ${sketchSubject(sketchId, naming)} is construction geometry, which names no ${wording.site}; ` +
         'construction geometry is reference only; toggle its construction off to ' +
         `${wording.flagVerb}, or pick the sketch itself`,
       )
     }
     return picked
   }
+  // No kind repeat: the subject already says "line 1" / "arc 2".
   throw new Error(
-    `${subject} of ${sketchSubject(sketchId, naming)} is a ${entityKindForRefusal(String(picked.kind ?? ''))}, ` +
-    `which names no ${wording.site}; pick a sketch point, ${wording.pickHint}`,
+    `${subject} of ${sketchSubject(sketchId, naming)} is not a point, so it names no ${wording.site}; `
+    + `pick a sketch point, ${wording.pickHint}`,
   )
 }

@@ -15,7 +15,6 @@
 
 import {
   entityDisplayName,
-  entityKindWord,
   sketchDisplayName,
   type NamingRow,
   type SketchNamingSource,
@@ -104,10 +103,14 @@ export function circleDrillSiteReason(
   wording: SiteWording = HOLE_SITE_WORDING,
   naming: SketchNaming = {},
 ): string {
-  const kind = construction ? 'construction circle' : 'circle'
   const subject = entitySubject(sketchId, entityId, naming, construction ? 'a construction circle' : 'a circle')
-  return `${subject} of ${sketchSubject(sketchId, naming)} is a ${kind}, which is not a ${wording.site}: ` +
-    `${wording.meaning}; ${circleRemedy(construction)}`
+  const sketch = sketchSubject(sketchId, naming)
+  // The subject already carries the kind ("circle 1"), so repeating it reads
+  // "circle 1 ... is a circle"; only the construction flag needs saying.
+  const head = construction
+    ? `${subject} of ${sketch} is construction geometry, so it is not a ${wording.site}`
+    : `${subject} of ${sketch} is not a ${wording.site}`
+  return `${head}: ${wording.meaning}; ${circleRemedy(construction)}`
 }
 
 /**
@@ -149,10 +152,4 @@ export function constructionOnlyPointsReason(
   return `${sketchSubject(sketchId, naming)} has ${wording.noSite}: ` +
     'add a non-construction point (or clear the point\'s construction flag), or ' +
     circleRemedy(circle === 'construction')
-}
-
-/** A picked non-point entity's name for the refusal sentences: the registry
- *  kind word, or "curve" for a kind the registry does not know. */
-export function entityKindForRefusal(kind: string): string {
-  return entityKindWord(kind) ?? 'curve'
 }

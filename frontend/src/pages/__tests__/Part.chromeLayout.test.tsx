@@ -161,7 +161,7 @@ describe('Part editor chrome', () => {
   it('opens the feature editor as an overlay card in the stage and closes it on commit', async () => {
     partDocStoreMock({ content: EXTRUDE_DOC })
     renderPage()
-    await waitFor(() => expect(screen.getByText('Extrude 1')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText("extrude 'Extrude 1'")).toBeInTheDocument())
     expect(document.querySelector('.feature-edit-panel')).toBeNull()
 
     fireEvent.click(screen.getByTitle('Edit extrude'))
@@ -180,7 +180,7 @@ describe('Part editor chrome', () => {
   it('closes the feature editor card on Cancel too', async () => {
     partDocStoreMock({ content: EXTRUDE_DOC })
     renderPage()
-    await waitFor(() => expect(screen.getByText('Extrude 1')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText("extrude 'Extrude 1'")).toBeInTheDocument())
 
     fireEvent.click(screen.getByTitle('Edit extrude'))
     expect(document.querySelector('.feature-edit-panel')).not.toBeNull()
@@ -204,7 +204,7 @@ describe('Part editor chrome', () => {
   it('stacks the section card beside the feature editor as its own card', async () => {
     partDocStoreMock({ content: EXTRUDE_DOC })
     renderPage()
-    await waitFor(() => expect(screen.getByText('Extrude 1')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText("extrude 'Extrude 1'")).toBeInTheDocument())
     fireEvent.click(screen.getByTitle('Edit extrude'))
     await enableSection()
 
@@ -219,7 +219,7 @@ describe('Part editor chrome', () => {
   it('exiting the section leaves the feature editor open and unchanged', async () => {
     partDocStoreMock({ content: EXTRUDE_DOC })
     renderPage()
-    await waitFor(() => expect(screen.getByText('Extrude 1')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText("extrude 'Extrude 1'")).toBeInTheDocument())
     fireEvent.click(screen.getByTitle('Edit extrude'))
     await enableSection()
 
@@ -235,7 +235,7 @@ describe('Part editor chrome', () => {
   it('ending the feature edit leaves the section on', async () => {
     partDocStoreMock({ content: EXTRUDE_DOC })
     renderPage()
-    await waitFor(() => expect(screen.getByText('Extrude 1')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText("extrude 'Extrude 1'")).toBeInTheDocument())
     fireEvent.click(screen.getByTitle('Edit extrude'))
     await enableSection()
 
@@ -250,7 +250,7 @@ describe('Part editor chrome', () => {
   it('section controls change no document and record no undo entry', async () => {
     const store = partDocStoreMock({ content: EXTRUDE_DOC })
     renderPage()
-    await waitFor(() => expect(screen.getByText('Extrude 1')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText("extrude 'Extrude 1'")).toBeInTheDocument())
     await enableSection()
 
     const docBefore = usePartEditorStore.getState().doc

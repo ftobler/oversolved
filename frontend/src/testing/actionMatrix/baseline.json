@@ -27066,7 +27066,7 @@
     ["project_circular_edge","entity:sk2:proj0","finish_draw","refused","nothing to finish"],
     ["project_circular_edge","entity:sk2:proj0","freeze_projection","refused","no projected entity or projection selected"],
     ["project_circular_edge","entity:sk2:proj0","mirror_entities","refused","mirror needs a selected line to mirror across"],
-    ["project_circular_edge","entity:sk2:proj0","pattern_entities","refused","source id \"proj0\" (a circle) has no copyable parameter block"],
+    ["project_circular_edge","entity:sk2:proj0","pattern_entities","refused","circle 1 has no copyable parameter block"],
     ["project_circular_edge","entity:sk2:proj0","redo","refused","nothing to redo"],
     ["project_circular_edge","entity:sk2:proj0","set_tool_arc","ok",null],
     ["project_circular_edge","entity:sk2:proj0","set_tool_center_rect","ok",null],

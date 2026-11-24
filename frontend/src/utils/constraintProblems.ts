@@ -23,6 +23,7 @@ import {
   constraintDisplayName,
   entityDisplayName,
   featureDisplayName,
+  positionWord,
   type NamingRow,
   type SketchNamingSource,
 } from '@/utils/core/displayNames'
@@ -547,10 +548,10 @@ function constraintShapeProblem(
   // judged when the active sketch is known: a shape-only caller cannot classify
   // a feature-qualified ref.
   if (feature !== undefined) {
-    const foreign = targets.find(target => foreignConstraintTarget(String(target), featureId))
-    if (foreign !== undefined) {
-      return `constraint targets must be in ${featureDisplayName(feature, features)}; `
-        + `project ${operandSubject(foreign, feature)} first (add_projected_entity)`
+    const foreignAt = targets.findIndex(target => foreignConstraintTarget(String(target), featureId))
+    if (foreignAt >= 0) {
+      return `the ${positionWord(foreignAt)} target must be in ${featureDisplayName(feature, features)}; `
+        + `project ${operandSubject(targets[foreignAt], feature)} first (add_projected_entity)`
     }
   }
 

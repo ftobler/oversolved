@@ -20,6 +20,7 @@ import { loadPartDoc } from '@/persistence/docSchema'
 import { featureParamsSchema } from '@/persistence/partDocSchema'
 import { applySetPlaneDefinitionField } from '@/utils/yamlMutations/featureAdmin'
 import { applySetHoleField } from '@/utils/yamlMutations/featureDefs'
+import { leakedIds } from '@/testing/warningText'
 import { FIELD_SETTER_KIND } from '../mutationCatalog'
 import { EMPTY_REF_CLEARS, mutationValueViolation } from '../mutationValues'
 import { sketchAt, featureAt, featureById } from '@/testing/featureAccess'
@@ -563,10 +564,43 @@ describe('a cross-sketch constraint target is refused by name', () => {
     }, twoSketchDoc())
     expect(error.code).toBe('invalid-mutation')
     expect(error.message).toBe(
-      'constraint targets must be in sketch 2; project a picked operand first (add_projected_entity)',
+      'the second target must be in sketch 2; project a picked operand first (add_projected_entity)',
     )
     expect(error.message).not.toContain('sk2')
     expect(error.message).not.toContain('sk1')
+  })
+
+  it('refuses a long-id foreign target without printing the ids', () => {
+    const sourceSketch = 'sourceSketch0123456789'
+    const targetSketch = 'targetSketch0123456789'
+    const sourceLine = 'sourceLine0123456789'
+    const targetLine = 'targetLine0123456789'
+    const doc = seedBuiltins({
+      version: 1,
+      kind: 'part',
+      features: [
+        {
+          id: sourceSketch, kind: 'sketch', plane: '@builtin_plane_front',
+          entities: [{ id: sourceLine, kind: 'line' }],
+          initial: { [sourceLine]: [0, 0, 10, 0] },
+        },
+        {
+          id: targetSketch, kind: 'sketch', plane: '@builtin_plane_right',
+          entities: [{ id: targetLine, kind: 'line' }],
+          initial: { [targetLine]: [0, 0, 10, 0] },
+        },
+      ],
+    } as PartDoc)
+    const error = refusal({
+      type: 'add_constraint', featureId: targetSketch, kind: 'coincident',
+      targets: [`vertex:${targetSketch}:${targetLine}:start`, `entity:${sourceSketch}:${sourceLine}`],
+    }, doc)
+    expect(error.code).toBe('invalid-mutation')
+    expect(error.message).toContain('the second target must be in')
+    expect(leakedIds(error.message)).toEqual([])
+    for (const id of [sourceSketch, targetSketch, sourceLine, targetLine]) {
+      expect(error.message).not.toContain(id)
+    }
   })
 
   it('still accepts the local pair', () => {
@@ -751,7 +785,7 @@ describe('finding: mirror_entities values', () => {
   it('refuses unknown source and axis ids without printing them', () => {
     const source = refusal({ type: 'mirror_entities', featureId: 'sk1', sourceIds: ['l2'], line: 'l1' }, sketchDoc())
     expect(source.code).toBe('unknown-target')
-    expect(source.message).toContain('source names no entity')
+    expect(source.message).toContain('the first source names no entity')
     expect(source.message).not.toContain('l2')
     const axis = refusal({ type: 'mirror_entities', featureId: 'sk1', sourceIds: ['l1'], line: 'l1b' }, sketchDoc())
     expect(axis.code).toBe('unknown-target')
@@ -971,7 +1005,7 @@ describe('finding: resize_circle names its target', () => {
 
   it('refuses a non-circle entity and a missing sketch by name', () => {
     const line = refusal({ type: 'resize_circle', featureId: 'sk1', entityId: 'l1', radius: 2 }, circleDoc())
-    expect(line.message).toContain('line 1 is a line, not a circle')
+    expect(line.message).toContain('line 1 is not a circle')
     expect(line.message).not.toContain('l1')
     const sketch = refusal({ type: 'resize_circle', featureId: 'nope', entityId: 'c1', radius: 2 }, circleDoc())
     expect(sketch.code).toBe('unknown-target')
@@ -1129,7 +1163,7 @@ describe('finding 6: delete targets', () => {
   it('refuses a well-formed target that names nothing, without printing it', () => {
     const error = refusal({ type: 'delete', targets: ['entity:sk1:ghost'] }, sketchDoc())
     expect(error.code).toBe('unknown-target')
-    expect(error.message).toContain('names no entity in sketch 1')
+    expect(error.message).toContain('the first target names no entity in sketch 1')
     expect(error.message).not.toContain('ghost')
   })
 
@@ -1169,7 +1203,7 @@ describe('finding: toggle_construction target form', () => {
   it('refuses a well-formed target that names nothing, without printing it', () => {
     const error = refusal({ type: 'toggle_construction', targets: ['entity:sk1:ghost'] }, sketchDoc())
     expect(error.code).toBe('unknown-target')
-    expect(error.message).toContain('names no entity in sketch 1')
+    expect(error.message).toContain('the first target names no entity in sketch 1')
     expect(error.message).not.toContain('ghost')
   })
 
@@ -1414,8 +1448,8 @@ describe('finding 7: duplicate entity ids', () => {
       type: 'add_entity', featureId: 'sk1', kind: 'line', params: [0, 0, 5, 5], entityId: 'l1',
     }, sketchDoc())
     expect(error.code).toBe('invalid-mutation')
-    expect(error.message).toContain('l1')
-    expect(error.message).toContain('already exists')
+    expect(error.message).toContain('already exists in sketch 1')
+    expect(error.message).not.toContain('"l1"')
   })
 
   it('accepts a fresh id and leaves one entity per id', async () => {
@@ -1501,7 +1535,7 @@ describe('a circle is not a hole drill site', () => {
     for (const sketch of ['entity:sk1:c1', 'vertex:sk1:c1:center']) {
       const error = refusal({ type: 'add_hole', featureId: 'ho1', sketch, diameter: 4, depth_mode: 'through_all' }, doc)
       expect(error.code, sketch).toBe('invalid-mutation')
-      expect(error.message, sketch).toContain('circle 1 of sketch 1 is a circle, which is not a drill site')
+      expect(error.message, sketch).toContain('circle 1 of sketch 1 is not a drill site')
       expect(error.message, sketch).toContain('extrude cut')
     }
   })
@@ -1511,7 +1545,7 @@ describe('a circle is not a hole drill site', () => {
     // must be narrowed the same way the kernel narrows it.
     const query = makeAncestryQuery(['@sk1/c1', 'surface:0', '@sk1'], 'flatface')
     const error = refusal({ type: 'add_hole', featureId: 'ho1', sketch: query, diameter: 4, depth_mode: 'through_all' }, sketchWithPointAndCircle())
-    expect(error.message).toContain('circle 1 of sketch 1 is a circle, which is not a drill site')
+    expect(error.message).toContain('circle 1 of sketch 1 is not a drill site')
     expect(error.message).toContain('extrude cut')
   })
 
@@ -1519,7 +1553,7 @@ describe('a circle is not a hole drill site', () => {
     const error = refusal({
       type: 'add_hole', featureId: 'ho1', sketch: 'entity:sk1:cc', diameter: 4, depth_mode: 'through_all',
     }, sketchWithPointAndCircle())
-    expect(error.message).toContain('is a construction circle, which is not a drill site')
+    expect(error.message).toContain('is construction geometry, so it is not a drill site')
     expect(error.message).toContain("clear the circle's construction flag, then cut it with an extrude cut")
   })
 
@@ -1781,7 +1815,7 @@ describe('birdhouse F2: apply_offset source ids', () => {
       type: 'apply_offset', featureId: 'sk1', sourceIds: ['l1', 'ghost'], distance: 2,
     }, sketchDoc())
     expect(error.code).toBe('unknown-target')
-    expect(error.message).toContain('source names no entity in sketch 1')
+    expect(error.message).toContain('the second source names no entity in sketch 1')
     expect(error.message).not.toContain('ghost')
   })
 
@@ -2006,7 +2040,7 @@ describe('add_three_point_arc values', () => {
       type: 'add_three_point_arc', featureId: 'sk1', start: [0, 0], through: [1, 1], end: [2, 0], entityId: 'l1',
     }, sketchDoc())
     expect(error.code).toBe('invalid-mutation')
-    expect(error.message).toContain('entity id "l1"')
+    expect(error.message).toContain('the entity id already exists in sketch 1')
     expect(error.message).toContain('already exists')
   })
 
@@ -2051,8 +2085,8 @@ describe('the compound sketch adds take an authored id block', () => {
       type: 'add_rect', featureId: 'sk1', p0: [0, 0], p1: [1, 1], entityIds: ['l1', 'r', 't', 'l'],
     }, sketchDoc())
     expect(taken.message).toContain('entityIds')
-    expect(taken.message).toContain('"l1"')
-    expect(taken.message).toContain('already exists')
+    expect(taken.message).toContain('an entity id that already exists')
+    expect(taken.message).not.toContain('"l1"')
 
     const repeated = refusal({
       type: 'add_rect', featureId: 'sk1', p0: [0, 0], p1: [1, 1], entityIds: ['a', 'a', 't', 'l'],
@@ -2074,7 +2108,7 @@ describe('the compound sketch adds take an authored id block', () => {
       type: 'add_rect', featureId: 'sk1', p0: [0, 0], p1: [1, 1], entityIds: ['c9', 'r', 't', 'l'],
     }, withConstraint)
     expect(clash.message).toContain('entityIds')
-    expect(clash.message).toContain('constraint id "c9"')
+    expect(clash.message).toContain('a constraint id that already exists')
   })
 })
 

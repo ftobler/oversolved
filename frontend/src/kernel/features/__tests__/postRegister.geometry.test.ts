@@ -47,7 +47,7 @@ describe('resolveSketchPlane', () => {
     // id that names nothing is an authoring mistake, so the sketch must fail.
     const repo = new Repository()
     expect(() => resolveSketchPlane('@nope', repo)).toThrow(
-      "plane 'nope' did not resolve; use a builtin plane, a plane feature defined before this sketch, or a face query",
+      'a plane pick did not resolve; use a builtin plane, a plane feature defined before this sketch, or a face query',
     )
   })
 
@@ -77,7 +77,7 @@ describe('resolveSketchPlane', () => {
       sk1: { id: 'sk1', kind: 'sketch', plane: '@pl1' },
     }
     expect(() => resolveSketchPlane('@pl1', repo, { sketchId: 'sk1', featuresById: features })).toThrow(
-      'plane 1 did not resolve; its plane feature comes before this sketch but reported no frame',
+      'plane 1 comes before this sketch but reported no frame (is it suppressed or failed?)',
     )
   })
 

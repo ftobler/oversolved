@@ -15,6 +15,7 @@ import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { setOccLoader } from '@/kernel/solveLocally'
 import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
+import { leakedIds } from '@/testing/warningText'
 
 const oc = occInstalled()
 const solveBytes = loadSolver()
@@ -84,6 +85,7 @@ describe.skipIf(!ready)('projection source refusal (real OCC + Rust solver)', ()
       const refused = result.outcome.steps[0]
       expect(refused.ok, source).toBe(false)
       expect(refused.error?.message, source).toContain(text)
+      expect(leakedIds(refused.error?.message ?? ''), source).toEqual([])
       // The refused step wrote no projection and no held entity.
       expect(projectionRows(result.doc!, 'sk2').map(c => c.source), source).not.toContain(source)
       const sk2 = result.doc!.features!.find(feature => feature.id === 'sk2')
@@ -94,6 +96,33 @@ describe.skipIf(!ready)('projection source refusal (real OCC + Rust solver)', ()
       expect(result.outcome.steps[1].ok, source).toBe(true)
       expect(projectionRows(result.doc!, 'sk2').some(c => c.source === '@builtin_origin'), source).toBe(true)
     }
+  }, 180_000)
+
+  it('refuses a long-id source without printing the ids', async () => {
+    const base = await builtBox()
+    const sourceSketch = 'sourceXyZ0123456789'
+    const targetSketch = 'targetXyZ0123456789'
+    const longEntity = 'pointXyZ0123456789'
+    const doc = push(
+      structuredClone(base),
+      sketch(sourceSketch, [{ id: longEntity, kind: 'point' }], { [longEntity]: [1, 1] }),
+      sketch(targetSketch, [], {}),
+    )
+    const result = await runHeadless({
+      doc,
+      docId: 'refuse-long-ids',
+      steps: [{
+        mutation: {
+          type: 'add_projected_entity', featureId: targetSketch, kind: 'point',
+          source: `@${sourceSketch}/missingXyZ0123456789`, entityId: 'held',
+        },
+      }],
+    })
+    const message = String(result.outcome.steps[0].error?.message ?? '')
+    expect(message).toContain('the picked source names no entity')
+    expect(leakedIds(message)).toEqual([])
+    expect(message).not.toContain(sourceSketch)
+    expect(message).not.toContain('missingXyZ0123456789')
   }, 180_000)
 
   it('refuses a $ chain that closes on the target', async () => {
@@ -133,7 +162,9 @@ describe.skipIf(!ready)('projection source refusal (real OCC + Rust solver)', ()
       }],
     })
     expect(result.outcome.steps[0].ok).toBe(false)
-    expect(result.outcome.steps[0].error?.message).toContain("names no vertex 'nope'")
+    const message = String(result.outcome.steps[0].error?.message ?? '')
+    expect(message).toContain("line 1 of sketch 2 has no vertex 'nope'; a line has: start, end")
+    expect(leakedIds(message)).toEqual([])
     expect(projectionRows(result.doc!, 'sk3')).toHaveLength(0)
   }, 180_000)
 

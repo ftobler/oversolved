@@ -168,7 +168,7 @@ describe('HoleEditor (via FeatureEditor)', () => {
       // A circle is a profile, not a drill site: a pick that lands on one must
       // say so instead of writing a ref the solve can only refuse.
       expect(sketchField.validatePick!('entity:sk1:c1', [sketch]))
-        .toContain('circle, which is not a drill site')
+        .toContain('is not a drill site')
       expect(sketchField.validatePick!('entity:sk1:c1', [sketch]))
         .toContain('extrude cut')
     })
@@ -183,7 +183,7 @@ describe('HoleEditor (via FeatureEditor)', () => {
       // survive until the solve only because it is not an entity: id.
       const query = makeAncestryQuery(['@sk1/c1', 'surface:0', '@sk1'], 'flatface')
       expect(sketchField.validatePick!(query, [sketch]))
-        .toContain('circle, which is not a drill site')
+        .toContain('is not a drill site')
       const construction = makeAncestryQuery(['@sk1/cc', 'surface:0', '@sk1'], 'flatface')
       expect(sketchField.validatePick!(construction, [sketch]))
         .toContain("clear the circle's construction flag")

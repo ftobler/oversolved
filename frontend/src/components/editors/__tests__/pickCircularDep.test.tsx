@@ -136,7 +136,7 @@ describe('the hole sketch field refuses a circle before it is written', () => {
     pick('entity:sk1:c1')
 
     expect(onMutation).not.toHaveBeenCalled()
-    expect(refusalText()).toContain('circle 1 of sketch 1 is a circle, which is not a drill site')
+    expect(refusalText()).toContain('circle 1 of sketch 1 is not a drill site')
     expect(refusalText()).toContain('cut the circle with an extrude cut')
   })
 
@@ -149,7 +149,7 @@ describe('the hole sketch field refuses a circle before it is written', () => {
     pick(makeAncestryQuery(['@sk1/c1', 'surface:0', '@sk1'], 'flatface'))
 
     expect(onMutation).not.toHaveBeenCalled()
-    expect(refusalText()).toContain('circle 1 of sketch 1 is a circle, which is not a drill site')
+    expect(refusalText()).toContain('circle 1 of sketch 1 is not a drill site')
   })
 })
 

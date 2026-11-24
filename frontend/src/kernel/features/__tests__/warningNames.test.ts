@@ -145,7 +145,9 @@ describe.skipIf(solveBytes === null)('warning text names things, never ids (real
     const out = solve(sketch, doc.features ?? [])
     const warning = String(out.solver_warning ?? '')
     expect(warning).toContain('x distance 2 holds the profile only at the arc')
-    expectNoIds(warning)
+    const labels = (doc.features ?? [])
+      .map(feature => (typeof feature.label === 'string' ? feature.label : ''))
+    expect(leakedIds(warning, labels)).toEqual([])
     for (const entity of sketch.entities ?? []) expect(warning).not.toContain(entity.id)
     for (const constraint of sketch.constraints ?? []) expect(warning).not.toContain(constraint.id)
   })
@@ -158,5 +160,8 @@ describe.skipIf(solveBytes === null)('warning text names things, never ids (real
     // Command and mutation names a hint legitimately carries.
     expect(leakedIds('move it up with `reorder_features` (before this row)')).toEqual([])
     expect(leakedIds('freeze_projection: that pick names no projection')).toEqual([])
+    // A document's own label is user text, not a leaked id.
+    expect(leakedIds("sketch 'RectangularPlate2026'", ['RectangularPlate2026'])).toEqual([])
+    expect(leakedIds("sketch 'RectangularPlate2026'")).toEqual(['RectangularPlate2026'])
   })
 })

@@ -232,7 +232,7 @@ describe.skipIf(!hasOcc)('boolean tools: @array includes the copies an add array
     const union = solveBoolean(oc, r.scope, r.table, {
       id: 'bool2', boolean: { operation: 'union', target: '@body_spoke_1', tools: ['@body_bracket'] },
     }, new Repository(), r.store)
-    expect(union.solver_warning).toContain("union: tool '@body_bracket' does not intersect the target; skipped")
+    expect(union.solver_warning).toContain('union: tool 1 does not intersect the target; skipped')
     expect(r.store.body_bracket?.split_from).toBeUndefined()
 
     const plateBefore = volume(r, 'body_plate')

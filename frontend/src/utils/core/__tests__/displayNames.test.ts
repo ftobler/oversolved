@@ -79,16 +79,24 @@ describe('featureDisplayName', () => {
   })
 
   it('suppresses a label that only repeats the kind word', () => {
-    // The add commands bake a default label like `Sweep` or `Plane`; it says
-    // nothing the kind ordinal does not, and `Sketch 9` can even be stale.
+    // The add commands bake a default label like `Sweep` or `Move Face`; it says
+    // nothing the kind ordinal does not. The raw kind spelling with an ordinal
+    // (`move_face 3`) is the same. Deliberate labels survive: a different case
+    // (`SKETCH`) or a user-typed ordinal (`Sweep 7`) is not the default shape.
     const rows = [
-      { id: 'sk1', kind: 'sketch', label: 'Sketch 9' },
+      { id: 'sk1', kind: 'sketch', label: 'SKETCH' },
       { id: 'sw1', kind: 'sweep', label: 'Sweep' },
       { id: 'pl1', kind: 'plane', label: 'Plane' },
+      { id: 'mf1', kind: 'move_face', label: 'move_face 3' },
+      { id: 'lp1', kind: 'linear_pattern', label: 'linear_pattern 1' },
+      { id: 'sw2', kind: 'sweep', label: 'Sweep 7' },
     ]
-    expect(featureDisplayName(rows[0], rows)).toBe('sketch 1')
+    expect(featureDisplayName(rows[0], rows)).toBe("sketch 'SKETCH'")
     expect(featureDisplayName(rows[1], rows)).toBe('sweep 1')
     expect(featureDisplayName(rows[2], rows)).toBe('plane 1')
+    expect(featureDisplayName(rows[3], rows)).toBe('move face 1')
+    expect(featureDisplayName(rows[4], rows)).toBe('linear pattern 1')
+    expect(featureDisplayName(rows[5], rows)).toBe("sweep 'Sweep 7'")
     // A name that is not the kind word survives, even next to the kind.
     const named = [{ id: 'sk1', kind: 'sketch', label: 'Sketch of the base' }]
     expect(featureDisplayName(named[0], named)).toBe("sketch 'Sketch of the base'")

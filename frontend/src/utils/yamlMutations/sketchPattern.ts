@@ -27,7 +27,7 @@ import {
 } from './helpers'
 import { carryConstraints, type CarryTemplate } from './sketchCarry'
 import { resolveBarePlaneId } from '@/kernel/solverConstants'
-import { entityDisplayName, entityKindWord, featureDisplayName } from '@/utils/core/displayNames'
+import { entityDisplayName, featureDisplayName } from '@/utils/core/displayNames'
 import {
   instanceTransforms, transformEntityParams, transformVertexKey, transformVector,
   rotatedAxisKind, rotatedAxisDistance, rotatedConstraintAxis, transformFixedOverride,
@@ -147,8 +147,14 @@ export function planPatternEntities(doc: PartDoc, step: PatternEntitiesStep): Pa
       }
     }
     if (normalizedPlane(source.plane) !== normalizedPlane(other.plane)) {
+      const planeName = (ref: unknown): string => {
+        const id = String(ref ?? '').replace(/^@/, '')
+        if (id.startsWith('builtin_plane_')) return id.slice('builtin_plane_'.length)
+        const row = findFeature(doc, id)
+        return row === undefined ? 'a plane' : featureDisplayName(row, rows)
+      }
       return {
-        reason: `cannot map between different sketch planes (${JSON.stringify(source.plane ?? '')} and ${JSON.stringify(other.plane ?? '')}); `
+        reason: `cannot map between different sketch planes (${planeName(source.plane)} and ${planeName(other.plane)}); `
           + 'author the geometry in the target or use add_projected_entity for a part edge',
         code: 'invalid',
       }
@@ -183,8 +189,7 @@ export function planPatternEntities(doc: PartDoc, step: PatternEntitiesStep): Pa
       const moved = transformEntityParams(def.kind, block, t, def.handles)
       if (moved === null) {
         return {
-          reason: `${entityDisplayName(source, id) ?? 'the picked source'} `
-            + `(a ${entityKindWord(def.kind) ?? 'curve'}) has no copyable parameter block`,
+          reason: `${entityDisplayName(source, id) ?? 'the picked source'} has no copyable parameter block`,
           code: 'invalid',
         }
       }

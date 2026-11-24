@@ -647,7 +647,6 @@ function lowerProjectionConstraints(
 export function assertSolverOutputMatchesLayout(
   out: SolverOutput,
   layout: EntityLayout[],
-  _featureId: string,
   skipStatusPass: boolean,
   sketchName = 'the sketch',
 ): void {
@@ -692,7 +691,6 @@ export function assertConstraintVerdictsMatchInput(
   out: SolverOutput,
   nConstraints: number,
   dragMode: boolean,
-  _featureId: string,
   sketchName = 'the sketch',
 ): void {
   const expected = dragMode ? 0 : nConstraints
@@ -978,8 +976,8 @@ export function solveSketch(
   const { input, layout, constraintIds } = lowerSketch(sketch)
   const out = runSolverBytes(solverBytes, input)
   const sketchName = sketchDisplayName(featureId, featureRows(featuresById))
-  assertSolverOutputMatchesLayout(out, layout, featureId, input.options.skipStatusPass, sketchName)
-  assertConstraintVerdictsMatchInput(out, input.constraints.length, input.options.dragMode, featureId, sketchName)
+  assertSolverOutputMatchesLayout(out, layout, input.options.skipStatusPass, sketchName)
+  assertConstraintVerdictsMatchInput(out, input.constraints.length, input.options.dragMode, sketchName)
   const status = STATUS_NAME[out.overallStatus]
   // The curves the profile builder must not see. Computed before the geometry
   // maps so the area build and the warning row read one answer.
@@ -1138,8 +1136,8 @@ export function solveSketch(
     ...(warnings.length ? { solver_warning: warnings.join(' ') } : {}),
     // The free ids beside the readable names the warning carries: the drive
     // reply forwards them as the feature row's `free` list, the debug views
-    // read them directly.
-    ...(freeIds.length ? { free_entities: freeIds } : {}),
+    // read them directly. Only an underconstrained solve has free entities.
+    ...(status === 'underconstrained' && freeIds.length ? { free_entities: freeIds } : {}),
     geometry,
     entity_moved: entityMoved,
     features,
@@ -1308,7 +1306,7 @@ export function probeRedundantConstraint(
     if (extract.skipped.length || !extract.sketches.length) return null
     const { input, constraintIds } = lowerSketch(extract.sketches[0].sketch, { skipStatusPass: true })
     const out = runSolverBytes(solverBytes, input)
-    assertConstraintVerdictsMatchInput(out, input.constraints.length, false, feature.id, featureDisplayName(feature))
+    assertConstraintVerdictsMatchInput(out, input.constraints.length, false, featureDisplayName(feature))
     if (out.overallStatus === Status.overconstrained) return null
     // The draft may lower to several wire constraints (sugar expansion); it
     // counts as redundant only when every piece of it is.
@@ -1711,8 +1709,8 @@ export function solveSketchDrag(
     // path: it already degrades a failed solve to null so the caller holds the
     // last good preview, and throwing out of a pointer handler is strictly
     // worse. Same check, same detection, the response the path already chose.
-    assertSolverOutputMatchesLayout(out, layout, 'drag', input.options.skipStatusPass)
-    assertConstraintVerdictsMatchInput(out, input.constraints.length, input.options.dragMode, 'drag')
+    assertSolverOutputMatchesLayout(out, layout, input.options.skipStatusPass)
+    assertConstraintVerdictsMatchInput(out, input.constraints.length, input.options.dragMode)
   } catch (e) {
     swallowUnlessTrap(e)
     return null

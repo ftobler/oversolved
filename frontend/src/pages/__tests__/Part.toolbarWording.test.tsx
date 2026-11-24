@@ -78,7 +78,7 @@ describe('part editor toolbar wording', () => {
     // The new row opens its editor, so the same name also appears in the panel;
     // the tree row is the one this test is about.
     await waitFor(() => {
-      expect(document.querySelector('.feature-item.editing .feature-name')?.textContent).toBe('Delete Part')
+      expect(document.querySelector('.feature-item.editing .feature-name')?.textContent).toBe('delete part 1')
     })
     expect(screen.queryByText(/delete_body/)).toBeNull()
   })

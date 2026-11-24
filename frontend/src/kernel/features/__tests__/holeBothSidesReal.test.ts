@@ -134,7 +134,7 @@ describe.skipIf(!oc)('a through hole with material on both sides of its plane (r
   it('names the site under the block in the warning, not the clear one', () => {
     const { result } = drill({ direction: 'normal', ...COUNTERBORE })
     const warning = String(result.solver_warning ?? '')
-    expect(warning).toContain('p_under')
+    expect(warning).toContain('point 1')
     expect(warning).not.toContain('p_clear')
     expect(warning).toContain('drilled reverse at all sites')
   })

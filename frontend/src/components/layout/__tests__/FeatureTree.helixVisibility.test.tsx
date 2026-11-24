@@ -2,10 +2,10 @@
 // sketch or plane. Without it the only way to hide the curve was to hide its
 // consumer, which is not what the curve is.
 import { describe, it, expect, beforeEach } from 'vitest'
-import { fireEvent, screen } from '@testing-library/react'
+import { fireEvent } from '@testing-library/react'
 import type { PartFeature } from '@/types/cad'
 import {
-  builtInFeatures, makeCallbacks, renderSidebar, resetStores, setupEditingStore as setupStore,
+  builtInFeatures, makeCallbacks, renderSidebar, resetStores, setupEditingStore as setupStore, featureRow,
 } from './sidebarTestHarness'
 
 const helixFeature: PartFeature = { id: 'hx1', kind: 'helix', helix: {} }
@@ -21,7 +21,7 @@ describe('FeatureTree helix visibility', () => {
     const callbacks = makeCallbacks()
     renderSidebar(callbacks)
 
-    const row = screen.getByText('hx1').closest('.feature-item')!
+    const row = featureRow('hx1')
     const eye = row.querySelector('.feature-visibility-btn')
     expect(eye).not.toBeNull()
     // The helix owns a visibility button, so it needs no reserved empty slot.
@@ -35,7 +35,7 @@ describe('FeatureTree helix visibility', () => {
     setupStore([...builtInFeatures, extrudeFeature], null)
     renderSidebar()
 
-    const row = screen.getByText('ex1').closest('.feature-item')!
+    const row = featureRow('ex1')
     expect(row.querySelector('.feature-visibility-btn')).not.toBeNull()
     expect(row.querySelector('.feature-visibility-placeholder')).toBeNull()
   })

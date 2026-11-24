@@ -85,7 +85,7 @@ describe('nested edit session guard (direct FeatureTree Edit button)', () => {
     await screen.findByTitle('Feature mode')
     fireEvent.click(screen.getByTitle('Feature mode'))
 
-    await waitFor(() => expect(screen.getByText('Fillet 1')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText("fillet 'Fillet 1'")).toBeInTheDocument())
 
     // Open D (Fillet 1) and make an in-session edit that would otherwise be
     // swallowed by its suppressed aggregate session.
@@ -105,7 +105,7 @@ describe('nested edit session guard (direct FeatureTree Edit button)', () => {
 
     // C opens: D closed cleanly instead of silently no-opping or clobbering.
     await waitFor(() => expect(useEditorState.getState().editingFeatureId).toBe('fil2'))
-    const fil1Item = screen.getByText('Fillet 1').closest('.feature-item') as HTMLElement
+    const fil1Item = screen.getByText("fillet 'Fillet 1'").closest('.feature-item') as HTMLElement
     expect(within(fil1Item).queryByTitle('OK')).toBeNull()
     expect(within(fil1Item).queryByTitle('Cancel')).toBeNull()
     // D's edit was not lost: it committed into the doc (and, below, into its
@@ -130,7 +130,7 @@ describe('nested edit session guard (direct FeatureTree Edit button)', () => {
     await screen.findByTitle('Feature mode')
     fireEvent.click(screen.getByTitle('Feature mode'))
 
-    await waitFor(() => expect(screen.getByText('Fillet 1')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText("fillet 'Fillet 1'")).toBeInTheDocument())
 
     fireEvent.click(screen.getByTitle('Edit fillet'))
     await waitFor(() => expect(useEditorState.getState().editingFeatureId).toBe('fil1'))
@@ -143,7 +143,7 @@ describe('nested edit session guard (direct FeatureTree Edit button)', () => {
     fireEvent.click(screen.getByTitle('Edit sketch'))
 
     await waitFor(() => expect(useEditorState.getState().editingFeatureId).toBe('sk1'))
-    const fil1Item = screen.getByText('Fillet 1').closest('.feature-item') as HTMLElement
+    const fil1Item = screen.getByText("fillet 'Fillet 1'").closest('.feature-item') as HTMLElement
     expect(within(fil1Item).queryByTitle('OK')).toBeNull()
     expect(radiusOf('fil1')).toBe(9)
 
@@ -172,7 +172,7 @@ describe('nested edit session guard (direct FeatureTree Edit button)', () => {
     await screen.findByTitle('Feature mode')
     fireEvent.click(screen.getByTitle('Feature mode'))
 
-    await waitFor(() => expect(screen.getByText('Sketch 1')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText("sketch 'Sketch 1'")).toBeInTheDocument())
 
     fireEvent.click(screen.getByTitle('Edit sketch'))
     await waitFor(() => expect(useEditorState.getState().editingFeatureId).toBe('sk1'))
@@ -180,7 +180,7 @@ describe('nested edit session guard (direct FeatureTree Edit button)', () => {
     fireEvent.click(screen.getByTitle('Edit fillet'))
 
     await waitFor(() => expect(useEditorState.getState().editingFeatureId).toBe('fil1'))
-    const sk1Item = screen.getByText('Sketch 1').closest('.feature-item') as HTMLElement
+    const sk1Item = screen.getByText("sketch 'Sketch 1'").closest('.feature-item') as HTMLElement
     expect(within(sk1Item).queryByTitle('OK')).toBeNull()
 
     const radiusInput = screen.getByLabelText('Radius, millimetres') as HTMLInputElement

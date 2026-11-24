@@ -301,6 +301,32 @@ function projectionSourceOf(sketchFeature: Dict, entityId: string): string | nul
 }
 
 /**
+ * A projection's source as a sentence subject. The raw ref can carry a sketch
+ * and an entity id, so it is never printed; the name follows the same scheme as
+ * every other row.
+ */
+function projectionSourceName(
+  source: string,
+  sketch: Dict,
+  featuresById: Record<string, Dict>,
+): string {
+  const rows = featureRows(featuresById)
+  if (source === '@builtin_origin') return 'the document origin'
+  if (source.startsWith('@builtin_plane_')) return 'a builtin plane'
+  if (source.startsWith('$')) return entityDisplayName(sketch, source.slice(1)) ?? 'the sketch'
+  if (source.startsWith('@')) {
+    const [sourceSketchId, sourceEid] = source.slice(1).split('/')
+    if (sourceEid === undefined || sourceEid === '') return 'a picked sketch'
+    return `${entityDisplayName(featuresById[sourceSketchId ?? ''], sourceEid) ?? 'a projected entity'} `
+      + `of ${sketchDisplayName(sourceSketchId ?? '', rows)}`
+  }
+  if (source.startsWith('?') || source.startsWith('face:') || source.startsWith('edge:')) {
+    return 'a part face or edge'
+  }
+  return 'the picked source'
+}
+
+/**
  * Construction names for one drill site's cutter, keyed by its faces before the
  * cut: the bore wall, the mouth (the cutter's start disc), the floor (its end
  * disc), and for a widened mouth the counterbore's wall and step floor or the
@@ -819,6 +845,9 @@ export function solveHole(
   }
 
   const sketchFeature = featuresById[sketchId] ?? {}
+  // One display name per drill site, shared by every note below: the cut loop's
+  // thread and side lists, the swallowed-site notes and the merge list.
+  const siteName = (eid: string): string => entityDisplayName(sketchFeature, eid) ?? 'a drill site'
   const drilled = drilledEntities(
     (sketchFeature.entities as Dict[]) ?? [],
     sketchId,
@@ -1328,9 +1357,9 @@ export function solveHole(
     cutAny = true
     cutSites.add(eid)
     const tapped = siteThread(eid, center3d, airGap, countersinkDepth, site.radius)
-    if (tapped.clamped) threadClamped.push(`${eid} (${roundForMessage(tapped.boreLength)})`)
+    if (tapped.clamped) threadClamped.push(`${siteName(eid)} (${roundForMessage(tapped.boreLength)})`)
     if (tapped.run !== null) threadSites.push(tapped.run)
-    else if (tapped.untapped) threadUntapped.push(eid)
+    else if (tapped.untapped) threadUntapped.push(siteName(eid))
     // The pattern's tool build reads this instead of the drilled body; the run
     // is the unwidened one, so a copy can name its own bore.
     drillRecordSites.push({
@@ -1441,7 +1470,7 @@ export function solveHole(
     // authored side that silences this.
     const fix = side === 'normal' ? 'set direction: reverse to drill the other way' : 'set direction: reverse to keep it'
     result.solver_warning =
-      `hole: sites ${otherSideSites.join(', ')} have material on the other side; ` +
+      `hole: ${otherSideSites.map(siteName).join(', ')} have material on the other side; ` +
       `drilled ${side} at all sites (a through hole drills one side), ${fix}`
   }
   // A body whose sketch solve missed the merge ceiling by more than the ceiling
@@ -1458,7 +1487,6 @@ export function solveHole(
   // generic overlap pair for the same sites so the author reads one fact and
   // one fix, not two messages saying different things.
   const swallowedIds = new Set(swallowedSites.map((site) => site.eid))
-  const siteName = (eid: string): string => entityDisplayName(sketchFeature, eid) ?? 'a drill site'
   for (const site of swallowedSites) {
     const twin = site.earlier[0]
     const here = siteName(site.eid)
@@ -1469,7 +1497,7 @@ export function solveHole(
       const source = projectionSourceOf(sketchFeature, twin)
       note = `hole: ${here} sits on ${siteName(twin)} and drills nothing; ` +
         `one point per hole is enough, delete ${here}` +
-        (source === null ? '' : ` (${siteName(twin)} is the projection of ${source})`)
+        (source === null ? '' : ` (${siteName(twin)} is projected from ${projectionSourceName(source, sketchFeature, featuresById)})`)
     } else {
       note = `hole: ${here} lies inside the bores of ${site.earlier.map(siteName).join(', ')} ` +
         `and drills nothing; move or delete ${here}`

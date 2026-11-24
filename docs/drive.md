@@ -1259,9 +1259,9 @@ banner on stdout, so a client config must use the direct node invocation.
   falls back to the XY plane. A face query is resolved after the solve, and a
   plane or face query that does not resolve fails the sketch or `add_plane`
   feature with the cause named: a plane feature defined later in the log (a
-  sketch's message names both rows and the one-step fix,
-  `reorder_features` (before this row)) or a face
-  query nothing registers any more. Only an absent or empty query keeps Front.
+  sketch's message names both rows and the one-step fix, `reorder_features`
+  before this row) or a face query nothing registers any more. Only an absent or
+  empty query keeps Front.
   `add_sketch.plane` and `set_feature_plane.plane` also take the selector
   itself, `{selector: <a select selector naming exactly one face>}`: the
   headless drive resolves it against the settled solve and stores the query

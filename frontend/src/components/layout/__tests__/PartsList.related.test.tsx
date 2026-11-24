@@ -59,9 +59,9 @@ function partRow(container: HTMLElement, label: string): HTMLElement {
 }
 
 function featureRow(container: HTMLElement, id: string): HTMLElement {
-  const span = [...container.querySelectorAll('.feature-name')].find(n => n.textContent === id)
-  if (!span) throw new Error(`feature row not found: ${id}`)
-  return span.closest('.feature-item') as HTMLElement
+  const el = container.querySelector(`[data-oversolved-handle="tree:feature:${id}"]`)
+  if (!el) throw new Error(`feature row not found: ${id}`)
+  return el as HTMLElement
 }
 
 function seedTwoParts() {

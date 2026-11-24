@@ -1,9 +1,8 @@
 // A variable row in the feature tree
 // shows its solved value, and its unit hint beside it when it carries one.
 import { describe, it, expect, beforeEach } from 'vitest'
-import { screen } from '@testing-library/react'
 import { usePartEditorStore } from '@/stores/partEditorStore'
-import { makeCallbacks, renderSidebar, resetStores, builtInFeatures } from './sidebarTestHarness'
+import { featureRow, makeCallbacks, renderSidebar, resetStores, builtInFeatures } from './sidebarTestHarness'
 import type { PartFeature } from '@/types/cad'
 
 const width: PartFeature = { id: 'v1', kind: 'variable', label: 'width', variable: { expression: '20', unit: 'mm' } }
@@ -21,14 +20,15 @@ describe('variable rows in the feature tree', () => {
       solveResults: { v1: { value: 20 }, v2: { value: 3 } },
     })
     renderSidebar(makeCallbacks())
-    const widthRow = screen.getByText('width = 20').closest('.feature-name')
-    expect(widthRow).not.toBeNull()
+    const widthRow = featureRow('v1').querySelector('.feature-name')!
+    expect(widthRow.textContent).toContain("variable 'width' = 20")
     // The hint is the shared unit element, not text glued into the name: the
     // row says its value and the unit beside it.
-    expect(widthRow!.querySelector('.field-unit')?.textContent).toBe('mm')
+    expect(widthRow.querySelector('.field-unit')?.textContent).toBe('mm')
     // No unit hint: the value alone, exactly as before.
-    expect(screen.getByText('count = 3')).toBeInTheDocument()
-    expect(screen.getByText('count = 3').closest('.feature-name')!.querySelector('.field-unit')).toBeNull()
+    const countRow = featureRow('v2').querySelector('.feature-name')!
+    expect(countRow.textContent).toBe("variable 'count' = 3")
+    expect(countRow.querySelector('.field-unit')).toBeNull()
   })
 
   it('shows no value before the solve lands', () => {
@@ -38,6 +38,6 @@ describe('variable rows in the feature tree', () => {
       solveResults: {},
     })
     renderSidebar(makeCallbacks())
-    expect(screen.getByText('width')).toBeInTheDocument()
+    expect(featureRow('v1').querySelector('.feature-name')!.textContent).toBe("variable 'width'")
   })
 })

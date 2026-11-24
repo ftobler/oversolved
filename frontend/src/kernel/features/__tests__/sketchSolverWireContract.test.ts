@@ -56,18 +56,18 @@ function outputOf(over: Partial<SolverOutput> = {}): SolverOutput {
 
 describe('solver output / layout count contract', () => {
   it('accepts an output whose counts match the layout', () => {
-    expect(() => assertSolverOutputMatchesLayout(outputOf(), layoutOf(2), 'sk1', false)).not.toThrow()
+    expect(() => assertSolverOutputMatchesLayout(outputOf(), layoutOf(2), false)).not.toThrow()
   })
 
   it('refuses fewer entity statuses than entities', () => {
-    expect(() => assertSolverOutputMatchesLayout(outputOf({ entityStatus: [0] }), layoutOf(2), 'sk1', false))
+    expect(() => assertSolverOutputMatchesLayout(outputOf({ entityStatus: [0] }), layoutOf(2), false))
       .toThrow(/1 entity statuses, expected 2/)
   })
 
   // More is as wrong as fewer: it means the two sides disagree about what the
   // entity list even is, so index i is not entity i on both ends.
   it('refuses more entity statuses than entities', () => {
-    expect(() => assertSolverOutputMatchesLayout(outputOf({ entityStatus: [0, 1, 2] }), layoutOf(2), 'sk1', false))
+    expect(() => assertSolverOutputMatchesLayout(outputOf({ entityStatus: [0, 1, 2] }), layoutOf(2), false))
       .toThrow(/3 entity statuses, expected 2/)
   })
 
@@ -76,23 +76,23 @@ describe('solver output / layout count contract', () => {
   // one: a solver that ignored the flag and sent a full array is as much a skew
   // as one that sent too few, and would mean the flag is not being honoured.
   it('requires exactly zero statuses when the request set skipStatusPass', () => {
-    expect(() => assertSolverOutputMatchesLayout(outputOf({ entityStatus: [] }), layoutOf(2), 'sk1', true))
+    expect(() => assertSolverOutputMatchesLayout(outputOf({ entityStatus: [] }), layoutOf(2), true))
       .not.toThrow()
-    expect(() => assertSolverOutputMatchesLayout(outputOf(), layoutOf(2), 'sk1', true))
+    expect(() => assertSolverOutputMatchesLayout(outputOf(), layoutOf(2), true))
       .toThrow(/2 entity statuses, expected 0/)
   })
 
   it('refuses a params array the layout would slice past the end of', () => {
-    expect(() => assertSolverOutputMatchesLayout(outputOf({ paramsSolved: [0, 0, 1] }), layoutOf(2), 'sk1', false))
+    expect(() => assertSolverOutputMatchesLayout(outputOf({ paramsSolved: [0, 0, 1] }), layoutOf(2), false))
       .toThrow(/3 params, layout needs 4/)
   })
 
   // The same skew can arrive as a VALUE rather than as a length: a code that is
   // not an index into STATUS_NAME reads back `undefined` just the same.
   it('refuses a status code that is not a STATUS_NAME index', () => {
-    expect(() => assertSolverOutputMatchesLayout(outputOf({ overallStatus: 7 }), layoutOf(2), 'sk1', false))
+    expect(() => assertSolverOutputMatchesLayout(outputOf({ overallStatus: 7 }), layoutOf(2), false))
       .toThrow(/unknown status code 7/)
-    expect(() => assertSolverOutputMatchesLayout(outputOf({ entityStatus: [0, 9] }), layoutOf(2), 'sk1', false))
+    expect(() => assertSolverOutputMatchesLayout(outputOf({ entityStatus: [0, 9] }), layoutOf(2), false))
       .toThrow(/unknown status code 9 for entity e1/)
   })
 })
@@ -104,22 +104,22 @@ describe('solver output / layout count contract', () => {
 describe('solver output / constraint verdict contract', () => {
   it('accepts one flag and one miss per constraint sent', () => {
     expect(() => assertConstraintVerdictsMatchInput(
-      outputOf({ constraintFlags: [0, 1], constraintMiss: [0, 0.5] }), 2, false, 'sk1',
+      outputOf({ constraintFlags: [0, 1], constraintMiss: [0, 0.5] }), 2, false,
     )).not.toThrow()
   })
 
   it('refuses a verdict array that disagrees with the constraint count', () => {
     expect(() => assertConstraintVerdictsMatchInput(
-      outputOf({ constraintFlags: [0], constraintMiss: [0] }), 2, false, 'sk1',
+      outputOf({ constraintFlags: [0], constraintMiss: [0] }), 2, false,
     )).toThrow(/1 constraint flags and 1 constraint misses, expected 2/)
   })
 
   it('requires exactly empty verdicts on the drag path', () => {
     expect(() => assertConstraintVerdictsMatchInput(
-      outputOf({ constraintFlags: [], constraintMiss: [] }), 2, true, 'drag',
+      outputOf({ constraintFlags: [], constraintMiss: [] }), 2, true,
     )).not.toThrow()
     expect(() => assertConstraintVerdictsMatchInput(
-      outputOf({ constraintFlags: [0, 0], constraintMiss: [0, 0] }), 2, true, 'drag',
+      outputOf({ constraintFlags: [0, 0], constraintMiss: [0, 0] }), 2, true,
     )).toThrow(/expected 0/)
   })
 })

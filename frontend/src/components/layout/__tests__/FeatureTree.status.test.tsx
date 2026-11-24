@@ -2,10 +2,9 @@
 // underconstrained sketch is yellow (a build warning, never a failure) and an
 // overconstrained one is red, the mark the tree used to hide for both.
 import { describe, it, expect, beforeEach } from 'vitest'
-import { screen } from '@testing-library/react'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import {
-  builtInFeatures, renderSidebar, resetStores, setupEditingStore, sketchFeature,
+  builtInFeatures, featureRow, renderSidebar, resetStores, setupEditingStore, sketchFeature,
 } from './sidebarTestHarness'
 
 beforeEach(() => {
@@ -17,7 +16,7 @@ function renderWithSketchResult(result: Record<string, unknown>) {
   setupEditingStore(features)
   usePartEditorStore.setState({ solveResults: { sk1: result } as never })
   renderSidebar()
-  return screen.getByText('sk1')
+  return featureRow('sk1').querySelector('.feature-name') as HTMLElement
 }
 
 describe('FeatureTree sketch constraint mark', () => {

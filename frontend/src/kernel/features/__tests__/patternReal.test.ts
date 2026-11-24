@@ -384,7 +384,7 @@ describe.skipIf(!oc || !solveBytes)('solvePattern through the builder (real OCC 
         pattern('pt1', 'missing', linear({})),
       ],
     })
-    expect(String(h.res(missing, 'pt1').exception)).toContain('the source feature is not in the document')
+    expect(String(h.res(missing, 'pt1').exception)).toContain('is not in the document')
 
     const suppressed = h.run({
       features: [
@@ -571,7 +571,7 @@ describe.skipIf(!oc || !solveBytes)('solvePattern through the builder (real OCC 
     })
     const missingRes = h.res(missing, 'pt1')
     expect(missingRes.status).toBe('ok')
-    expect(String(missingRes.solver_warning)).toContain('the source feature is not in the document')
+    expect(String(missingRes.solver_warning)).toContain('is not in the document')
     expect(String(missingRes.solver_warning)).toContain('was dropped')
     // The surviving source still repeats once.
     expect(volumeAt(missing, 'pt1', 'body_ex_plate')).toBeCloseTo(4000 - 2 * 80, 6)
@@ -605,7 +605,7 @@ describe.skipIf(!oc || !solveBytes)('solvePattern through the builder (real OCC 
     const res = h.res(r, 'pt1')
     expect(res.status).toBe('exception')
     expect(String(res.exception)).toContain('no source features remain')
-    expect(String(res.exception)).toContain('the source feature is not in the document')
+    expect(String(res.exception)).toContain('is not in the document')
   })
 
   it('applies every source to an explicit target body', () => {

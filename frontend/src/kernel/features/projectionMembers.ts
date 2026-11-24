@@ -16,7 +16,7 @@ import { parseQuery } from '@/utils/query'
 import { isFaceRestriction } from '@/kernel/faceTypes'
 import { entityPointKeys, getDefaultParams, ENTITY_BY_KIND } from '@/registry'
 import type { PartDoc } from '@/types/cad'
-import { entityDisplayName, featureDisplayName } from '@/utils/core/displayNames'
+import { entityDisplayName, entityKindPhrase, featureDisplayName, sketchDisplayName } from '@/utils/core/displayNames'
 
 /** Hex characters of the construction UUID a member id starts with. */
 export const MEMBER_ID_HEX = 8
@@ -295,7 +295,7 @@ export function classifyProjectionSource(
       message: 'the picked source names no sketch in this document',
     }
   }
-  const sourceName = featureDisplayName(sourceFeature, features)
+  const sourceName = sketchDisplayName(sketchId, features)
   if (sourceFeature.kind !== 'sketch') {
     return {
       kind: 'unknown sketch',
@@ -340,10 +340,12 @@ export function classifyProjectionSource(
     const params = sourceFeature.initial?.[entityId] ?? []
     const keys = entityPointKeys(entity.kind, params.length, entity.handles)
     if (keys !== undefined && !keys.has(parsed.vertexKey)) {
+      const name = entityDisplayName(sourceFeature, entityId) ?? 'the picked entity'
+      const kindPhrase = entityKindPhrase(entity.kind) ?? 'the shape'
       return {
         kind: 'unknown entity',
-        message: `projection source ${source} names no vertex '${parsed.vertexKey}' on `
-          + `${sketchId}/${entityId} (${entity.kind}); vertices: ${[...keys].join(', ')}`,
+        message: `${name} of ${sourceName} has no vertex '${parsed.vertexKey}'; `
+          + `${kindPhrase} has: ${[...keys].join(', ')}`,
       }
     }
   }

@@ -27,7 +27,7 @@ export interface FeatureDelta {
   kind: string
   status: string
   // The kernel's own note when the feature built but fell back or skipped
-  // something, e.g. "array ca1 has 5 instances, the boolean uses 4".
+  // something, e.g. "circular pattern 1 has 5 instances, the boolean uses 4".
   warning?: string
   // Cumulative volume and bbox of ALL the live bodies after this feature, not
   // the volume of the body it touched (ppp0105 read it as one body's).

@@ -116,14 +116,14 @@ async function importStep(file: { name: string; size: number; arrayBuffer: () =>
 
 async function openFeatureEdit() {
   fireEvent.click(screen.getByTitle('Feature mode'))
-  await waitFor(() => expect(screen.getByText('Extrude 1')).toBeInTheDocument())
+  await waitFor(() => expect(screen.getByText("extrude 'Extrude 1'")).toBeInTheDocument())
   fireEvent.click(screen.getByTitle('Edit extrude'))
   await waitFor(() => expect(useEditorState.getState().editingFeatureId).toBe('ex1'))
 }
 
 async function openSketchEdit() {
   fireEvent.click(screen.getByTitle('Feature mode'))
-  await waitFor(() => expect(screen.getByText('Sketch 1')).toBeInTheDocument())
+  await waitFor(() => expect(screen.getByText("sketch 'Sketch 1'")).toBeInTheDocument())
   fireEvent.click(screen.getByTitle('Edit sketch'))
   await waitFor(() => expect(useEditorState.getState().editingFeatureId).toBe('sk1'))
 }

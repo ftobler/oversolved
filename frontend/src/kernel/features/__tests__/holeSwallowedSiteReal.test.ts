@@ -23,6 +23,7 @@ import { Repository } from '../../query'
 import { solveHole } from '../hole'
 import type { PartSolid } from '../../types3d'
 import type { OccModule, OccShape } from '../../occ/occTypes'
+import { leakedIds } from '@/testing/warningText'
 
 const oc = await loadOcc()
 
@@ -103,7 +104,8 @@ describe.skipIf(!oc)('a hole site swallowed by an earlier site (real OCC)', () =
     expect(volume).toBeCloseTo(PLATE - COUNTERBORED, 4)
     const warning = String(result.solver_warning)
     expect(warning).toContain("hole: point 2 sits on point 1 and drills nothing; one point per hole is enough, delete point 2")
-    expect(warning).toContain('(point 1 is the projection of @builtin_origin)')
+    expect(warning).toContain('(point 1 is projected from the document origin)')
+    expect(leakedIds(warning)).toEqual([])
     expect(warning).not.toContain("'p'")
     expect(warning).not.toContain("'o'")
     // One message, not two: the pair's generic merge note is replaced by the
@@ -155,5 +157,26 @@ describe.skipIf(!oc)('a hole site swallowed by an earlier site (real OCC)', () =
     )
     expect(warning).not.toMatch(/\bpc\b/)
     expect(warning).not.toMatch(/did not intersect/)
+    expect(leakedIds(warning)).toEqual([])
+  })
+
+  it('names a swallowed site even when the fixture ids are long', () => {
+    // Long ids so the leak tripwire can actually fire: the note and the
+    // projection-source clause must name "point 1"/"point 2", never the rows.
+    const origin = 'originXyZ0123456789'
+    const dupe = 'duplicateXyZ0123456789'
+    const { result } = drill(
+      COUNTERBORE,
+      [{ eid: origin, xy: CENTRE }, { eid: dupe, xy: CENTRE }],
+      [{ id: 'proj_origin', kind: 'projection', target: `$${origin}`, source: '@builtin_origin' }],
+    )
+    expect(result.status).toBe('ok')
+    const warning = String(result.solver_warning)
+    expect(warning).toContain(
+      'hole: point 2 sits on point 1 and drills nothing; one point per hole is enough, delete point 2',
+    )
+    expect(warning).toContain('(point 1 is projected from the document origin)')
+    expect(leakedIds(warning)).toEqual([])
+    for (const id of [origin, dupe]) expect(warning).not.toContain(id)
   })
 })

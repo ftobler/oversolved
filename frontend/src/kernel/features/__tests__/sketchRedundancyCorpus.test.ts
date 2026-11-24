@@ -71,7 +71,9 @@ describe.skipIf(!solveBytes || !topologyBytes)('corpus sketches report zero redu
         // warning-producing replay the repo has, so the names-for-people
         // tripwire reads it here rather than a frozen copy.
         const warning = typeof out.solver_warning === 'string' ? out.solver_warning : ''
-        for (const token of leakedIds(warning)) {
+        const labels = (entry.spec.features ?? [])
+          .map(row => (typeof row.label === 'string' ? row.label : ''))
+        for (const token of leakedIds(warning, labels)) {
           leaks.push(`${entry.label}/${String(feature.id)}: ${token} in ${warning}`)
         }
         if (out.status === 'overconstrained') continue

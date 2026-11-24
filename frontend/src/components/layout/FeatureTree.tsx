@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { featureFailure } from '@/utils/core/featureFailure'
+import { featureDisplayName } from '@/utils/core/displayNames'
 import { markNameClass } from '@/utils/core/statusMark'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
@@ -466,7 +467,7 @@ export function FeatureTree() {
                       className={`feature-name${markNameClass(mark)}${feature.suppressed ? ' feature-name-suppressed' : ''}`}
                       title={mark.message || undefined}
                     >
-                      {feature.label || feature.id}
+                      {isBuiltIn ? (feature.label || feature.id) : featureDisplayName(feature, features)}
                       {varValue !== undefined ? ` = ${varValue}` : ''}
                       {/* The stored display hint, drawn as the same muted unit the
                           editors use. It is a free-form document string, not a

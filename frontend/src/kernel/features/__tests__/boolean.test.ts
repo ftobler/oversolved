@@ -363,7 +363,7 @@ describe('solveBoolean symmetric union/intersect (mock OCC)', () => {
       id: 'b', boolean: { operation: 'union', target: 'body_a', tools: ['body_far', 'body_b'] },
     }, repo, store)
 
-    expect(result.solver_warning).toContain("union: tool 'body_far' does not intersect the target; skipped")
+    expect(result.solver_warning).toContain('union: tool 1 does not intersect the target; skipped')
     expect(mocks.booleanWithDiff).toHaveBeenCalledTimes(1)
     expect(mocks.booleanWithDiff.mock.calls[0][3]).toBe(shapes.b)
     expect(Object.keys(store).sort()).toEqual(['body_a', 'body_c', 'body_far'])

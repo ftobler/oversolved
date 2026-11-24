@@ -2,11 +2,11 @@
 // hand-written sketch/plane expression. It is a body-making feature, so its eye
 // hides the bodies the sweep created; this test pins the row half.
 import { describe, it, expect, beforeEach } from 'vitest'
-import { fireEvent, screen } from '@testing-library/react'
+import { fireEvent } from '@testing-library/react'
 import type { PartFeature } from '@/types/cad'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import {
-  builtInFeatures, makeCallbacks, renderSidebar, resetStores, setupEditingStore as setupStore,
+  builtInFeatures, makeCallbacks, renderSidebar, resetStores, setupEditingStore as setupStore, featureRow,
 } from './sidebarTestHarness'
 
 const sweepFeature: PartFeature = {
@@ -25,7 +25,7 @@ describe('FeatureTree sweep visibility', () => {
     const callbacks = makeCallbacks()
     renderSidebar(callbacks)
 
-    const row = screen.getByText('sw1').closest('.feature-item')!
+    const row = featureRow('sw1')
     const eye = row.querySelector('.feature-visibility-btn')
     expect(eye).not.toBeNull()
     expect(row.querySelector('.feature-visibility-placeholder')).toBeNull()
@@ -40,7 +40,7 @@ describe('FeatureTree sweep visibility', () => {
     usePartEditorStore.setState({ visibleFeatures: new Set([...visible].filter(id => id !== 'sw1')) })
     renderSidebar()
 
-    const row = screen.getByText('sw1').closest('.feature-item')!
+    const row = featureRow('sw1')
     expect(row.classList.contains('invisible')).toBe(true)
   })
 })

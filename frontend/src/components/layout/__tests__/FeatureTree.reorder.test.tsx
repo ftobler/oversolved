@@ -1,12 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { screen, fireEvent, act } from '@testing-library/react'
+import { fireEvent, act } from '@testing-library/react'
 import {
   makeCallbacks, renderSidebar, resetStores, setupRollbackStore as setupStore,
   layoutFeatureRows, pressRow, movePointer, releasePointer, losePointerCapture,
-  builtInFeatures,
+  builtInFeatures, featureRow,
 } from './sidebarTestHarness'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { applyReorderFeatures } from '@/utils/yamlMutations/featureAdmin'
+import { featureDisplayName } from '@/utils/core/displayNames'
 import type { PartDoc, PartFeature } from '@/types/cad'
 
 // Four built-in rows followed by user rows, laid out 40px apart from y = 0 by
@@ -19,7 +20,7 @@ function ex(id: string): PartFeature {
 const features = [...builtInFeatures, sk1, ex('ex1'), ex('ex2')]
 
 function row(id: string): HTMLElement {
-  return screen.getByText(id).closest('.feature-item') as HTMLElement
+  return featureRow(id)
 }
 
 function makeDoc(featureList: PartFeature[], rollback?: number): PartDoc {
@@ -37,8 +38,34 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-describe('feature drag on pointer events', () => {
-  it('reorders when the pointer is released over the rollback bar', () => {
+describe('row names match the warning vocabulary', () => {
+  it('renders the label-or-ordinal name for authored rows', () => {
+    // A default plane label and two unlabelled extrudes: the row text must be
+    // the same name a warning uses, from the one shared helper.
+    const authored: PartFeature[] = [
+      { id: 'pl1', kind: 'plane', label: 'Plane', definition: { mode: 'offset', plane: '@builtin_plane_top', offset: 5 } } as PartFeature,
+      sk1,
+      ex('ex1'),
+      ex('ex2'),
+    ]
+    const rows = [...builtInFeatures, ...authored]
+    setupStore(rows, rows.length)
+    renderSidebar()
+    const nameOf = (id: string) =>
+      document.querySelector(`[data-oversolved-handle="tree:feature:${id}"] .feature-name`)?.textContent
+    expect(nameOf('pl1')).toBe('plane 4')
+    expect(nameOf('sk1')).toBe('sketch 1')
+    expect(nameOf('ex1')).toBe('extrude 1')
+    expect(nameOf('ex2')).toBe('extrude 2')
+    for (const feature of authored) {
+      expect(nameOf(feature.id)).toBe(featureDisplayName(feature, rows))
+    }
+    // The builtins keep their names: they never appear in a warning.
+    expect(nameOf('Top')).toBe('Top')
+  })
+})
+
+describe('feature drag on pointer events', () => {  it('reorders when the pointer is released over the rollback bar', () => {
     // The reported bug: the bar's band accepted no native drop.
     const onMutation = vi.fn()
     setupStore(features, 5)  // bar between sk1 (4) and ex1 (5)

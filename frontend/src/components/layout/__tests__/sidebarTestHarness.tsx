@@ -46,6 +46,14 @@ export function renderSidebar(callbacks: PartEditorCallbacks = makeCallbacks()) 
   )
 }
 
+/** A feature row by its stable tree handle. Rows are named for people now, so a
+ *  test cannot find one by its document id. */
+export function featureRow(id: string): HTMLElement {
+  const el = document.querySelector(`[data-oversolved-handle="tree:feature:${id}"]`)
+  if (el === null) throw new Error(`no feature row for ${id}`)
+  return el as HTMLElement
+}
+
 export const builtInFeatures: PartFeature[] = [
   { id: 'Origin', kind: 'origin' },
   { id: 'Top', kind: 'plane' },

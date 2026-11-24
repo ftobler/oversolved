@@ -71,7 +71,7 @@ describe.skipIf(!oc)('boolean clearance soundness translation (real OCC)', () =>
       } catch (e) {
         message = e instanceof Error ? e.message : String(e)
       }
-      expect(message).toContain("clearance -0.6 could not be applied to tool 'body_u'")
+      expect(message).toContain('clearance -0.6 could not be applied to tool 1')
       expect(message).toContain('Reduce the clearance')
     } finally {
       scope.dispose()

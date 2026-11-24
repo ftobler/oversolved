@@ -103,8 +103,8 @@ describe('rollback position clamping on feature delete', () => {
       expect(screen.queryByText('sketch 1')).not.toBeInTheDocument()
     })
 
-    // Delete second feature
-    const featureItem2 = screen.getByText('ex1').closest('.feature-item')!
+    // Delete second feature (by handle: the surviving row renumbers)
+    const featureItem2 = document.querySelector('[data-oversolved-handle="tree:feature:ex1"]') as HTMLElement
     fireEvent.click(featureItem2.querySelector('.feature-context-btn') as HTMLElement)
     await waitFor(() => {
       expect(screen.getByText('Delete')).toBeInTheDocument()
@@ -112,7 +112,7 @@ describe('rollback position clamping on feature delete', () => {
     fireEvent.click(screen.getByText('Delete'))
 
     await waitFor(() => {
-      expect(screen.queryByText('extrude 1')).not.toBeInTheDocument()
+      expect(document.querySelector('[data-oversolved-handle="tree:feature:ex1"]')).toBeNull()
     })
 
     // Rollback bar should still be visible

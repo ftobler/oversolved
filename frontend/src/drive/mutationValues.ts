@@ -45,7 +45,12 @@ import { evalExpr } from '@/kernel/evalExpr'
 import { MAX_ARRAY_CELLS } from '@/utils/core/arrayLimits'
 import { pickedSketchEntity } from '@/kernel/features/shared/partRef'
 import { circleDrillSiteReason, HOLE_SITE_WORDING } from '@/kernel/features/shared/drillSite'
-import { entityDisplayName, entityKindWord, featureDisplayName } from '@/utils/core/displayNames'
+import {
+  entityDisplayName,
+  entityKindWord,
+  featureDisplayName,
+  positionWord,
+} from '@/utils/core/displayNames'
 import { isFaceProjectionSource, isProjectionPosition } from '@/kernel/features/projectionMembers'
 import { projectionTargetRef } from '@/utils/yamlMutations/freezeProjection'
 import { SelectorError, validateSelector, type SelectKind } from '@/kernel/select'
@@ -196,11 +201,12 @@ function entityIdProblem(raw: RawStep, ctx: ValueContext): string | null {
   if (typeof entityId !== 'string' || entityId.length === 0) {
     return `entityId must be a non-empty id string, got ${json(entityId)}`
   }
-  const sketch = sketchOf(ctx.doc, featureId)
+  const doc = ctx.doc
+  const sketch = sketchOf(doc, featureId)
   if (sketch?.entities?.some(entity => entity.id === entityId)) {
     // mintEntityId takes a supplied id verbatim, so a duplicate would leave two
     // entities under one id and the document-boundary lookup would conflate them.
-    return `entity id ${json(entityId)} already exists in sketch ${featureId}; a sketch cannot hold two entities with the same id, so pick a new id or delete the existing one first`
+    return `the entity id already exists in ${featureDisplayName(sketch, doc?.features ?? [])}; a sketch cannot hold two entities with the same id, so pick a new id or delete the existing one first`
   }
   return null
 }
@@ -633,8 +639,7 @@ function resizeCircle(raw: RawStep, ctx: ValueContext): ValueViolation | null {
   }
   if (entity.kind !== 'circle') {
     return invalid(
-      `${entityDisplayName(sketch, entityId) ?? 'the picked entity'} is a `
-      + `${entityKindWord(entity.kind) ?? 'curve'}, not a circle`,
+      `${entityDisplayName(sketch, entityId) ?? 'the picked entity'} is not a circle`,
     )
   }
   return null
@@ -721,10 +726,11 @@ function deleteRule(raw: RawStep, ctx: ValueContext): ValueViolation | null {
   // caller could not tell it apart from a successful delete. The app's own
   // in-flight targets are always resolved against the doc it holds, so only an
   // external step reaches this with a stale or invented id.
-  for (const target of parsed) {
+  for (const [targetIndex, target] of parsed.entries()) {
+    const targetLabel = `the ${positionWord(targetIndex)} target`
     const sketch = sketchOf(ctx.doc, target.featureId)
     if (sketch === undefined) {
-      return unknownTarget('delete target names no sketch feature in this document')
+      return unknownTarget(`${targetLabel} names no sketch feature in this document`)
     }
     // A face-projection member is a derived entity: it has no row, but its id
     // names an entry of the owning projection's member map and its delete is
@@ -737,7 +743,7 @@ function deleteRule(raw: RawStep, ctx: ValueContext): ValueViolation | null {
     if (!exists) {
       const what = target.kind === 'constraint' ? 'constraint' : 'entity'
       return unknownTarget(
-        `delete target names no ${what} in ${featureDisplayName(sketch, ctx.doc.features ?? [])}`,
+        `${targetLabel} names no ${what} in ${featureDisplayName(sketch, ctx.doc.features ?? [])}`,
       )
     }
   }
@@ -834,10 +840,11 @@ function toggleConstructionRule(raw: RawStep, ctx: ValueContext): ValueViolation
   if (ctx.doc === null) return null
   // The applier skips a target whose sketch or entity is gone, which used to
   // read as a successful toggle that changed nothing.
-  for (const target of parsed) {
+  for (const [targetIndex, target] of parsed.entries()) {
+    const targetLabel = `the ${positionWord(targetIndex)} target`
     const sketch = sketchOf(ctx.doc, target.featureId)
     if (sketch === undefined) {
-      return unknownTarget('toggle_construction target names no sketch feature in this document')
+      return unknownTarget(`${targetLabel} names no sketch feature in this document`)
     }
     if ((sketch.entities ?? []).some(entity => entity.id === target.id)) continue
     // A face projection's member is not a row, and the constraint id is not a
@@ -847,7 +854,7 @@ function toggleConstructionRule(raw: RawStep, ctx: ValueContext): ValueViolation
       && (c.id === target.id || Object.values(c.members ?? {}).includes(target.id)))
     if (faceProjection !== undefined) continue
     return unknownTarget(
-      `toggle_construction target names no entity in ${featureDisplayName(sketch, ctx.doc.features ?? [])}`,
+      `${targetLabel} names no entity in ${featureDisplayName(sketch, ctx.doc.features ?? [])}`,
     )
   }
   return null
@@ -1003,11 +1010,11 @@ function entityIdsProblem(raw: RawStep, ctx: ValueContext, expected: number, ord
   const sketch = sketchOf(ctx.doc, featureId)
   const takenEntity = sketch?.entities?.find(entity => entityIds.includes(entity.id))
   if (takenEntity !== undefined) {
-    return `${label} names entity id ${json(takenEntity.id)}, which already exists in sketch ${featureId}; a sketch cannot hold two entities with the same id, so pick a new id or delete the existing one first`
+    return `${label} names an entity id that already exists in ${featureDisplayName(sketch, ctx.doc.features ?? [])}; a sketch cannot hold two entities with the same id, so pick a new id or delete the existing one first`
   }
   const takenConstraint = sketch?.constraints?.find(constraint => entityIds.includes(constraint.id))
   if (takenConstraint !== undefined) {
-    return `${label} names constraint id ${json(takenConstraint.id)}, which already exists in sketch ${featureId}; entity and constraint ids share one reference namespace, so pick a new id`
+    return `${label} names a constraint id that already exists in ${featureDisplayName(sketch, ctx.doc.features ?? [])}; entity and constraint ids share one reference namespace, so pick a new id`
   }
   return null
 }
@@ -1075,10 +1082,11 @@ function applyOffset(raw: RawStep, ctx: ValueContext): ValueViolation | null {
     return unknownTarget('apply_offset names no sketch feature in this document')
   }
   const entityIds = new Set((sketch.entities ?? []).map(entity => entity.id))
-  for (const id of raw.sourceIds as string[]) {
+  for (const [sourceIndex, id] of (raw.sourceIds as string[]).entries()) {
     if (!entityIds.has(id)) {
       return unknownTarget(
-        `apply_offset source names no entity in ${featureDisplayName(sketch, rows)}; use a bare entity id from that sketch`,
+        `the ${positionWord(sourceIndex)} source names no entity in ` +
+        `${featureDisplayName(sketch, rows)}; use a bare entity id from that sketch`,
       )
     }
   }
@@ -1120,11 +1128,12 @@ function mirrorEntities(raw: RawStep, ctx: ValueContext): ValueViolation | null 
       + 'its params need two distinct finite points',
     )
   }
-  for (const id of raw.sourceIds as string[]) {
+  for (const [sourceIndex, id] of (raw.sourceIds as string[]).entries()) {
     const entity = byId.get(id)
     if (entity === undefined) {
       return unknownTarget(
-        `mirror_entities source names no entity in ${featureDisplayName(sketch, rows)}; use a bare entity id from that sketch`,
+        `the ${positionWord(sourceIndex)} source names no entity in ` +
+        `${featureDisplayName(sketch, rows)}; use a bare entity id from that sketch`,
       )
     }
     if (id === raw.line) {

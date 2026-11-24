@@ -222,10 +222,10 @@ describe('add_projected_entity accepts every vertex key the kind has', () => {
   it('still refuses an unknown suffix and lists the keys the kind really has', () => {
     const d = vertexDoc()
     expect(() => add(d, 'sk2', '@sk1/A/nope')).toThrow(
-      "names no vertex 'nope' on sk1/A (arc); vertices: center, start, end",
+      "arc 1 of sketch 1 has no vertex 'nope'; an arc has: center, start, end",
     )
     expect(() => add(d, 'sk2', '@sk1/l1/center')).toThrow(
-      "names no vertex 'center' on sk1/l1 (line); vertices: start, end",
+      "line 1 of sketch 1 has no vertex 'center'; a line has: start, end",
     )
   })
 })

@@ -93,9 +93,8 @@ function unresolvedPlaneError(bare: string, context: SketchPlaneContext): Error 
     const sketchAt = context.sketchId === undefined ? -1 : order.indexOf(context.sketchId)
     if (sketchAt >= 0 && planeAt > sketchAt) {
       // Name the one-step fix: the anchor form needs no row counting
-      // (Extruder_Support F4 counted seventeen rows by hand). The tree labels an
-      // author's row by its own label when one is set; this sentence uses the
-      // same label-or-ordinal name and names the command without raw ids.
+      // (Extruder_Support F4 counted seventeen rows by hand). The tree renders
+      // the same label-or-ordinal name, and the command is named without ids.
       return new Error(
         `${featureDisplayName(planeFeature, rows)} is defined after ` +
           `${sketchDisplayName(context.sketchId ?? '', rows)}; ` +
@@ -103,13 +102,19 @@ function unresolvedPlaneError(bare: string, context: SketchPlaneContext): Error 
       )
     }
     return new Error(
-      `${featureDisplayName(planeFeature, rows)} did not resolve; ` +
-      'its plane feature comes before this sketch but reported no frame '
+      `${featureDisplayName(planeFeature, rows)} comes before this sketch but reported no frame `
       + '(is it suppressed or failed?)',
     )
   }
+  const bareRow = features?.[bare]
+  if (bareRow !== undefined) {
+    return new Error(
+      `${featureDisplayName(bareRow, featureRows(features ?? {}))} is not a plane; `
+      + 'use a builtin plane, a plane feature, or a face query',
+    )
+  }
   return new Error(
-    `plane '${bare}' did not resolve; use a builtin plane, a plane feature defined before this sketch, or a face query`,
+    'a plane pick did not resolve; use a builtin plane, a plane feature defined before this sketch, or a face query',
   )
 }
 

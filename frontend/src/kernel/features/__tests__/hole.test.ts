@@ -150,7 +150,7 @@ describe('solveHole sketch picks', () => {
     // Names the line and what to pick instead: the old answer was
     // "sketch 'entity:sk:ln' has no plane transform registered".
     expect(() => drill('entity:sk:ln', { sk: { entities: [{ id: 'ln', kind: 'line' }] } }))
-      .toThrow(/line 1 of sketch 1 is a line, which names no drill site/)
+      .toThrow(/line 1 of sketch 1 is not a point, so it names no drill site/)
   })
 
   it('drills only the point a vertex pick names', () => {
@@ -188,7 +188,7 @@ describe('solveHole sketch picks', () => {
     // refused with construction named as the reason, not silently skipped.
     expect(() => drill('entity:sk:pc', {
       sk: { entities: [{ id: 'pc', kind: 'point', construction: true }] },
-    })).toThrow(/point 1 of sketch 1 is a construction point, which names no drill site.*toggle its construction off to drill it/)
+    })).toThrow(/point 1 of sketch 1 is construction geometry, which names no drill site.*toggle its construction off to drill it/)
   })
 
   it('names both remedies when a construction point sits beside a real circle', () => {
@@ -205,12 +205,12 @@ describe('solveHole sketch picks', () => {
     // extrude cut at a size the hole's own `diameter` cannot state. The refusal
     // names the operation that does cut the disc.
     expect(() => drill('entity:sk:c1', { sk: { entities: [{ id: 'c1', kind: 'circle' }] } }))
-      .toThrow(/circle 1 of sketch 1 is a circle, which is not a drill site.*put a point at the circle's centre, or cut the circle with an extrude cut/)
+      .toThrow(/circle 1 of sketch 1 is not a drill site.*put a point at the circle's centre, or cut the circle with an extrude cut/)
     expect(() => drill('vertex:sk:c1:center', { sk: { entities: [{ id: 'c1', kind: 'circle' }] } }))
-      .toThrow(/circle 1 of sketch 1 is a circle, which is not a drill site/)
+      .toThrow(/circle 1 of sketch 1 is not a drill site/)
     const q = makeAncestryQuery(['@sk/c1', 'surface:0', '@sk'], 'flatface')
     expect(() => drill(q, { sk: { entities: [{ id: 'c1', kind: 'circle' }] } }))
-      .toThrow(/circle 1 of sketch 1 is a circle, which is not a drill site/)
+      .toThrow(/circle 1 of sketch 1 is not a drill site/)
   })
 
   it('tells a picked construction circle to clear its flag before the extrude cut', () => {
@@ -218,11 +218,11 @@ describe('solveHole sketch picks', () => {
     // remedy cannot work until the flag is cleared.
     for (const ref of ['entity:sk:cc', 'vertex:sk:cc:center']) {
       expect(() => drill(ref, { sk: { entities: [{ id: 'cc', kind: 'circle', construction: true }] } }))
-        .toThrow(/is a construction circle, which is not a drill site.*clear the circle's construction flag, then cut it with an extrude cut/)
+        .toThrow(/is construction geometry, so it is not a drill site.*clear the circle's construction flag, then cut it with an extrude cut/)
     }
     const q = makeAncestryQuery(['@sk/cc', 'surface:0', '@sk'], 'flatface')
     expect(() => drill(q, { sk: { entities: [{ id: 'cc', kind: 'circle', construction: true }] } }))
-      .toThrow(/is a construction circle.*clear the circle's construction flag, then cut it with an extrude cut/)
+      .toThrow(/is construction geometry.*clear the circle's construction flag, then cut it with an extrude cut/)
   })
 
   it('names the extrude-cut alternative for a circles-only sketch', () => {
@@ -238,7 +238,7 @@ describe('solveHole sketch picks', () => {
     // drill site for its kind, so it must not be told to add a plain point.
     expect(() => drill('entity:sk:ln', {
       sk: { entities: [{ id: 'ln', kind: 'line', construction: true }] },
-    })).toThrow(/line 1 of sketch 1 is a line, which names no drill site; pick a sketch point, or the sketch itself/)
+    })).toThrow(/line 1 of sketch 1 is not a point, so it names no drill site; pick a sketch point, or the sketch itself/)
   })
 
   it('refuses a line vertex pick: line endpoints are not drill sites', () => {
@@ -246,7 +246,7 @@ describe('solveHole sketch picks', () => {
     // of a line is still not a hole site.
     expect(() => drill('vertex:sk:ln:start', {
       sk: { entities: [{ id: 'ln', kind: 'line' }] },
-    })).toThrow(/line 1 of sketch 1 is a line, which names no drill site/)
+    })).toThrow(/line 1 of sketch 1 is not a point, so it names no drill site/)
   })
 
   it('refuses a construction point through the vertex and area pick forms too', () => {
@@ -254,11 +254,11 @@ describe('solveHole sketch picks', () => {
     // refusal must hold there and not only for an `entity:` pick.
     expect(() => drill('vertex:sk:pc:xy', {
       sk: { entities: [{ id: 'pc', kind: 'point', construction: true }] },
-    })).toThrow(/is a construction point, which names no drill site/)
+    })).toThrow(/is construction geometry, which names no drill site/)
     const q = makeAncestryQuery(['@sk/pc', 'surface:0', '@sk'], 'flatface')
     expect(() => drill(q, {
       sk: { entities: [{ id: 'pc', kind: 'point', construction: true }] },
-    })).toThrow(/is a construction point, which names no drill site/)
+    })).toThrow(/is construction geometry, which names no drill site/)
   })
 
   it('refuses an entity the sketch does not have', () => {

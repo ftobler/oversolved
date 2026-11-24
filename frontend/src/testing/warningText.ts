@@ -11,11 +11,15 @@ const VOCABULARY = new Set(
   [...COMMAND_NAMES, ...Object.keys(MUTATION_CATALOG)].map(word => word.toLowerCase()),
 )
 
-/** The id-looking tokens in a sentence, minus the vocabulary above. */
-export function leakedIds(text: string): string[] {
+/** The id-looking tokens in a sentence, minus the vocabulary above and the
+ *  document's own labels. A label is user text (a feature may be called
+ *  `Rectangular plate 2026`), so a token inside one is not a leaked id. */
+export function leakedIds(text: string, allowedLabels: readonly string[] = []): string[] {
+  const labels = allowedLabels.map(label => label.trim()).filter(label => label !== '')
   return (text.match(/[A-Za-z0-9_-]{16,}/g) ?? [])
     .filter(token => {
       const lower = token.toLowerCase()
-      return !PROSE_WORDS.has(lower) && !VOCABULARY.has(lower)
+      if (PROSE_WORDS.has(lower) || VOCABULARY.has(lower)) return false
+      return !labels.some(label => label.includes(token))
     })
 }

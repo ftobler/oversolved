@@ -391,7 +391,7 @@ describe.skipIf(!hasOcc)('bodySplit: the leaves that used to leak', () => {
     // A union pick that connects to nothing is skipped, like a cut's: the body
     // is not consumed and no second part is minted for it.
     expect(res.body_ids).toEqual(['body_a'])
-    expect(res.solver_warning).toContain("union: tool '@body_b' does not intersect the target; skipped")
+    expect(res.solver_warning).toContain('union: tool 1 does not intersect the target; skipped')
     expect(Object.keys(r.store).sort()).toEqual(['body_a', 'body_b'])
     expectOnePartEach(r, 2)
     r.scope.dispose()

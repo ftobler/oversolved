@@ -90,7 +90,7 @@ describe('pickedPointSite', () => {
     expect(() => pickedPointSite(
       entities, 'sk', 'pc', INSTANCE_SITE_WORDING, naming,
     )).toThrow(
-      "point 1 of sketch 'Plate' is a construction point, which names no target; " +
+      "point 1 of sketch 'Plate' is construction geometry, which names no target; " +
       'construction geometry is reference only; toggle its construction off to copy the source onto it, or pick the sketch itself',
     )
   })
@@ -99,19 +99,19 @@ describe('pickedPointSite', () => {
     expect(() => pickedPointSite(
       entities, 'sk', 'ci', INSTANCE_SITE_WORDING, naming,
     )).toThrow(
-      "circle 1 of sketch 'Plate' is a circle, which is not a target: an instance pattern copies the source onto points; " +
+      "circle 1 of sketch 'Plate' is not a target: an instance pattern copies the source onto points; " +
       "put a point at the circle's centre, or cut the circle with an extrude cut",
     )
   })
 
   it('refuses a line by name in both wordings', () => {
     expect(() => pickedPointSite(entities, 'sk', 'ln', HOLE_SITE_WORDING, naming)).toThrow(
-      "line 1 of sketch 'Plate' is a line, which names no drill site; pick a sketch point, or the sketch itself",
+      "line 1 of sketch 'Plate' is not a point, so it names no drill site; pick a sketch point, or the sketch itself",
     )
     expect(() => pickedPointSite(
       entities, 'sk', 'ln', INSTANCE_SITE_WORDING, naming,
     )).toThrow(
-      "line 1 of sketch 'Plate' is a line, which names no target; pick a sketch point, or list the targets one by one",
+      "line 1 of sketch 'Plate' is not a point, so it names no target; pick a sketch point, or list the targets one by one",
     )
   })
 

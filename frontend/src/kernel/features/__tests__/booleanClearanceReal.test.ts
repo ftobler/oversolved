@@ -302,7 +302,7 @@ describe.skipIf(!oc)('boolean clearance (real OCC)', () => {
       } catch (e) {
         message = e instanceof Error ? e.message : String(e)
       }
-      expect(message).toContain("clearance -0.6 could not be applied to tool 'body_u'")
+      expect(message).toContain('clearance -0.6 could not be applied to tool 1')
       expect(message).toContain('does not intersect the target')
       expect(message).not.toContain('nudge')
     } finally {
