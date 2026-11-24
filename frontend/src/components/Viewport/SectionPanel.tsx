@@ -19,6 +19,7 @@ import { usePartEditorStore } from '@/stores/partEditorStore'
 import { queryLabel } from '@/utils/query/queryLabel'
 import { evalExpr } from '@/kernel/evalExpr'
 import { ExpressionInput } from '@/components/editors/widgets/ExpressionInput'
+import { CardHeader } from '@/components/shared/CardHeader'
 import { StatusMessage } from '@/components/shared/StatusMessage'
 import '@/components/layout/Glass.css'
 import '@/components/Viewport/SectionPanel.css'
@@ -113,19 +114,22 @@ export function SectionPanel({ allowPick = true, lengthUnit = 'mm' }: SectionPan
 
   return (
     <div className="glass-panel feature-edit-panel section-panel">
-      <div className="feature-edit-panel-header">
-        <img className="feature-icon" src={sectionIcon} alt="" />
-        <span className="feature-edit-panel-title section-panel-title">Section</span>
-        <button
-          type="button"
-          className="section-panel-exit"
-          title="Exit section view"
-          aria-label="Exit section view"
-          onClick={() => setEnabled(false)}
-        >
-          <img src={cancelIcon} alt="" />
-        </button>
-      </div>
+      <CardHeader
+        icon={sectionIcon}
+        title="Section"
+        titleClassName="section-panel-title"
+        actions={(
+          <button
+            type="button"
+            className="section-panel-exit"
+            title="Exit section view"
+            aria-label="Exit section view"
+            onClick={() => setEnabled(false)}
+          >
+            <img src={cancelIcon} alt="" />
+          </button>
+        )}
+      />
 
       <div className="feature-edit-panel-body section-panel-body">
         {!enabled && disabledReason !== null && (

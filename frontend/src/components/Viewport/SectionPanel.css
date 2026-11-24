@@ -1,6 +1,7 @@
 /* The section view's card. It borrows the feature card's frame from Part.css
-   (glass-panel feature-edit-panel) so the right column reads as one family, and
-   only overrides what makes it clear this card is not a feature. */
+   (glass-panel feature-edit-panel) and the shared CardHeader row so the right
+   column reads as one family, and only overrides what makes it clear this card
+   is not a feature. */
 
 .section-panel-body {
   display: flex;
@@ -12,8 +13,9 @@
 }
 
 /* A neutral title against the feature card's pink: the icon and the controls
-   say "section view", not "something that will be committed". */
-.section-panel-title {
+   say "section view", not "something that will be committed". The two classes
+   carry it past the shared title rule whatever order the sheets load in. */
+.card-header-title.section-panel-title {
   color: #cfcfcf;
 }
 

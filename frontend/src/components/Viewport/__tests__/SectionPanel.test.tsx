@@ -73,7 +73,7 @@ describe('SectionPanel Exit', () => {
     useSectionStore.setState({ enabled: true, picking: true, pickError: 'missed' })
     render(<SectionPanel />)
 
-    const header = document.querySelector('.feature-edit-panel-header')!
+    const header = document.querySelector('.card-header')!
     const exit = screen.getByRole('button', { name: 'Exit section view' })
     expect(header.lastElementChild).toBe(exit)
 

@@ -115,6 +115,15 @@
   color: #fff;
 }
 
+/* A disabled verdict still draws at its size and colour: the bug report's
+   Submit turns into a disabled "Submitting..." state rather than vanishing. */
+.feature-ok-btn:disabled,
+.feature-cancel-btn:disabled,
+.feature-neutral-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 /* The card's field primitives are shared too: the value dialog, the assembly
    editor's mate cards and every feature form use them, and none may depend on
    pages/Part.css. Layout that is specific to the card (the 80px label column in

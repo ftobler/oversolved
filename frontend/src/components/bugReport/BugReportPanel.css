@@ -23,31 +23,8 @@
   max-height: calc(100dvh - 80px);
 }
 
-.bug-report-panel-header {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 8px;
-  border-bottom: 1px solid var(--glass-border);
-  flex-shrink: 0;
-}
-
-.bug-report-icon {
-  font-size: 18px;
-  color: #e060b0;
-}
-
-.bug-report-panel-title {
-  flex: 1 1 auto;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 14px;
-  color: #e060b0;
-}
-
-.bug-report-submit,
-.bug-report-discard,
+/* The card's header row is the shared CardHeader; its actions are the shared
+   verdict buttons from Glass.css. Only the body's own text buttons stay here. */
 .bug-report-add-set,
 .bug-report-set-action {
   background: transparent;
@@ -60,37 +37,10 @@
   padding: 3px 8px;
 }
 
-.bug-report-submit:hover,
-.bug-report-discard:hover,
 .bug-report-add-set:hover,
 .bug-report-set-action:hover {
   background: var(--glass-hover-bg);
   border-color: #b83b88;
-}
-
-.bug-report-submit:disabled,
-.bug-report-discard:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.bug-report-submit {
-  border-color: #4fc3f7;
-  color: #9adcff;
-}
-
-.bug-report-close {
-  background: none;
-  border: none;
-  color: #999;
-  cursor: pointer;
-  font-size: 18px;
-  line-height: 1;
-  padding: 0 2px;
-}
-
-.bug-report-close:hover {
-  color: #eee;
 }
 
 .bug-report-panel-body {

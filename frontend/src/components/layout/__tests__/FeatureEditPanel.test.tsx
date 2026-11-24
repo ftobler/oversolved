@@ -127,7 +127,7 @@ describe('FeatureEditPanel', () => {
   it('puts Rename left of OK and Cancel with the rename icon and name', () => {
     renderPanel([extrudeFeature], 'ex1', { onRequestRename: vi.fn() })
 
-    const header = document.querySelector('.feature-edit-panel-header') as HTMLElement
+    const header = document.querySelector('.card-header') as HTMLElement
     const titles = Array.from(header.querySelectorAll('button')).map(b => b.getAttribute('title'))
     expect(titles).toEqual(['Rename', 'OK', 'Cancel'])
 

@@ -7,6 +7,10 @@ import { useEditorState } from '@/hooks/useEditorState'
 import { reportPick, useBugReportStore, type PickContext } from '@/stores/bugReportStore'
 import { findReferences } from '@/utils/core/reportReferences'
 import type { PartFeature } from '@/types/cad'
+import okIcon from '@/assets/icons/dialog-ok.svg'
+import discardIcon from '@/assets/icons/context-delete.svg'
+import closeIcon from '@/assets/icons/dialog-cancel.svg'
+import bugIcon from '@/assets/icons/bug-report.svg'
 
 const FEATURES: PartFeature[] = [
   { id: 'sk1', kind: 'sketch', label: 'Sketch 1' },
@@ -81,7 +85,7 @@ describe('BugReportPanel', () => {
       </div>,
     )
 
-    fireEvent.click(screen.getByText('Discard'))
+    fireEvent.click(screen.getByRole('button', { name: 'Discard' }))
 
     const dialog = document.querySelector('.dialog-component-overlay')
     expect(dialog).not.toBeNull()
@@ -92,7 +96,7 @@ describe('BugReportPanel', () => {
   it('refuses to submit without a title', async () => {
     const send = vi.spyOn(backendBundle.telemetry, 'send').mockResolvedValue()
     render(<BugReportPanel canPick />)
-    fireEvent.click(screen.getByText('Submit'))
+    fireEvent.click(screen.getByRole('button', { name: 'Submit' }))
     expect(await screen.findByText('Title is required')).toBeInTheDocument()
     expect(send).not.toHaveBeenCalled()
   })
@@ -104,7 +108,7 @@ describe('BugReportPanel', () => {
     useEditorState.setState({ rollbackPosition: 3 })
 
     render(<BugReportPanel canPick />)
-    fireEvent.click(screen.getByText('Submit'))
+    fireEvent.click(screen.getByRole('button', { name: 'Submit' }))
 
     await waitFor(() => expect(send).toHaveBeenCalledTimes(1))
     expect(sentReport(send)).toMatchObject({
@@ -126,7 +130,7 @@ describe('BugReportPanel', () => {
 
     render(<BugReportPanel canPick />)
     fireEvent.click(screen.getByLabelText(/Document/))
-    fireEvent.click(screen.getByText('Submit'))
+    fireEvent.click(screen.getByRole('button', { name: 'Submit' }))
 
     await waitFor(() => expect(send).toHaveBeenCalledTimes(1))
     const report = sentReport(send)
@@ -146,7 +150,7 @@ describe('BugReportPanel', () => {
     const historyBox = screen.getByLabelText(/Edit history/) as HTMLInputElement
     expect(historyBox.checked).toBe(true)
     fireEvent.click(historyBox)
-    fireEvent.click(screen.getByText('Submit'))
+    fireEvent.click(screen.getByRole('button', { name: 'Submit' }))
 
     await waitFor(() => expect(send).toHaveBeenCalledTimes(1))
     expect(sentReport(send)).not.toHaveProperty('history')
@@ -169,7 +173,7 @@ describe('BugReportPanel', () => {
     useBugReportStore.getState().setAttachments({ history: true, historyCount: 3 })
 
     render(<BugReportPanel canPick />)
-    fireEvent.click(screen.getByText('Submit'))
+    fireEvent.click(screen.getByRole('button', { name: 'Submit' }))
 
     await waitFor(() => expect(send).toHaveBeenCalledTimes(1))
     const history = sentReport(send).history as { mutation: { position: number }; label: string }[]
@@ -182,7 +186,7 @@ describe('BugReportPanel', () => {
     vi.spyOn(backendBundle.telemetry, 'send').mockRejectedValue(new Error('offline'))
     useBugReportStore.getState().setText({ title: 'Will fail' })
     render(<BugReportPanel canPick />)
-    fireEvent.click(screen.getByText('Submit'))
+    fireEvent.click(screen.getByRole('button', { name: 'Submit' }))
 
     expect(await screen.findByText(/Failed to submit/)).toBeInTheDocument()
     expect(screen.getByText('Report a bug')).toBeInTheDocument()
@@ -193,7 +197,7 @@ describe('BugReportPanel', () => {
     vi.spyOn(backendBundle.telemetry, 'send').mockResolvedValue()
     useBugReportStore.getState().setText({ title: 'One shot' })
     render(<BugReportPanel canPick />)
-    fireEvent.click(screen.getByText('Submit'))
+    fireEvent.click(screen.getByRole('button', { name: 'Submit' }))
 
     await waitFor(() => expect(useBugReportStore.getState().open).toBe(false))
     expect(useBugReportStore.getState().title).toBe('')
@@ -333,11 +337,66 @@ describe('BugReportPanel', () => {
   it('asks before discarding a non-empty draft and keeps it when refused', () => {
     useBugReportStore.getState().setText({ title: 'Keep me' })
     render(<BugReportPanel canPick />)
-    fireEvent.click(screen.getByText('Discard'))
+    fireEvent.click(screen.getByRole('button', { name: 'Discard' }))
     expect(screen.getByText('Discard bug report')).toBeInTheDocument()
 
     fireEvent.click(screen.getByText('Keep editing'))
     expect(useBugReportStore.getState().title).toBe('Keep me')
     expect(useBugReportStore.getState().open).toBe(true)
+  })
+})
+
+describe('BugReportPanel header', () => {
+  it('draws the shared card header with the tinted bug image, not a font glyph', () => {
+    const { container } = render(<BugReportPanel canPick />)
+
+    const header = container.querySelector('.card-header') as HTMLElement
+    expect(header).not.toBeNull()
+    const image = header.querySelector('img') as HTMLImageElement
+    expect(image.classList.contains('feature-icon')).toBe(true)
+    expect(image.getAttribute('src')).toBe(bugIcon)
+    expect(header.querySelector('.card-header-title')!.textContent).toBe('Report a bug')
+    // The card used to show the Material Icons `bug_report` glyph here.
+    expect(container.querySelector('.material-icons-outlined')).toBeNull()
+    expect(container.querySelector('.bug-report-panel-header')).toBeNull()
+  })
+
+  it('puts green tick, red bin and neutral cross in the header in that order', () => {
+    render(<BugReportPanel canPick />)
+
+    const header = document.querySelector('.card-header') as HTMLElement
+    const buttons = Array.from(header.querySelectorAll('button'))
+    expect(buttons.map(button => button.getAttribute('title'))).toEqual(['Submit', 'Discard', 'Close'])
+    expect(buttons.map(button => button.className)).toEqual([
+      'feature-ok-btn',
+      'feature-cancel-btn',
+      'feature-neutral-btn',
+    ])
+    expect(buttons.map(button => button.querySelector('img')!.getAttribute('src'))).toEqual([
+      okIcon,
+      discardIcon,
+      closeIcon,
+    ])
+    // The close button keeps the report-specific name for the whole card.
+    expect(screen.getByRole('button', { name: 'Close report' })).toBe(buttons[2])
+  })
+
+  it('turns Submit into a disabled "Submitting..." while the report is in flight', async () => {
+    let finishSend: () => void = () => {}
+    vi.spyOn(backendBundle.telemetry, 'send').mockReturnValue(new Promise<void>(resolve => {
+      finishSend = resolve
+    }))
+    useBugReportStore.getState().setText({ title: 'Slow report' })
+
+    render(<BugReportPanel canPick />)
+    fireEvent.click(screen.getByRole('button', { name: 'Submit' }))
+
+    const busy = await screen.findByRole('button', { name: 'Submitting...' })
+    expect(busy).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Discard' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Close report' })).toBeDisabled()
+
+    finishSend()
+    await waitFor(() => expect(useBugReportStore.getState().open).toBe(false))
   })
 })

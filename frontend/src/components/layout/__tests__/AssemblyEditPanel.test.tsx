@@ -75,8 +75,8 @@ describe('AssemblyEditPanel', () => {
   it('shows the open instance with its part icon, display name and fields', () => {
     const { container } = renderPanel({ editing: { kind: 'instance', handle: 'p1' } })
 
-    expect(container.querySelector('.feature-edit-panel-title')!.textContent).toBe('Bracket')
-    expect(container.querySelector('.feature-edit-panel-header img')!.getAttribute('src')).toBe(featurePartIcon)
+    expect(container.querySelector('.card-header-title')!.textContent).toBe('Bracket')
+    expect(container.querySelector('.card-header img')!.getAttribute('src')).toBe(featurePartIcon)
     // The real instance editor, not a stub: its Fixed box and the position row.
     expect(screen.getByLabelText('Fixed')).toBeInTheDocument()
     expect(screen.getByLabelText('Position X, millimetres')).toBeInTheDocument()
@@ -87,7 +87,7 @@ describe('AssemblyEditPanel', () => {
       editing: { kind: 'instance', handle: 'p1' },
       labelFor: undefined,
     })
-    expect(container.querySelector('.feature-edit-panel-title')!.textContent).toBe('doc-p1')
+    expect(container.querySelector('.card-header-title')!.textContent).toBe('doc-p1')
   })
 
   it('wires OK and Cancel to the instance pair, and only to it', () => {
@@ -104,15 +104,15 @@ describe('AssemblyEditPanel', () => {
   it('shows the open mate with its kind icon, label and the mate editor', () => {
     const { container } = renderPanel({ editing: { kind: 'mate', id: 'm1' } })
 
-    expect(container.querySelector('.feature-edit-panel-title')!.textContent).toBe('Hinge')
-    expect(container.querySelector('.feature-edit-panel-header img')!.getAttribute('src')).toBe(mateRotatingIcon)
+    expect(container.querySelector('.card-header-title')!.textContent).toBe('Hinge')
+    expect(container.querySelector('.card-header img')!.getAttribute('src')).toBe(mateRotatingIcon)
     expect(screen.getAllByText('p1 / a1')).toHaveLength(1)
     expect(container.querySelector('.mate-editor')).not.toBeNull()
   })
 
   it('names an unlabeled legacy mate by its kind', () => {
     const { container } = renderPanel({ editing: { kind: 'mate', id: 'm2' } })
-    expect(container.querySelector('.feature-edit-panel-title')!.textContent).toBe('Fixed')
+    expect(container.querySelector('.card-header-title')!.textContent).toBe('Fixed')
     // Its two unpicked slots are the chips' own prompt, unchanged from the row.
     expect(screen.getAllByText('Pick a reference')).toHaveLength(2)
   })
@@ -133,7 +133,7 @@ describe('AssemblyEditPanel', () => {
   it('puts Rename left of OK and Cancel on the mate card, with the rename icon', () => {
     const { container } = renderPanel({ editing: { kind: 'mate', id: 'm1' } })
 
-    const header = container.querySelector('.feature-edit-panel-header') as HTMLElement
+    const header = container.querySelector('.card-header') as HTMLElement
     const titles = Array.from(header.querySelectorAll('button')).map(b => b.getAttribute('title'))
     expect(titles).toEqual(['Rename', 'OK', 'Cancel'])
 

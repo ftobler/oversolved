@@ -4,6 +4,7 @@ import type { AssemblySolveStatus } from '@/kernel/solveAssembly'
 import { mateFailure, partFailure, type AssemblyMark } from '@/utils/core/assemblyStatus'
 import type { EditingSubject } from '@/utils/assemblyEditingSubject'
 import { MATE_KIND_LABELS } from '@/utils/mateKinds'
+import { CardHeader } from '@/components/shared/CardHeader'
 import { StatusPanel } from '@/components/shared/StatusPanel'
 import { MATE_KIND_ICONS } from '@/components/layout/mateKindIcons'
 import '@/components/layout/Glass.css'
@@ -22,10 +23,10 @@ import featurePartIcon from '@/assets/icons/feature-part.svg'
  *
  * Presentational: the subject, the doc data it resolves against and both editor
  * bodies arrive as props, so the panel (and its test) needs no viewport and no
- * store. The card reuses the part editor's `.feature-edit-panel*` classes, so
- * the two editors' open cards read identically; the subject's own status mark
- * is a separate card after it in the same column, exactly as a feature editor
- * draws it.
+ * store. The card reuses the part editor's `.feature-edit-panel` frame and the
+ * shared `CardHeader` row, so the two editors' open cards read identically; the
+ * subject's own status mark is a separate card after it in the same column,
+ * exactly as a feature editor draws it.
  */
 export interface AssemblyEditPanelProps {
   editing: EditingSubject
@@ -67,27 +68,32 @@ function EditCard({ icon, alt, title, mark, onCommit, onCancel, onRename, childr
   return (
     <>
       <div className="glass-panel feature-edit-panel">
-        <div className="feature-edit-panel-header">
-          <img className="feature-icon" src={icon} alt={alt} />
-          <span className="feature-edit-panel-title">{title}</span>
-          {onRename && (
-            <button
-              type="button"
-              className="feature-rename-btn"
-              onClick={onRename}
-              title="Rename"
-              aria-label="Rename"
-            >
-              <img src={renameIcon} alt="" />
-            </button>
+        <CardHeader
+          icon={icon}
+          iconAlt={alt}
+          title={title}
+          actions={(
+            <>
+              {onRename && (
+                <button
+                  type="button"
+                  className="feature-rename-btn"
+                  onClick={onRename}
+                  title="Rename"
+                  aria-label="Rename"
+                >
+                  <img src={renameIcon} alt="" />
+                </button>
+              )}
+              <button className="feature-ok-btn" onClick={onCommit} title="OK">
+                <img src={okIcon} alt="OK" />
+              </button>
+              <button className="feature-cancel-btn" onClick={onCancel} title="Cancel">
+                <img src={cancelIcon} alt="Cancel" />
+              </button>
+            </>
           )}
-          <button className="feature-ok-btn" onClick={onCommit} title="OK">
-            <img src={okIcon} alt="OK" />
-          </button>
-          <button className="feature-cancel-btn" onClick={onCancel} title="Cancel">
-            <img src={cancelIcon} alt="Cancel" />
-          </button>
-        </div>
+        />
         <div className="feature-edit-panel-body">
           {children}
         </div>

@@ -1,0 +1,25 @@
+/* The shared card header row (components/shared/CardHeader.tsx). It used to be
+   two rules in pages/Part.css, which only the part and assembly pages import;
+   the bug report card is also mounted by AppHeader on pages that never load
+   that sheet, so the row travels with the component instead. The icon tint and
+   the verdict buttons live in Glass.css beside this file, shared with the tree
+   rows and the context menu. */
+.card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--glass-border);
+  flex-shrink: 0;
+}
+
+.card-header-title {
+  flex: 1 1 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  color: #e060b0;
+  /* #root centers text app-wide; a header line reads left-aligned. */
+  text-align: left;
+}

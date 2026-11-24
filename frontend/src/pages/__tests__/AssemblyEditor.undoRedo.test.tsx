@@ -558,7 +558,7 @@ describe('AssemblyEditor undo/redo', () => {
     await tick()
 
     expect(findMate(useAssemblyStore.getState().doc!, id)!.label).toBe('Boss')
-    expect(document.querySelector('.feature-edit-panel-title')!.textContent).toBe('Boss')
+    expect(document.querySelector('.card-header-title')!.textContent).toBe('Boss')
     expect(screen.getByText('Boss', { selector: '.feature-name' })).toBeInTheDocument()
     expect(undoStack().map(e => e.label)).toEqual(['Add mate', 'Rename mate'])
 
