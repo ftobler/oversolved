@@ -64,6 +64,8 @@ const F = vi.hoisted(() => {
 const h = vi.hoisted(() => ({
   requestSolve: vi.fn(),
   handleMutation: vi.fn(),
+  commitEditSession: vi.fn(),
+  cancelEditSession: vi.fn(),
   saveDoc: vi.fn(async () => true),
   renameDoc: vi.fn(async () => true),
   setError: vi.fn(),
@@ -91,6 +93,8 @@ vi.mock('@/hooks/usePartDoc', async () =>
     solveResults: () => F.solve,
     requestSolve: h.requestSolve,
     handleMutation: h.handleMutation,
+    commitEditSession: h.commitEditSession,
+    cancelEditSession: h.cancelEditSession,
     saveDoc: h.saveDoc,
     renameDoc: h.renameDoc,
     setError: h.setError,
@@ -143,7 +147,7 @@ vi.mock('@/components/layout/PartDocumentPanel', async () => {
     PartDocumentPanel: () => {
       const features = useStore(s => s.features)
       const parts = useStore(s => s.parts)
-      const { onRightClick, onRebuild, onSetRollbackPosition, onRename } = usePartEditorCallbacks()
+      const { onRightClick, onRebuild, onSetRollbackPosition, onRename, onEditCommit, onEditCancel } = usePartEditorCallbacks()
       return (
         <div data-testid="sidebar">
           {features.map(f => (
@@ -155,6 +159,8 @@ vi.mock('@/components/layout/PartDocumentPanel', async () => {
           <button data-testid="sidebar-rebuild" onClick={() => onRebuild?.()} />
           <button data-testid="sidebar-rollback" onClick={() => onSetRollbackPosition(2)} />
           <button data-testid="sidebar-rename" onClick={() => onRename?.('sketch1', 'New Name')} />
+          <button data-testid="sidebar-edit-ok" onClick={() => onEditCommit()} />
+          <button data-testid="sidebar-edit-cancel" onClick={() => onEditCancel()} />
         </div>
       )
     },
@@ -713,28 +719,66 @@ describe('Part page actions', () => {
     expect(h.handleMutation).toHaveBeenCalledWith({ type: 'rename_part', bodyId: 'body-1', name: 'Base Part' })
   })
 
-  it('the parts-row Delete opens a prefilled Delete Part edit card instead of committing', () => {
-    renderPart()
+  type AddedDelete = { type: string; featureId: string; bodies: string[]; insertAt: number }
 
+  // The page harness stubs the mutation applier, so the doc never gains the
+  // feature; these tests pin the add mutation and the session it opens instead
+  // of a post-solve document state.
+  function openPartsRowDeleteCard(): AddedDelete {
+    renderPart()
     fireEvent.click(screen.getByTestId('body-ctx-body-1'))
     fireEvent.click(menuItem('Delete'))
-
-    // The same add-and-edit path the toolbar uses, seeded with this part.
     const add = h.handleMutation.mock.calls
       .map(([m]) => m as { type?: string })
-      .find(m => m.type === 'add_delete_body') as
-      | { type: string; featureId: string; bodies: string[]; insertAt: number }
-      | undefined
+      .find(m => m.type === 'add_delete_body') as AddedDelete | undefined
     expect(add).toBeDefined()
-    expect(add!.bodies).toEqual(['@body-1'])
-    expect(add!.featureId).toBeTruthy()
+    return add!
+  }
+
+  it('the parts-row Delete opens a prefilled Delete Part edit card instead of committing', () => {
+    const add = openPartsRowDeleteCard()
+
+    // The same add-and-edit path the toolbar uses, seeded with this part.
+    expect(add.bodies).toEqual(['@body-1'])
+    expect(add.featureId).toBeTruthy()
     expect(add).not.toHaveProperty('label')
     expect(h.handleMutation).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'delete_feature' }))
-    expect(useEditorState.getState().editingFeatureId).toBe(add!.featureId)
+    expect(useEditorState.getState().editingFeatureId).toBe(add.featureId)
     expect(useSketchEditorStore.getState().activePickField).toEqual({
-      featureId: add!.featureId, field: 'bodies', multi: true, names: 'body',
+      featureId: add.featureId, field: 'bodies', multi: true, names: 'body',
     })
     expect(screen.queryByTestId('context-menu')).toBeNull()
+  })
+
+  it('OK folds the prefilled Delete Part add into one committed session', () => {
+    openPartsRowDeleteCard()
+    const solvesBefore = h.requestSolve.mock.calls.length
+
+    fireEvent.click(screen.getByTestId('sidebar-edit-ok'))
+
+    expect(h.commitEditSession).toHaveBeenCalledTimes(1)
+    expect(h.cancelEditSession).not.toHaveBeenCalled()
+    expect(h.requestSolve.mock.calls.length).toBeGreaterThan(solvesBefore)
+    // One add mutation, no immediate delete_feature: the solve folds it in.
+    expect(h.handleMutation.mock.calls.filter(([m]) => (m as { type?: string }).type === 'add_delete_body'))
+      .toHaveLength(1)
+    expect(h.handleMutation).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'delete_feature' }))
+    expect(useEditorState.getState().editingFeatureId).toBeNull()
+    expect(useSketchEditorStore.getState().activePickField).toBeNull()
+  })
+
+  it('Cancel rewinds the prefilled Delete Part add with no second mutation', () => {
+    openPartsRowDeleteCard()
+
+    fireEvent.click(screen.getByTestId('sidebar-edit-cancel'))
+
+    expect(h.cancelEditSession).toHaveBeenCalledTimes(1)
+    expect(h.commitEditSession).not.toHaveBeenCalled()
+    expect(h.handleMutation.mock.calls.filter(([m]) => (m as { type?: string }).type === 'add_delete_body'))
+      .toHaveLength(1)
+    expect(h.handleMutation).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'delete_feature' }))
+    expect(useEditorState.getState().editingFeatureId).toBeNull()
+    expect(useSketchEditorStore.getState().activePickField).toBeNull()
   })
 
   it('a viewport right-click over a body face hides that body', () => {

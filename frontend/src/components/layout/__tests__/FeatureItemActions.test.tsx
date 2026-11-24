@@ -70,6 +70,9 @@ describe('FeatureItemActions click isolation', () => {
     fireEvent.click(document.querySelector('.feature-context-btn')!)
     expect(handlers.onToggleVisibility).toHaveBeenCalledWith('f1')
     expect(handlers.onRightClick).toHaveBeenCalledTimes(1)
+    // The row names the tree surface explicitly; without it the page would
+    // fall back to the viewport board and show Color and Export on a feature.
+    expect(handlers.onRightClick).toHaveBeenCalledWith(expect.any(Array), 'f1', 'tree')
     expect(rowClick).not.toHaveBeenCalled()
   })
 

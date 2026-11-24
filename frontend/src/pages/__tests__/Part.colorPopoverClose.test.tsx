@@ -107,7 +107,7 @@ vi.mock('../../components/layout/PartDocumentPanel', () => ({
       <div>
         <button
           data-testid="context-btn-body-1"
-          onClick={(e) => onRightClick([e.clientX, e.clientY], 'body:body-1')}
+          onClick={(e) => onRightClick([e.clientX, e.clientY], 'body:body-1', 'parts')}
         >menu</button>
         <button
           data-testid="preview-color"
