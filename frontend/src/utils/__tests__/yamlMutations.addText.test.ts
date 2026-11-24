@@ -156,7 +156,7 @@ describe('the add_text drive rule', () => {
     const doc = makeDoc(makeSketch('sk'))
     const violation = mutationValueViolation('add_text', { type: 'add_text', featureId: 'nope', text: 'Hi' },
       { ...noDoc, doc })
-    expect(violation).toEqual({ code: 'unknown-target', message: 'add_text names no sketch feature "nope"' })
+    expect(violation).toEqual({ code: 'unknown-target', message: 'add_text names no sketch feature in this document' })
     expect(mutationValueViolation('add_text', { type: 'add_text', featureId: 'sk', text: 'Hi' }, { ...noDoc, doc }))
       .toBeNull()
   })

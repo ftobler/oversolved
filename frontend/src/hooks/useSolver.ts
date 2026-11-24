@@ -124,6 +124,7 @@ export function useSolver(
       projection_members?: Record<string, import('@/types/cad').ProjectionMemberReportData>
       dropped_constraints?: import('@/types/cad').DroppedSketchConstraint[]
       dof?: number
+      free_entities?: string[]
     }>
 
     const cloned: PartDoc = structuredClone(d)
@@ -217,6 +218,9 @@ export function useSolver(
           // app unmarked while the MCP reply showed yellow.
           ...(feature.solver_warning !== undefined && { solver_warning: feature.solver_warning }),
           ...(feature.dof !== undefined && { dof: feature.dof }),
+          // The free ids beside the readable warning: a debug surface reads them
+          // here, the drive reply from the raw solve result.
+          ...(feature.free_entities?.length && { free_entities: feature.free_entities }),
         }
       } else if (feature.plane) {
         const planeRaw = feature.plane as { x_axis: number[]; y_axis: number[]; normal: number[]; origin: number[] }

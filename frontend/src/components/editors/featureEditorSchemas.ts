@@ -8,7 +8,7 @@ import {
 import { THREAD_TABLE, threadEntry, threadLabel, threadDesignations, DRILL_POINT_ANGLE } from '@/kernel/threadTable'
 import { pickedSketchEntity, entityKindPhrase, noAreaReason } from '@/kernel/features/shared/partRef'
 import { ENTITY_BY_KIND } from '@/registry/entityRegistry'
-import { circleDrillSiteReason } from '@/kernel/features/shared/drillSite'
+import { circleDrillSiteReason, HOLE_SITE_WORDING } from '@/kernel/features/shared/drillSite'
 import type { PartFeature, ThreadSpec } from '@/types/cad'
 import { resolvePartPickRef, resolveAxisQuery } from '@/utils/query/resolvePartPickRef'
 import { stripSelectionWrapper } from '@/utils/query/selectionId'
@@ -358,7 +358,10 @@ function holeSketchPickRefusal(selectionId: string, features?: readonly PartFeat
     ? sketch.entities?.find((candidate) => candidate.id === picked.entityId)
     : undefined
   return entity?.kind === 'circle'
-    ? circleDrillSiteReason(picked.sketchId, picked.entityId, entity.construction === true)
+    ? circleDrillSiteReason(
+      picked.sketchId, picked.entityId, entity.construction === true, HOLE_SITE_WORDING,
+      { sketch, features },
+    )
     : null
 }
 

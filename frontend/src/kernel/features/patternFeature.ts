@@ -42,6 +42,7 @@ import { solveRevolve } from './revolve'
 import { solveSweep } from './sweep'
 import { solveWrap } from './wrap'
 import { solveHole } from './hole'
+import { featureDisplayName, featureKindWord, featureRows } from '@/utils/core/displayNames'
 import { extractErrorMessage, swallowUnlessTrap } from '../errors'
 import { stripRefSigil } from '@/utils/refSigil'
 import { solidCentroid, type Vec3 } from '../occ/primitives'
@@ -135,6 +136,7 @@ function resolveSources(
   }
   const order = Object.keys(featuresById)
   const patternAt = order.indexOf(patternFeatureId)
+  const rows = featureRows(featuresById)
   const seen = new Set<string>()
   const sources: ResolvedSource[] = []
   const dropped: string[] = []
@@ -144,28 +146,30 @@ function resolveSources(
     seen.add(sourceId)
     const source = featuresById[sourceId]
     if (source === undefined) {
-      dropped.push(`${noun}: source feature '${sourceId}' does not exist; it was dropped`)
+      dropped.push(`${noun}: the source feature is not in the document; it was dropped`)
       continue
     }
+    const name = featureDisplayName(source, rows)
     if (patternAt >= 0 && order.indexOf(sourceId) > patternAt) {
       dropped.push(
-        `${noun}: the source feature '${sourceId}' comes after this ${noun}; it was dropped ` +
-          `(move it up with reorder_features {featureId: '${sourceId}', before: '${patternFeatureId}'})`,
+        `${noun}: ${name} comes after this ${noun}; it was dropped ` +
+          '(move it up with `reorder_features` (before this row))',
       )
       continue
     }
     if (source.suppressed === true) {
-      throw new Error(`${noun}: the source feature '${sourceId}' is suppressed; unsuppress it to ${noun} it`)
+      throw new Error(`${noun}: ${name} is suppressed; unsuppress it to ${noun} it`)
     }
     const kind = String(source.kind ?? '')
     if (!isToolKind(kind)) {
       throw new Error(
-        `${noun}: '${sourceId}' is a ${kind || 'feature without a kind'}; ` + patternSourceKindSentence(noun),
+        `${noun}: ${name} is ${kind === '' ? 'a feature without a kind' : `a ${featureKindWord(kind)}`}; `
+        + patternSourceKindSentence(noun),
       )
     }
     const resolved = resolveFeatureExpressions(source, variables, laterVariables)
     if ('exception' in resolved) {
-      throw new Error(`${noun}: the source feature '${sourceId}' has an unresolved value: ${resolved.exception}`)
+      throw new Error(`${noun}: ${name} has an unresolved value: ${resolved.exception}`)
     }
     const feature = resolved.feature
     const sub = (feature[kind] as Dict | undefined) ?? {}
@@ -178,7 +182,7 @@ function resolveSources(
       const authored = (sub.operation as string) ?? 'add'
       if (authored !== 'add' && authored !== 'cut') {
         throw new Error(
-          `${noun}: the source feature '${sourceId}' has operation '${authored}'; ` +
+          `${noun}: ${name} has operation '${authored}'; ` +
             'repeat an add or a cut, not a feature that starts a new part',
         )
       }

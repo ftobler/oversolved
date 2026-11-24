@@ -289,8 +289,9 @@ describe('a dropped constraint is a red, selectable tile', () => {
     expect(img).not.toBeNull()
     const tile = img!.parentElement!
     expect(tile.title).toBe(
-      'constraint c_dead (coincident) names operands it cannot use (stale reference) and was ignored.',
+      'coincident 1 names geometry it cannot use (stale reference) and was ignored.',
     )
+    expect(tile.title).not.toContain('c_dead')
     expect(tile.style.outline).toContain(COLOR_ERROR_DEEP)
   })
 

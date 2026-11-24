@@ -59,7 +59,8 @@ describe('add_text session history', () => {
     const missing = await part.run([{ mutation: { type: 'add_text', featureId: 'sk9', text: 'Hi' } }])
     expect(missing.ok).toBe(false)
     expect(missing.steps[0].error?.code).toBe('unknown-target')
-    expect(missing.steps[0].error?.message).toContain('"sk9"')
+    expect(missing.steps[0].error?.message).toContain('add_text names no sketch feature in this document')
+    expect(missing.steps[0].error?.message).not.toContain('sk9')
 
     // A run of only spaces would write nothing; it is refused rather than
     // landing as an undo entry that changes nothing.

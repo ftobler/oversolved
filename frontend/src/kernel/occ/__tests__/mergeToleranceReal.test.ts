@@ -162,9 +162,11 @@ describe.skipIf(!oc)('cleanWithHistory against the real kernel', () => {
       }).shape)
       expect(topFaces(oc!, scope, unfolded)).toBe(1)
       // The feature has something to say about the seam it could not close.
+      // The record carries no display name here, so the noun stands in.
       expect(precisionCeilingWarning(inherited)).toContain(
-        "sketch sk1 solved to 5e-9 rad, above the kernel's 1e-9 merge ceiling",
+        "the sketch solved to 5e-9 rad, above the kernel's 1e-9 merge ceiling",
       )
+      expect(precisionCeilingWarning(inherited)).not.toContain('sk1')
     } finally {
       scope.dispose()
     }

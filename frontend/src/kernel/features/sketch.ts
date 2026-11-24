@@ -33,6 +33,7 @@ import { entityVertexIndices, entityCoordPairs, fitSplineHandlesFromFlags } from
 import { deriveConstraints, unflattenGeometry } from '@/utils/geometry/geometryMapping'
 import { ellipseAxisDrag, isEllipseAxisKey, type EllipseAxisKey } from '@/utils/geometry/ellipseAxis'
 import { ignoredConstraintWarning, weakConstraintNoun, weakConstraintWarning } from '@/utils/constraintProblems'
+import { constraintDisplayName, entityDisplayName, featureDisplayName, featureRows, sketchDisplayName } from '@/utils/core/displayNames'
 import {
   tangentKindsAdmitted,
   tangentNeedsSharedEndpointReason,
@@ -460,10 +461,11 @@ function lowerProjectionConstraints(
         orphans: [...reconciled.orphans],
       }
       projectionMembers[cid] = report
+      const projectionName = constraintDisplayName(feature, cid) ?? 'the projection'
       if (boundary === null) {
         projectionErrors.push(cid)
         projectionWarnings.push(
-          `projection ${cid} source ${source === '' ? '(none)' : source} did not resolve; `
+          `${projectionName} did not resolve; `
           + 'no face members are derived this solve, so there is nothing to freeze',
         )
         continue
@@ -487,7 +489,7 @@ function lowerProjectionConstraints(
         }
         if (!projected) {
           projectionWarnings.push(
-            `projection ${cid} member ${memberId} source ${edge.query} did not resolve`,
+            `${projectionName}: a projected member's source did not resolve`,
           )
           continue
         }
@@ -500,7 +502,7 @@ function lowerProjectionConstraints(
       if (report.entities.length === 0 && liveEdges > 0) {
         projectionErrors.push(cid)
         projectionWarnings.push(
-          `projection ${cid} face ${source} has no boundary edge to project`,
+          `${projectionName}: the picked face has no boundary edge to project`,
         )
       }
       continue
@@ -532,7 +534,11 @@ function lowerProjectionConstraints(
         const projected = projectSourceQuery(source, plane as PlaneFrame, globalRepo, ent?.kind === 'point')
         if (projected) {
           initial[targetId] = projected.params
-          if (projected.warning) projectionWarnings.push(`projection ${cid}: ${projected.warning}`)
+          if (projected.warning) {
+            projectionWarnings.push(
+              `${constraintDisplayName(feature, cid) ?? 'the projection'}: ${projected.warning}`,
+            )
+          }
           // The resolved kind is a solve fact here. The write-back adopts it on
           // the document row (a projection's kind is derived, not authored), so
           // the lowering itself never writes the input feature.
@@ -573,7 +579,7 @@ function lowerProjectionConstraints(
       // sentence has to say which of the two states the entity is in, because
       // only one of them keeps its geometry.
       projectionWarnings.push(
-        `projection ${cid} source ${source === '' ? '(none)' : source} did not resolve; `
+        `${constraintDisplayName(feature, cid) ?? 'the projection'} did not resolve; `
         + `${sourceProblem === null ? stateText : sourceProblem.kind}`,
       )
       if (!hadPosition) {
@@ -641,31 +647,34 @@ function lowerProjectionConstraints(
 export function assertSolverOutputMatchesLayout(
   out: SolverOutput,
   layout: EntityLayout[],
-  featureId: string,
+  _featureId: string,
   skipStatusPass: boolean,
+  sketchName = 'the sketch',
 ): void {
   const expectedStatuses = skipStatusPass ? 0 : layout.length
   if (out.entityStatus.length !== expectedStatuses) {
     throw new Error(
-      `sketch '${featureId}': solver returned ${out.entityStatus.length} entity statuses, expected ${expectedStatuses}`,
+      `${sketchName}: solver returned ${out.entityStatus.length} entity statuses, expected ${expectedStatuses}`,
     )
   }
   let needed = 0
   for (const ent of layout) needed = Math.max(needed, ent.offset + ent.size)
   if (out.paramsSolved.length < needed) {
     throw new Error(
-      `sketch '${featureId}': solver returned ${out.paramsSolved.length} params, layout needs ${needed}`,
+      `${sketchName}: solver returned ${out.paramsSolved.length} params, layout needs ${needed}`,
     )
   }
   // Codes are indices into STATUS_NAME. An out-of-range one is the same skew
   // arriving as a value rather than as a length, and reads back `undefined`.
   if (out.overallStatus >= STATUS_NAME.length) {
-    throw new Error(`sketch '${featureId}': solver returned unknown status code ${out.overallStatus}`)
+    throw new Error(`${sketchName}: solver returned unknown status code ${out.overallStatus}`)
   }
   for (let i = 0; i < out.entityStatus.length; i++) {
     if (out.entityStatus[i] >= STATUS_NAME.length) {
+      // The entity id stays on this kernel alarm: a skew this deep is a solver
+      // bug, and the id is the debugging handle.
       throw new Error(
-        `sketch '${featureId}': solver returned unknown status code ${out.entityStatus[i]} for entity ${layout[i].id}`,
+        `${sketchName}: solver returned unknown status code ${out.entityStatus[i]} for entity ${layout[i].id}`,
       )
     }
   }
@@ -683,12 +692,13 @@ export function assertConstraintVerdictsMatchInput(
   out: SolverOutput,
   nConstraints: number,
   dragMode: boolean,
-  featureId: string,
+  _featureId: string,
+  sketchName = 'the sketch',
 ): void {
   const expected = dragMode ? 0 : nConstraints
   if (out.constraintFlags.length !== expected || out.constraintMiss.length !== expected) {
     throw new Error(
-      `sketch '${featureId}': solver returned ${out.constraintFlags.length} constraint flags and `
+      `${sketchName}: solver returned ${out.constraintFlags.length} constraint flags and `
       + `${out.constraintMiss.length} constraint misses, expected ${expected}`,
     )
   }
@@ -732,16 +742,18 @@ export function culpritConstraintIndices(miss: number[]): Set<number> {
 /**
  * The build warning an underconstrained sketch reports. The wording matches the
  * assembly's own underconstrained verdict (utils/core/assemblyStatus.ts) so the
- * two editors speak the same language, and the free entity ids let an author
- * (or a hovering user) find the geometry still holding DOF. A sketch's DOF
- * count can exceed its free entity count (a point owns two), so the head states
- * the solver's number and the tail names entities.
+ * two editors speak the same language, and the free names let an author (or a
+ * hovering user) find the geometry still holding DOF. The ids themselves stay on
+ * the solve result (`free_entities`) and the MCP feature row's `free` list, where
+ * a machine reads them. A sketch's DOF count can exceed its free entity count (a
+ * point owns two), so the head states the solver's number and the tail names
+ * entities.
  */
-export function underconstrainedWarning(dof: number, freeIds: readonly string[]): string {
+export function underconstrainedWarning(dof: number, freeNames: readonly string[]): string {
   const head = `Underconstrained: ${dof} degree${dof === 1 ? '' : 's'} of freedom.`
-  if (freeIds.length === 0) return head
-  const shown = freeIds.slice(0, 5)
-  const rest = freeIds.length - shown.length
+  if (freeNames.length === 0) return head
+  const shown = freeNames.slice(0, 5)
+  const rest = freeNames.length - shown.length
   return `${head} Free: ${shown.join(', ')}${rest > 0 ? ` and ${rest} more` : ''}.`
 }
 
@@ -956,17 +968,18 @@ export function solveSketch(
     resolvedKinds, derivedKinds, derivedInitial, derivedConstruction,
   })
   if (extract.skipped.length) {
-    throw new Error(`sketch '${featureId}': ${extract.skipped[0].reason}`)
+    throw new Error(`${featureDisplayName(pf, featureRows(featuresById))}: ${extract.skipped[0].reason}`)
   }
   if (!extract.sketches.length) {
-    throw new Error(`sketch '${featureId}': no lowerable sketch found`)
+    throw new Error(`${featureDisplayName(pf, featureRows(featuresById))}: no lowerable sketch found`)
   }
 
   const { sketch, droppedConstraints } = extract.sketches[0]
   const { input, layout, constraintIds } = lowerSketch(sketch)
   const out = runSolverBytes(solverBytes, input)
-  assertSolverOutputMatchesLayout(out, layout, featureId, input.options.skipStatusPass)
-  assertConstraintVerdictsMatchInput(out, input.constraints.length, input.options.dragMode, featureId)
+  const sketchName = sketchDisplayName(featureId, featureRows(featuresById))
+  assertSolverOutputMatchesLayout(out, layout, featureId, input.options.skipStatusPass, sketchName)
+  assertConstraintVerdictsMatchInput(out, input.constraints.length, input.options.dragMode, featureId, sketchName)
   const status = STATUS_NAME[out.overallStatus]
   // The curves the profile builder must not see. Computed before the geometry
   // maps so the area build and the warning row read one answer.
@@ -1078,7 +1091,10 @@ export function solveSketch(
   // dropped constraint is a warning on any solve status, including a fully
   // constrained sketch that would otherwise read clean.
   const warnings: string[] = status === 'underconstrained'
-    ? [underconstrainedWarning(out.diagnostics.dof, freeIds)]
+    ? [underconstrainedWarning(
+      out.diagnostics.dof,
+      freeIds.map(id => entityDisplayName(pf, id) ?? 'a free entity'),
+    )]
     : []
   const authoredById = new Map((pf.constraints ?? []).map(c => [c.id, c]))
   // The weak (second-order) constraints: the solve says the sketch is fully
@@ -1101,7 +1117,7 @@ export function solveSketch(
     ...droppedConstraints,
     ...droppedConstraintRecords(out, input, layout, constraintIds, authoredById),
   ]
-  warnings.push(...droppedList.map(d => ignoredConstraintWarning(d.id, d.kind, d.reason)))
+  warnings.push(...droppedList.map(d => ignoredConstraintWarning(d.id, d.kind, d.reason, pf)))
   // An unresolved projection used to be silent over MCP (it survives as a pinned
   // entity, so the solve reads clean): name it on the same warning channel.
   warnings.push(...projectionWarnings)
@@ -1120,6 +1136,10 @@ export function solveSketch(
     angular_miss: out.diagnostics.angularMiss,
     linear_miss: out.diagnostics.linearMiss,
     ...(warnings.length ? { solver_warning: warnings.join(' ') } : {}),
+    // The free ids beside the readable names the warning carries: the drive
+    // reply forwards them as the feature row's `free` list, the debug views
+    // read them directly.
+    ...(freeIds.length ? { free_entities: freeIds } : {}),
     geometry,
     entity_moved: entityMoved,
     features,
@@ -1288,7 +1308,7 @@ export function probeRedundantConstraint(
     if (extract.skipped.length || !extract.sketches.length) return null
     const { input, constraintIds } = lowerSketch(extract.sketches[0].sketch, { skipStatusPass: true })
     const out = runSolverBytes(solverBytes, input)
-    assertConstraintVerdictsMatchInput(out, input.constraints.length, false, feature.id)
+    assertConstraintVerdictsMatchInput(out, input.constraints.length, false, feature.id, featureDisplayName(feature))
     if (out.overallStatus === Status.overconstrained) return null
     // The draft may lower to several wire constraints (sugar expansion); it
     // counts as redundant only when every piece of it is.

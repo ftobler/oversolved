@@ -510,7 +510,7 @@ describe('finding 5: add_constraint target spelling', () => {
         targets: ['vertex:sk1:l1:start', wrapper],
       }, sketchDoc())
       expect(error.code).toBe('invalid-mutation')
-      expect(error.message).toBe(`Coincident takes sketch geometry; ${wrapper} is not sketch geometry`)
+      expect(error.message).toBe('Coincident takes sketch geometry; the picked target is a face or edge query')
     }
   })
 
@@ -522,13 +522,13 @@ describe('finding 5: add_constraint target spelling', () => {
       targets: ['@builtin_plane_top', '$l1'],
     }, sketchDoc())
     expect(error.code).toBe('invalid-mutation')
-    expect(error.message).toBe('Equal takes sketch geometry; @builtin_plane_top is a plane')
+    expect(error.message).toBe('Equal takes sketch geometry; the picked target is a plane')
 
     // A shape-only caller still knows an `@` ref is not sketch geometry.
     expect(refusal({
       type: 'add_constraint', featureId: 'sk1', kind: 'equal_length',
       targets: ['@builtin_plane_top', '$l1'],
-    }).message).toBe('Equal takes sketch geometry; @builtin_plane_top is a plane')
+    }).message).toBe('Equal takes sketch geometry; the picked target is a plane')
   })
 })
 
@@ -563,8 +563,10 @@ describe('a cross-sketch constraint target is refused by name', () => {
     }, twoSketchDoc())
     expect(error.code).toBe('invalid-mutation')
     expect(error.message).toBe(
-      'constraint targets must be in sketch sk2; project entity:sk1:L1 first (add_projected_entity)',
+      'constraint targets must be in sketch 2; project a picked operand first (add_projected_entity)',
     )
+    expect(error.message).not.toContain('sk2')
+    expect(error.message).not.toContain('sk1')
   })
 
   it('still accepts the local pair', () => {
@@ -728,13 +730,15 @@ describe('finding: mirror_entities values', () => {
     const notALine = refusal(
       { type: 'mirror_entities', featureId: 'sk1', sourceIds: ['l1'], line: 'c9' }, doc)
     expect(notALine.code).toBe('invalid-mutation')
-    expect(notALine.message).toContain('c9')
-    expect(notALine.message).toContain('line')
+    expect(notALine.message).toContain('names a circle')
+    expect(notALine.message).toContain('must be a line entity')
+    expect(notALine.message).not.toContain('c9')
 
     const zeroLength = refusal(
       { type: 'mirror_entities', featureId: 'sk1', sourceIds: ['l1'], line: 'lz' }, doc)
     expect(zeroLength.code).toBe('invalid-mutation')
-    expect(zeroLength.message).toContain('lz')
+    expect(zeroLength.message).toContain('has no usable axis')
+    expect(zeroLength.message).not.toContain('lz')
   })
 
   it('refuses an axis that is also one of the sources', () => {
@@ -744,13 +748,15 @@ describe('finding: mirror_entities values', () => {
     expect(error.message).toContain('mirrored')
   })
 
-  it('refuses unknown source and axis ids', () => {
+  it('refuses unknown source and axis ids without printing them', () => {
     const source = refusal({ type: 'mirror_entities', featureId: 'sk1', sourceIds: ['l2'], line: 'l1' }, sketchDoc())
     expect(source.code).toBe('unknown-target')
-    expect(source.message).toContain('l2')
+    expect(source.message).toContain('source names no entity')
+    expect(source.message).not.toContain('l2')
     const axis = refusal({ type: 'mirror_entities', featureId: 'sk1', sourceIds: ['l1'], line: 'l1b' }, sketchDoc())
     expect(axis.code).toBe('unknown-target')
-    expect(axis.message).toContain('l1b')
+    expect(axis.message).toContain('line names no entity')
+    expect(axis.message).not.toContain('l1b')
   })
 
   // A source on the axis is its own image (the seam of a half profile), so it
@@ -953,22 +959,24 @@ describe('finding: resize_circle names its target', () => {
     }],
   })
 
-  it('refuses an unknown entity id with it named', () => {
+  it('refuses an unknown entity id without printing it', () => {
     const error = refusal({
       type: 'resize_circle', featureId: 'sk1', entityId: 'ghost', radius: 2,
     }, circleDoc())
     expect(error.code).toBe('unknown-target')
-    expect(error.message).toContain('ghost')
-    expect(error.message).toContain('sk1')
+    expect(error.message).toContain('names no such entity in sketch 1')
+    expect(error.message).not.toContain('ghost')
+    expect(error.message).not.toContain('sk1')
   })
 
   it('refuses a non-circle entity and a missing sketch by name', () => {
     const line = refusal({ type: 'resize_circle', featureId: 'sk1', entityId: 'l1', radius: 2 }, circleDoc())
-    expect(line.message).toContain('l1')
-    expect(line.message).toContain('not a circle')
+    expect(line.message).toContain('line 1 is a line, not a circle')
+    expect(line.message).not.toContain('l1')
     const sketch = refusal({ type: 'resize_circle', featureId: 'nope', entityId: 'c1', radius: 2 }, circleDoc())
     expect(sketch.code).toBe('unknown-target')
-    expect(sketch.message).toContain('nope')
+    expect(sketch.message).toContain('names no sketch feature in this document')
+    expect(sketch.message).not.toContain('nope')
   })
 
   it('accepts a real circle and rejects a ghost through the headless boundary', async () => {
@@ -1118,10 +1126,11 @@ describe('finding 6: delete targets', () => {
     expect(error.message).toContain('entity:<sketchId>:<entityId>')
   })
 
-  it('refuses a well-formed target that names nothing', () => {
+  it('refuses a well-formed target that names nothing, without printing it', () => {
     const error = refusal({ type: 'delete', targets: ['entity:sk1:ghost'] }, sketchDoc())
     expect(error.code).toBe('unknown-target')
-    expect(error.message).toContain('ghost')
+    expect(error.message).toContain('names no entity in sketch 1')
+    expect(error.message).not.toContain('ghost')
   })
 
   it('accepts an existing entity through the headless boundary and changes the doc', async () => {
@@ -1144,7 +1153,9 @@ describe('finding 6: delete targets', () => {
       ok: false,
       error: { code: 'unknown-target' },
     })
-    if (result.outcome.steps[0].error) expect(result.outcome.steps[0].error.message).toContain('ghost')
+    if (result.outcome.steps[0].error) {
+      expect(result.outcome.steps[0].error.message).not.toContain('ghost')
+    }
   })
 })
 
@@ -1155,10 +1166,11 @@ describe('finding: toggle_construction target form', () => {
     expect(error.message).toContain('entity:<sketchId>:<entityId>')
   })
 
-  it('refuses a well-formed target that names nothing', () => {
+  it('refuses a well-formed target that names nothing, without printing it', () => {
     const error = refusal({ type: 'toggle_construction', targets: ['entity:sk1:ghost'] }, sketchDoc())
     expect(error.code).toBe('unknown-target')
-    expect(error.message).toContain('ghost')
+    expect(error.message).toContain('names no entity in sketch 1')
+    expect(error.message).not.toContain('ghost')
   })
 
   it('toggles an existing entity when the target names it', () => {
@@ -1489,7 +1501,7 @@ describe('a circle is not a hole drill site', () => {
     for (const sketch of ['entity:sk1:c1', 'vertex:sk1:c1:center']) {
       const error = refusal({ type: 'add_hole', featureId: 'ho1', sketch, diameter: 4, depth_mode: 'through_all' }, doc)
       expect(error.code, sketch).toBe('invalid-mutation')
-      expect(error.message, sketch).toContain("'c1' of sketch sk1 is a circle, which is not a drill site")
+      expect(error.message, sketch).toContain('circle 1 of sketch 1 is a circle, which is not a drill site')
       expect(error.message, sketch).toContain('extrude cut')
     }
   })
@@ -1499,7 +1511,7 @@ describe('a circle is not a hole drill site', () => {
     // must be narrowed the same way the kernel narrows it.
     const query = makeAncestryQuery(['@sk1/c1', 'surface:0', '@sk1'], 'flatface')
     const error = refusal({ type: 'add_hole', featureId: 'ho1', sketch: query, diameter: 4, depth_mode: 'through_all' }, sketchWithPointAndCircle())
-    expect(error.message).toContain("'c1' of sketch sk1 is a circle, which is not a drill site")
+    expect(error.message).toContain('circle 1 of sketch 1 is a circle, which is not a drill site')
     expect(error.message).toContain('extrude cut')
   })
 
@@ -1764,13 +1776,13 @@ describe('review B1 guard: a null-clear note needs a deleting applier', () => {
 })
 
 describe('birdhouse F2: apply_offset source ids', () => {
-  it('refuses a source id that names no entity in the target sketch, naming it', () => {
+  it('refuses a source id that names no entity in the target sketch, without printing it', () => {
     const error = refusal({
       type: 'apply_offset', featureId: 'sk1', sourceIds: ['l1', 'ghost'], distance: 2,
     }, sketchDoc())
     expect(error.code).toBe('unknown-target')
-    expect(error.message).toContain('ghost')
-    expect(error.message).toContain('sk1')
+    expect(error.message).toContain('source names no entity in sketch 1')
+    expect(error.message).not.toContain('ghost')
   })
 
   it('refuses an unknown sketch feature and accepts the real ids', () => {
@@ -1778,7 +1790,8 @@ describe('birdhouse F2: apply_offset source ids', () => {
       type: 'apply_offset', featureId: 'nope', sourceIds: ['l1'], distance: 2,
     }, sketchDoc())
     expect(missing.code).toBe('unknown-target')
-    expect(missing.message).toContain('nope')
+    expect(missing.message).toContain('names no sketch feature in this document')
+    expect(missing.message).not.toContain('nope')
 
     expect(validateMutation({
       type: 'apply_offset', featureId: 'sk1', sourceIds: ['l1'], distance: 2,
@@ -1791,7 +1804,9 @@ describe('birdhouse F2: apply_offset source ids', () => {
       steps: [{ mutation: { type: 'apply_offset', featureId: 'sk1', sourceIds: ['ghost'], distance: 2 } }],
     })
     expect(ghost.outcome.steps[0]).toMatchObject({ ok: false, error: { code: 'unknown-target' } })
-    if (ghost.outcome.steps[0].error) expect(ghost.outcome.steps[0].error.message).toContain('ghost')
+    if (ghost.outcome.steps[0].error) {
+      expect(ghost.outcome.steps[0].error.message).not.toContain('ghost')
+    }
 
     const real = await runHeadless({
       doc: sketchDoc(),
@@ -2739,7 +2754,11 @@ describe('add_constraint group values', () => {
     expect(refusal(
       { type: 'add_constraint', featureId: 'sk1', kind: 'group', targets: ['$l1', '$p1'] },
       projectedDoc(),
-    ).message).toContain('projected')
+    ).message).toContain('delete its projection first')
+    expect(refusal(
+      { type: 'add_constraint', featureId: 'sk1', kind: 'group', targets: ['$l1', '$p1'] },
+      projectedDoc(),
+    ).message).not.toContain('l1')
     expect(refusal(
       { type: 'add_constraint', featureId: 'sk1', kind: 'group', targets: ['vertex:sk1:l1:start'] },
       projectedDoc(),

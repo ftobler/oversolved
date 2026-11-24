@@ -960,7 +960,7 @@ export const editorState = createStore<EditorState>((set, get) => ({
     const feature = (doc?.features ?? []).find(candidate => candidate.id === activeFeatureId)
     if (feature?.kind !== 'sketch') return
     const reports = sketchCallbacks.getProjectionMembers?.(activeFeatureId) ?? null
-    const plan = freezeSelectionPlan(feature, selection, mode, reports)
+    const plan = freezeSelectionPlan(feature, selection, mode, reports, doc?.features ?? [])
     if (plan.mutations.length > 0) {
       const batch = sketchCallbacks.onMutationBatch
       if (plan.mutations.length === 1) onMutation(plan.mutations[0])

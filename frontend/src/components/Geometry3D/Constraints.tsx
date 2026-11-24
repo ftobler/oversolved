@@ -153,7 +153,7 @@ function droppedConstraintTiles(
       id: entry.id,
       at,
       url,
-      title: ignoredConstraintWarning(entry.id, entry.kind, entry.reason),
+      title: ignoredConstraintWarning(entry.id, entry.kind, entry.reason, { constraints: authored }),
       highlightIds: highlighted.length > 0 ? highlighted : [],
     })
   }

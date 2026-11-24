@@ -44,7 +44,8 @@ import { MAX_TWIST_DEG } from '@/utils/core/twistLimits'
 import { evalExpr } from '@/kernel/evalExpr'
 import { MAX_ARRAY_CELLS } from '@/utils/core/arrayLimits'
 import { pickedSketchEntity } from '@/kernel/features/shared/partRef'
-import { circleDrillSiteReason } from '@/kernel/features/shared/drillSite'
+import { circleDrillSiteReason, HOLE_SITE_WORDING } from '@/kernel/features/shared/drillSite'
+import { entityDisplayName, entityKindWord, featureDisplayName } from '@/utils/core/displayNames'
 import { isFaceProjectionSource, isProjectionPosition } from '@/kernel/features/projectionMembers'
 import { projectionTargetRef } from '@/utils/yamlMutations/freezeProjection'
 import { SelectorError, validateSelector, type SelectKind } from '@/kernel/select'
@@ -593,6 +594,7 @@ function addConstraint(raw: RawStep, ctx: ValueContext): ValueViolation | null {
       refs,
       isFiniteNumber(raw.value) ? raw.value : undefined,
       isFiniteNumber(raw.sign) ? raw.sign : undefined,
+      ctx.doc?.features ?? [],
     )
     if (problem !== null) return invalid(problem)
   }
@@ -621,14 +623,19 @@ function resizeCircle(raw: RawStep, ctx: ValueContext): ValueViolation | null {
   if (ctx.doc === null || typeof featureId !== 'string' || typeof entityId !== 'string') return null
   const sketch = sketchOf(ctx.doc, featureId)
   if (sketch === undefined) {
-    return unknownTarget(`resize_circle names no sketch feature ${json(featureId)}`)
+    return unknownTarget('resize_circle names no sketch feature in this document')
   }
   const entity = sketch.entities?.find(candidate => candidate.id === entityId)
   if (entity === undefined) {
-    return unknownTarget(`resize_circle names no entity ${json(entityId)} in sketch ${featureId}`)
+    return unknownTarget(
+      `resize_circle names no such entity in ${featureDisplayName(sketch, ctx.doc.features ?? [])}`,
+    )
   }
   if (entity.kind !== 'circle') {
-    return invalid(`resize_circle target ${json(entityId)} is a ${entity.kind}, not a circle`)
+    return invalid(
+      `${entityDisplayName(sketch, entityId) ?? 'the picked entity'} is a `
+      + `${entityKindWord(entity.kind) ?? 'curve'}, not a circle`,
+    )
   }
   return null
 }
@@ -717,7 +724,7 @@ function deleteRule(raw: RawStep, ctx: ValueContext): ValueViolation | null {
   for (const target of parsed) {
     const sketch = sketchOf(ctx.doc, target.featureId)
     if (sketch === undefined) {
-      return unknownTarget(`delete target names no sketch feature ${json(target.featureId)}`)
+      return unknownTarget('delete target names no sketch feature in this document')
     }
     // A face-projection member is a derived entity: it has no row, but its id
     // names an entry of the owning projection's member map and its delete is
@@ -729,7 +736,9 @@ function deleteRule(raw: RawStep, ctx: ValueContext): ValueViolation | null {
       : (sketch.entities ?? []).some(e => e.id === target.id) || derived
     if (!exists) {
       const what = target.kind === 'constraint' ? 'constraint' : 'entity'
-      return unknownTarget(`delete target names no ${what} ${json(target.id)} in sketch ${target.featureId}`)
+      return unknownTarget(
+        `delete target names no ${what} in ${featureDisplayName(sketch, ctx.doc.features ?? [])}`,
+      )
     }
   }
   return null
@@ -766,8 +775,9 @@ function freezeProjectionRule(raw: RawStep, ctx: ValueContext): ValueViolation |
     return invalid(`freeze_projection featureId must be a sketch id, got ${json(featureId)}`)
   }
   const sketch = sketchOf(ctx.doc, featureId)
+  const rows = ctx.doc.features ?? []
   if (sketch === undefined) {
-    return unknownTarget(`freeze_projection names no sketch feature ${json(featureId)}`)
+    return unknownTarget('freeze_projection names no sketch feature in this document')
   }
   const constraints = sketch.constraints ?? []
   const constraint = constraints.find(c => c.id === target && c.kind === 'projection')
@@ -776,7 +786,7 @@ function freezeProjectionRule(raw: RawStep, ctx: ValueContext): ValueViolation |
       && Object.values(c.members ?? {}).includes(target))
   if (constraint === undefined) {
     return unknownTarget(
-      `freeze_projection target ${json(target)} names no projection in sketch ${json(featureId)}`,
+      `freeze_projection: that pick names no projection in ${featureDisplayName(sketch, rows)}`,
     )
   }
   if (constraint.target === undefined) return null
@@ -784,8 +794,8 @@ function freezeProjectionRule(raw: RawStep, ctx: ValueContext): ValueViolation |
   const entity = (sketch.entities ?? []).find(candidate => candidate.id === entityId)
   if (entity === undefined || !isProjectionPosition(sketch.initial?.[entityId], entity.kind, entity.handles)) {
     return unknownTarget(
-      `freeze_projection target ${json(target)} holds ${json(entityId)}, which has no position to freeze; `
-      + 'delete the projection instead',
+      `freeze_projection: ${entityDisplayName(sketch, entityId) ?? 'the picked entity'} in `
+      + `${featureDisplayName(sketch, rows)} has no position to freeze; delete the projection instead`,
     )
   }
   return null
@@ -827,7 +837,7 @@ function toggleConstructionRule(raw: RawStep, ctx: ValueContext): ValueViolation
   for (const target of parsed) {
     const sketch = sketchOf(ctx.doc, target.featureId)
     if (sketch === undefined) {
-      return unknownTarget(`toggle_construction target names no sketch feature ${json(target.featureId)}`)
+      return unknownTarget('toggle_construction target names no sketch feature in this document')
     }
     if ((sketch.entities ?? []).some(entity => entity.id === target.id)) continue
     // A face projection's member is not a row, and the constraint id is not a
@@ -837,7 +847,7 @@ function toggleConstructionRule(raw: RawStep, ctx: ValueContext): ValueViolation
       && (c.id === target.id || Object.values(c.members ?? {}).includes(target.id)))
     if (faceProjection !== undefined) continue
     return unknownTarget(
-      `toggle_construction target names no entity ${json(target.id)} in sketch ${target.featureId}`,
+      `toggle_construction target names no entity in ${featureDisplayName(sketch, ctx.doc.features ?? [])}`,
     )
   }
   return null
@@ -1060,14 +1070,15 @@ function applyOffset(raw: RawStep, ctx: ValueContext): ValueViolation | null {
   // geometry. The app's own offset always resolves ids from the selection it
   // holds, so only an external step reaches this with an invented or stale id.
   const sketch = sketchOf(ctx.doc, featureId)
+  const rows = ctx.doc.features ?? []
   if (sketch === undefined) {
-    return unknownTarget(`apply_offset names no sketch feature ${json(featureId)}`)
+    return unknownTarget('apply_offset names no sketch feature in this document')
   }
   const entityIds = new Set((sketch.entities ?? []).map(entity => entity.id))
   for (const id of raw.sourceIds as string[]) {
     if (!entityIds.has(id)) {
       return unknownTarget(
-        `apply_offset source id ${json(id)} names no entity in sketch ${featureId}; use a bare entity id from that sketch`,
+        `apply_offset source names no entity in ${featureDisplayName(sketch, rows)}; use a bare entity id from that sketch`,
       )
     }
   }
@@ -1086,32 +1097,40 @@ function mirrorEntities(raw: RawStep, ctx: ValueContext): ValueViolation | null 
   const featureId = raw.featureId
   if (ctx.doc === null || typeof featureId !== 'string') return null
   const sketch = sketchOf(ctx.doc, featureId)
+  const rows = ctx.doc.features ?? []
   if (sketch === undefined) {
-    return unknownTarget(`mirror_entities names no sketch feature ${json(featureId)}`)
+    return unknownTarget('mirror_entities names no sketch feature in this document')
   }
   const byId = new Map((sketch.entities ?? []).map(entity => [entity.id, entity]))
   const axis = byId.get(raw.line)
   if (axis === undefined) {
     return unknownTarget(
-      `mirror_entities line ${json(raw.line)} names no entity in sketch ${featureId}; use a bare entity id from that sketch`,
+      `mirror_entities line names no entity in ${featureDisplayName(sketch, rows)}; use a bare entity id from that sketch`,
     )
   }
   if (axis.kind !== 'line') {
-    return invalid(`mirror_entities line ${json(raw.line)} names a ${json(axis.kind)}; the axis must be a line entity`)
+    return invalid(
+      `mirror_entities line names a ${entityKindWord(axis.kind) ?? 'curve'}; the axis must be a line entity`,
+    )
   }
   const axisLine = mirrorAxisFromLineParams(sketch.initial?.[raw.line] ?? [])
   if (axisLine === null) {
-    return invalid(`mirror_entities line ${json(raw.line)} has no usable axis: its params need two distinct finite points`)
+    return invalid(
+      `${entityDisplayName(sketch, raw.line) ?? 'the picked axis'} has no usable axis: `
+      + 'its params need two distinct finite points',
+    )
   }
   for (const id of raw.sourceIds as string[]) {
     const entity = byId.get(id)
     if (entity === undefined) {
       return unknownTarget(
-        `mirror_entities source id ${json(id)} names no entity in sketch ${featureId}; use a bare entity id from that sketch`,
+        `mirror_entities source names no entity in ${featureDisplayName(sketch, rows)}; use a bare entity id from that sketch`,
       )
     }
     if (id === raw.line) {
-      return invalid(`mirror_entities line ${json(raw.line)} must not also be a sourceId; the axis is not mirrored`)
+      return invalid(
+        `${entityDisplayName(sketch, raw.line) ?? 'the picked axis'} must not also be a sourceId; the axis is not mirrored`,
+      )
     }
 
   }
@@ -1123,7 +1142,8 @@ function mirrorEntities(raw: RawStep, ctx: ValueContext): ValueViolation | null 
   })
   if (allSelf) {
     return invalid(
-      `mirror_entities: every source mirrors to itself across ${json(raw.line)}, so there is nothing to add`,
+      `mirror_entities: every source mirrors to itself across `
+      + `${entityDisplayName(sketch, raw.line) ?? 'the picked axis'}, so there is nothing to add`,
     )
   }
   return null
@@ -1166,7 +1186,7 @@ function filletCorners(raw: RawStep, ctx: ValueContext): ValueViolation | null {
   if (ctx.doc === null || typeof featureId !== 'string') return null
   const sketch = sketchOf(ctx.doc, featureId)
   if (sketch === undefined) {
-    return unknownTarget(`fillet_corners names no sketch feature ${json(featureId)}`)
+    return unknownTarget('fillet_corners names no sketch feature in this document')
   }
   const plan = planFilletCorners(sketch, raw.radius as number, corners)
   if ('reason' in plan) {
@@ -1233,7 +1253,7 @@ function pasteSketchEntities(raw: RawStep, ctx: ValueContext): ValueViolation | 
   if (ctx.doc === null || typeof featureId !== 'string') return null
   const sketch = sketchOf(ctx.doc, featureId)
   if (sketch === undefined) {
-    return unknownTarget(`paste_sketch_entities names no sketch feature ${json(featureId)}`)
+    return unknownTarget('paste_sketch_entities names no sketch feature in this document')
   }
   return null
 }
@@ -2118,7 +2138,7 @@ function importDxf(raw: RawStep, ctx: ValueContext): ValueViolation | null {
     return invalid(`content must be the DXF file text, got ${json(raw.content ?? null)}`)
   }
   if (ctx.doc !== null && sketchOf(ctx.doc, featureId) === undefined) {
-    return unknownTarget(`import_dxf names no sketch feature ${json(featureId)}`)
+    return unknownTarget('import_dxf names no sketch feature in this document')
   }
   // A `file` is parsed by the runner after it decodes the bytes; an inline
   // `content` is parsed here so both spellings refuse the same way, including
@@ -2150,7 +2170,7 @@ function addText(raw: RawStep, ctx: ValueContext): ValueViolation | null {
   if (problem !== null) return invalid(`add_text: ${problem}`)
   if (ctx.doc === null) return null
   const sketch = sketchOf(ctx.doc, featureId)
-  if (sketch === undefined) return unknownTarget(`add_text names no sketch feature ${json(featureId)}`)
+  if (sketch === undefined) return unknownTarget('add_text names no sketch feature in this document')
   // textFieldsProblem has checked every field's shape, so these narrowings hold.
   const fields: AddTextFields = {
     text: raw.text as string,
@@ -2298,7 +2318,10 @@ function holeSketchCircleProblem(value: unknown, ctx: ValueContext, label: strin
   const sketch = sketchOf(ctx.doc, picked.sketchId)
   const entity = sketch?.entities?.find(candidate => candidate.id === picked.entityId)
   return entity?.kind === 'circle'
-    ? `${label}: ${circleDrillSiteReason(picked.sketchId, picked.entityId, entity.construction === true)}`
+    ? `${label}: ${circleDrillSiteReason(
+      picked.sketchId, picked.entityId, entity.construction === true, HOLE_SITE_WORDING,
+      { sketch, features: ctx.doc.features ?? [] },
+    )}`
     : null
 }
 

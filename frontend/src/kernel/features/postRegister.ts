@@ -29,6 +29,7 @@ import { BUILTIN_PLANES } from '../solverConstants'
 import { sketchToWorld2d, type PlaneLike } from './shared/planes'
 import { precisionKey, precisionOfSolve } from '../precision'
 import { stripRefSigil } from '@/utils/refSigil'
+import { featureDisplayName, sketchDisplayName, featureRows } from '@/utils/core/displayNames'
 import { entityPointKeys, entityPointXY } from '@/registry'
 import { resolveLegacyCapQuery } from './shared/legacyCapHandoff'
 
@@ -86,19 +87,24 @@ function unresolvedPlaneError(bare: string, context: SketchPlaneContext): Error 
   const features = context.featuresById
   const planeFeature = features?.[bare]
   if (planeFeature !== undefined && planeFeature.kind === 'plane') {
+    const rows = featureRows(features ?? {})
     const order = Object.keys(features ?? {})
     const planeAt = order.indexOf(bare)
     const sketchAt = context.sketchId === undefined ? -1 : order.indexOf(context.sketchId)
     if (sketchAt >= 0 && planeAt > sketchAt) {
       // Name the one-step fix: the anchor form needs no row counting
-      // (Extruder_Support F4 counted seventeen rows by hand).
+      // (Extruder_Support F4 counted seventeen rows by hand). The tree labels an
+      // author's row by its own label when one is set; this sentence uses the
+      // same label-or-ordinal name and names the command without raw ids.
       return new Error(
-        `plane '${bare}' is defined after this sketch; move it up with ` +
-          `reorder_features {featureId: '${bare}', before: '${context.sketchId}'}`,
+        `${featureDisplayName(planeFeature, rows)} is defined after ` +
+          `${sketchDisplayName(context.sketchId ?? '', rows)}; ` +
+          'move it up with `reorder_features` (before this row)',
       )
     }
     return new Error(
-      `plane '${bare}' did not resolve; its plane feature comes before this sketch but reported no frame `
+      `${featureDisplayName(planeFeature, rows)} did not resolve; ` +
+      'its plane feature comes before this sketch but reported no frame '
       + '(is it suppressed or failed?)',
     )
   }
@@ -207,6 +213,7 @@ export function postRegister(
   featureId: string,
   feature: Dict,
   featureResult: Dict,
+  featuresById: Record<string, Dict> = {},
 ): void {
   if (featureResult.status === 'exception') return
 
@@ -244,7 +251,9 @@ export function postRegister(
   // that merges this sketch's geometry into a body widens the kernel's face
   // merge by this much (kernel/precision.ts). Re-registered on every solve, the
   // same way `_topo_` is.
-  const precision = precisionOfSolve(featureResult, featureId)
+  const precision = precisionOfSolve(
+    featureResult, featureId, featureDisplayName(feature, featureRows(featuresById)),
+  )
   if (precision !== null) {
     globalRepo.register(precisionKey(featureId), precision)
   }

@@ -88,7 +88,7 @@ describe.skipIf(!oc || !solveBytes)('sweep entity-picked profiles (real OCC + Ru
     setSketchSolver(solveBytes)
   })
 
-  it('reports a leftover second rectangle as partial with its entity ids', () => {
+  it('reports a leftover second rectangle as partial with its entity names', () => {
     const result = h.run({
       features: [
         profileSketch('prof', true),
@@ -103,14 +103,16 @@ describe.skipIf(!oc || !solveBytes)('sweep entity-picked profiles (real OCC + Ru
     expect(res.status).toBe('partial')
     const message = String(res.exception ?? '')
     expect(message).toMatch(/dropped 4 of 8 picked profile entities/)
-    // The surviving loop is one full rectangle; the four ids named are the
-    // other rectangle's, whichever one the topo edge order chained first.
+    // The surviving loop is one full rectangle; the four names are the other
+    // rectangle's, whichever one the topo edge order chained first. Each is a
+    // line ordinal, and the four are one block of the sketch's lines.
     const named = message.split(': ').pop() ?? ''
-    const ids = named.split(', ')
-    expect(ids).toHaveLength(4)
-    const prefix = ids[0][0]
-    expect(['a', 'b']).toContain(prefix)
-    expect(ids.every((id) => id[0] === prefix)).toBe(true)
+    const names = named.split(', ')
+    expect(names).toHaveLength(4)
+    for (const name of names) expect(name).toMatch(/^line \d+$/)
+    expect(message).not.toMatch(/[A-Za-z0-9_-]{16,}/)
+    const ordinals = names.map(name => Number(name.split(' ')[1])).sort((a, b) => a - b)
+    expect(ordinals[3] - ordinals[0]).toBe(3)
   })
 
   it('sweeps a single picked rectangle as ok', () => {

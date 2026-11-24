@@ -42,6 +42,7 @@ import {
   type WrapSurface,
 } from './wrapMath'
 import { add as add3, dot, scale, sub as sub3 } from '@/utils/vec3'
+import { sketchDisplayName, featureRows } from '@/utils/core/displayNames'
 
 type Dict = Record<string, unknown>
 
@@ -112,7 +113,7 @@ function resolveTargetFace(
   const partId = entry.body_id as string | undefined
   const faceIndex = entry.face_index as number | undefined
   if (partId === undefined || faceIndex === undefined) {
-    throw new Error(`wrap: the target '${ref}' is not a part face; pick a cylinder, cone, sphere or torus face`)
+    throw new Error('wrap: the picked target is not a part face; pick a cylinder, cone, sphere or torus face')
   }
   const part = partStore[partId]
   if (part === undefined || part.shape === null) return null
@@ -328,7 +329,9 @@ export function solveWrap(
       sketchId = resolved.sketchId
     } else if (!samePlane(plane, resolved.plane)) {
       throw new Error(
-        `wrap: profile spans two different sketch planes ('${sketchId}' and '${resolved.sketchId}'); ` +
+        `wrap: profile spans two different sketch planes (` +
+        `${sketchDisplayName(sketchId, featureRows(featuresById))} and ` +
+        `${sketchDisplayName(resolved.sketchId, featureRows(featuresById))}); ` +
           'build one wrap per plane',
       )
     }

@@ -164,7 +164,8 @@ describe.skipIf(!ready)('line_distance operand order (real OCC + Rust solver)', 
     const problem = result.features.find(feature => feature.id === 'sk2')
     expect(problem).toBeDefined()
     expect(problem!.status).toBe('fully_constrained')
-    expect(problem!.message).toContain('constraint c_missing (coincident) names operands it cannot use (stale reference) and was ignored')
+    expect(problem!.message).toBe('coincident 2 names geometry it cannot use (stale reference) and was ignored.')
+    expect(problem!.message).not.toContain('c_missing')
 
     // A build warning on a complete sketch is not an export failure.
     const exported = await exportHeadless(result.doc as PartDoc, { format: 'step' })
@@ -190,8 +191,6 @@ describe.skipIf(!ready)('line_distance operand order (real OCC + Rust solver)', 
     const problem = result.features.find(feature => feature.id === 'sk1')
     expect(problem).toBeDefined()
     expect(problem!.status).toBe('fully_constrained')
-    expect(problem!.message).toMatch(
-      /^constraint c_length_\S+ \(length\) names operands it cannot use \(operand kind\) and was ignored\.$/,
-    )
+    expect(problem!.message).toBe('length 1 names geometry it cannot use (operand kind) and was ignored.')
   }, 120_000)
 })

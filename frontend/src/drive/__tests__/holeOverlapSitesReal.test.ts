@@ -43,7 +43,7 @@ describe.skipIf(!ready)('hole drill sites that overlap (real OCC + Rust solver)'
   it('names the overlapping pair', async () => {
     const result = await runHeadless({ doc: emptyDriveDoc(), steps: steps([3, 0]) })
     const problem = result.features.find(feature => feature.id === 'h1')
-    expect(problem?.message).toMatch(/drill sites overlap and merge into one cut: sites \S+, \S+/)
+    expect(problem?.message).toMatch(/drill sites overlap and merge into one cut: sites point \d+, point \d+/)
   }, 120_000)
 
   it('stays quiet for sites clear of each other', async () => {

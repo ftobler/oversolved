@@ -316,8 +316,8 @@ describe.skipIf(!hasOcc)('boolean tools: @array includes the copies an add array
     // instances, one used. Before the split siblings were counted the array had
     // one member and the hand list used zero of it, so nothing warned and the
     // din_rail trap (a count raised after the hand list) stayed silent.
-    expect(res.solver_warning).toContain('pattern ca1 has 6 instances, the boolean uses 1')
-    expect(res.solver_warning).toContain("name '@ca1' in tools")
+    expect(res.solver_warning).toContain('circular pattern 1 has 6 instances, the boolean uses 1')
+    expect(res.solver_warning).toContain('name that pattern in tools')
     r.scope.dispose()
   })
 

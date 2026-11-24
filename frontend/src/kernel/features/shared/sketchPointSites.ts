@@ -7,15 +7,19 @@
 //
 // A pick naming a single entity narrows the rule to that entity: a point drills,
 // a circle gets the extrude-cut remedy, and a line or spline names no point.
+// The sentences name the sketch and the entity by display name, never by id.
 
 import {
   circleDrillSiteReason,
   constructionOnlyPointsReason,
+  entityKindForRefusal,
   noPointDrillSiteReason,
   HOLE_SITE_WORDING,
+  type SketchNaming,
   type SiteWording,
   type SketchCircleKind,
 } from './drillSite'
+import { entityDisplayName, sketchDisplayName } from '@/utils/core/displayNames'
 
 type Dict = Record<string, unknown>
 
@@ -23,6 +27,12 @@ type Dict = Record<string, unknown>
 export function circleKindOf(entities: readonly Dict[]): SketchCircleKind {
   if (entities.some((e) => e.kind === 'circle' && e.construction !== true)) return 'real'
   return entities.some((e) => e.kind === 'circle') ? 'construction' : 'none'
+}
+
+/** The sketch as a sentence subject (`sketch 'Holes'` / `sketch 2` / `the
+ *  sketch`), shared by the refusals below. */
+function sketchSubject(sketchId: string, naming: SketchNaming): string {
+  return sketchDisplayName(sketchId, naming.features ?? [])
 }
 
 /**
@@ -35,15 +45,16 @@ export function sketchPointSites(
   entities: readonly Dict[],
   sketchId: string,
   wording: SiteWording = HOLE_SITE_WORDING,
+  naming: SketchNaming = {},
 ): Dict[] {
   const candidates = entities.filter((e) => e.kind === 'point')
   const sites = candidates.filter((e) => e.construction !== true)
   if (sites.length > 0) return sites
   const circle = circleKindOf(entities)
   if (candidates.length > 0) {
-    throw new Error(constructionOnlyPointsReason(sketchId, circle, wording))
+    throw new Error(constructionOnlyPointsReason(sketchId, circle, wording, naming))
   }
-  throw new Error(noPointDrillSiteReason(sketchId, circle, wording))
+  throw new Error(noPointDrillSiteReason(sketchId, circle, wording, naming))
 }
 
 /**
@@ -56,16 +67,19 @@ export function pickedPointSite(
   sketchId: string,
   entityId: string,
   wording: SiteWording = HOLE_SITE_WORDING,
+  naming: SketchNaming = {},
 ): Dict {
   const picked = entities.find((e) => e.id === entityId)
-  if (picked === undefined) throw new Error(`sketch '${sketchId}' has no entity '${entityId}'`)
+  const subject = entityDisplayName(naming.sketch ?? { id: sketchId }, entityId)
+    ?? 'the picked entity'
+  if (picked === undefined) throw new Error(`${sketchSubject(sketchId, naming)} has no such entity; pick the point again`)
   if (picked.kind === 'circle') {
-    throw new Error(circleDrillSiteReason(sketchId, entityId, picked.construction === true, wording))
+    throw new Error(circleDrillSiteReason(sketchId, entityId, picked.construction === true, wording, naming))
   }
   if (picked.kind === 'point') {
     if (picked.construction === true) {
       throw new Error(
-        `'${entityId}' of sketch ${sketchId} is a construction point, which names no ${wording.site}; ` +
+        `${subject} of ${sketchSubject(sketchId, naming)} is a construction point, which names no ${wording.site}; ` +
         'construction geometry is reference only; toggle its construction off to ' +
         `${wording.flagVerb}, or pick the sketch itself`,
       )
@@ -73,7 +87,7 @@ export function pickedPointSite(
     return picked
   }
   throw new Error(
-    `'${entityId}' of sketch ${sketchId} is a ${picked.kind}, which names no ${wording.site}; ` +
-    `pick a sketch point, ${wording.pickHint}`,
+    `${subject} of ${sketchSubject(sketchId, naming)} is a ${entityKindForRefusal(String(picked.kind ?? ''))}, ` +
+    `which names no ${wording.site}; pick a sketch point, ${wording.pickHint}`,
   )
 }

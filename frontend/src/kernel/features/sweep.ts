@@ -21,6 +21,7 @@ import { collectExtrudeLoops } from './faceProfile'
 import { samePlane, sketchToWorld2d, type PlaneLike } from './shared/planes'
 import { extractProfileLoops, profileAreaReport, loopDiagReasons, type ProfileLoopDiag } from './shared/profileLoops'
 import { parseSketchEntityRef, surfaceEntityIds } from './shared/partRef'
+import { entityDisplayName, featureDisplayName, featureRows, sketchDisplayName, type SketchNamingSource } from '@/utils/core/displayNames'
 import { applyPartOperation, type PartOperation } from './partOps'
 import { sweepProfileWithLineage, type LineageResult } from '../occ/prismLineage'
 import { sweepSectionsWithLineage, type SweepSection } from '../occ/sweepSections'
@@ -36,6 +37,12 @@ import { TOL_LENGTH_SLACK, TOL_LOOP_CLOSURE } from '../solverConstants'
 import { maxPrecision, sketchPrecision, type KernelPrecision } from '../precision'
 
 type Dict = Record<string, unknown>
+
+/** The sketch as a sentence subject from the build's ordered feature rows:
+ *  `sketch 'Base'` / `sketch 2` / `the sketch`. */
+function sketchSubject(sketchId: string, featuresById: Record<string, Dict>): string {
+  return sketchDisplayName(sketchId, featureRows(featuresById))
+}
 
 /** Resolve a sweep path reference to the sketch id holding the spine. */
 export function pathRefToSketchId(pathRef: string, globalRepo: Repository): string {
@@ -201,10 +208,21 @@ function boundaryEdges(topo: Dict): Dict[] {
  * their world-space start/end (and center for arcs) so a path spanning sketches
  * on different planes orders correctly. Returns [worldEdges, sketchId].
  */
-function pathRefWorldEdges(ref: string, globalRepo: Repository, options: PathPickOptions): [Dict[], string] {
+function pathRefWorldEdges(
+  ref: string,
+  globalRepo: Repository,
+  options: PathPickOptions,
+  featuresById: Record<string, Dict>,
+): [Dict[], string] {
   const { sketchId, eid } = refToSketchAndEntity(ref, globalRepo)
   const plane = globalRepo.elements.get('_pt_' + sketchId) as PlaneLike | undefined
-  if (plane === undefined) throw new Error(`sweep: path sketch not found: ${JSON.stringify(sketchId)}`)
+  if (plane === undefined) {
+    throw new Error(
+      featuresById[sketchId] === undefined
+        ? 'sweep: the path sketch is not in the document; pick the path again'
+        : `sweep: ${sketchSubject(sketchId, featuresById)} has no solved plane; pick the path again`,
+    )
+  }
   const topo = (globalRepo.elements.get('_topo_' + sketchId) as Dict | undefined) ?? {}
   const rawEdges = (topo.edges as Dict[]) ?? []
   let selected = eid === null ? rawEdges : rawEdges.filter((e) => e.entity_id === eid)
@@ -222,9 +240,9 @@ function pathRefWorldEdges(ref: string, globalRepo: Repository, options: PathPic
       // pattern walks it as the 360 degree ellipse-arc span its builder takes;
       // a sweep path must be an open chain.
       if (options.closedCurve !== true) {
+        const name = entityDisplayName(featuresById[sketchId], e.entity_id as string) ?? 'the picked entity'
         throw new Error(
-          `sweep: path entity '${e.entity_id as string}' is a closed ellipse; ` +
-          `a sweep path must be an open chain`,
+          `sweep: ${name} is a closed ellipse; a sweep path must be an open chain`,
         )
       }
       const theta = ((Number(e.theta ?? 0)) * Math.PI) / 180
@@ -301,13 +319,14 @@ export function orderedPathWorldEdges(
   pathRefs: string | string[],
   globalRepo: Repository,
   options: PathPickOptions = {},
+  featuresById: Record<string, Dict> = {},
 ): [ChainEdge[], string] {
   const refs = Array.isArray(pathRefs) ? pathRefs : [pathRefs]
   const worldEdges: Dict[] = []
   const seen = new Set<string>()  // dedupe edges shared between refs (sketch + index)
   let firstSketchId = ''
   for (const ref of refs) {
-    const [edges, sketchId] = pathRefWorldEdges(ref, globalRepo, options)
+    const [edges, sketchId] = pathRefWorldEdges(ref, globalRepo, options, featuresById)
     if (!firstSketchId) firstSketchId = sketchId
     for (const e of edges) {
       // A split edge is named by its index; a surface-boundary edge (a lone
@@ -549,8 +568,9 @@ export function collectPathEdges(
   pathRefs: string | string[],
   globalRepo: Repository,
   options: PathPickOptions = {},
+  featuresById: Record<string, Dict> = {},
 ): [OccShape[], string] {
-  const [ordered, firstSketchId] = orderedPathWorldEdges(pathRefs, globalRepo, options)
+  const [ordered, firstSketchId] = orderedPathWorldEdges(pathRefs, globalRepo, options, featuresById)
   // A closed curve is one edge with no joint to snap: it is the whole loop, and
   // its own builder already places both ends on the same point.
   if (ordered.length === 1 && ordered[0].edge._closed === true) {
@@ -662,7 +682,7 @@ export function resolvePathSpine(
   const hint = pathReorderHint(pathRefs, globalRepo, featureId, featuresById)
   if (hint !== null) throw new Error(hint)
   return {
-    edges: collectPathEdges(oc, scope, pathRefs, globalRepo, options)[0],
+    edges: collectPathEdges(oc, scope, pathRefs, globalRepo, options, featuresById)[0],
     helix: false,
     binormal: null,
     helixPitch: null,
@@ -767,6 +787,7 @@ export function entityLoopDropMessage(
   eids: Iterable<string>,
   loops: Dict[][],
   diags: ProfileLoopDiag[],
+  sketch?: SketchNamingSource,
 ): string | null {
   if (diags.length === 0) return null
   const kept = new Set<string>()
@@ -783,8 +804,9 @@ export function entityLoopDropMessage(
   if (dropped.length === 0) {
     return `the picked profile edges did not all form a closed loop: ${loopDiagReasons(diags).join('; ')}`
   }
+  const named = dropped.map((id) => entityDisplayName(sketch, id) ?? 'a picked entity')
   return `dropped ${dropped.length} of ${picked.length} picked profile entities ` +
-    `whose edges did not form a closed loop: ${dropped.join(', ')}`
+    `whose edges did not form a closed loop: ${named.join(', ')}`
 }
 
 /**
@@ -802,10 +824,14 @@ function laterSketchReorderHint(
   const order = Object.keys(featuresById)
   const sweepAt = order.indexOf(featureId)
   if (sweepAt < 0 || order.indexOf(sketchId) <= sweepAt) return null
-  return (
-    `sketch '${sketchId}' is defined after this sweep; move it up with ` +
-    `reorder_features {featureId: '${sketchId}', before: '${featureId}'}`
-  )
+  // Name the row, not its id. The literal `reorder_features {...}` payload used
+  // to follow this sentence; a person cannot type document ids, and an agent
+  // reads the feature ids from the reply's structured rows, so the sentence
+  // names the fix and leaves the command to the catalog.
+  const rows = featureRows(featuresById)
+  return `${sketchDisplayName(sketchId, rows)} is defined after ` +
+    `${featureDisplayName(featuresById[featureId], rows)}; ` +
+    'move it up with `reorder_features` (before this row)'
 }
 
 /** The reorder sentence for a sketch path defined after the sweep, or null
@@ -970,8 +996,8 @@ export function solveSweep(
         // on a different plane would build its loops in the wrong place and
         // orientation; refuse it by name instead of building the wrong solid.
         throw new Error(
-          `sweep: profile spans two different sketch planes ('${firstSketchId}' and ` +
-          `'${resolved.sketchId}'); build one feature per plane, or set multisection ` +
+          `sweep: profile spans two different sketch planes (${sketchSubject(firstSketchId, featuresById)} and ` +
+          `${sketchSubject(resolved.sketchId, featuresById)}); build one feature per plane, or set multisection ` +
           `to sweep through them as sections`,
         )
       }
@@ -1031,10 +1057,12 @@ export function solveSweep(
     const diags: ProfileLoopDiag[] = []
     const loops = extractProfileLoops([{ boundary: edges }], diags)
     if (loops.length === 0) {
-      profileErrors.push(`sweep: picked profile edges do not form a closed loop (sketch ${sketchId})`)
+      profileErrors.push(
+        `sweep: the picked profile edges do not form a closed loop in ${sketchSubject(sketchId, featuresById)}`,
+      )
       continue
     }
-    const message = entityLoopDropMessage(eids, loops, diags)
+    const message = entityLoopDropMessage(eids, loops, diags, featuresById[sketchId])
     if (message !== null) profileErrors.push(`sweep: ${message}`)
     for (const surface of (topo.surfaces as Dict[]) ?? []) {
       profileQueries.push(...surfaceEntityIds(surface))
@@ -1055,8 +1083,8 @@ export function solveSweep(
         // on a different plane would build its loops in the wrong place and
         // orientation; refuse it by name instead of building the wrong solid.
         throw new Error(
-          `sweep: profile spans two different sketch planes ('${firstSketchId}' and ` +
-          `'${sketchId}'); build one feature per plane, or set multisection ` +
+          `sweep: profile spans two different sketch planes (${sketchSubject(firstSketchId, featuresById)} and ` +
+          `${sketchSubject(sketchId, featuresById)}); build one feature per plane, or set multisection ` +
           `to sweep through them as sections`,
         )
       }
@@ -1098,7 +1126,7 @@ export function solveSweep(
         outerLoopsBySketch.set(ref.sketchId, loop)
         if (holes.length > 0) {
           throw new Error(
-            `sweep: sketch ${ref.sketchId}, loop ${loop} has a hole; a multisection section must be one ` +
+            `sweep: ${sketchSubject(ref.sketchId, featuresById)}, loop ${loop} has a hole; a multisection section must be one ` +
             'outer loop. Sweep the outer loops in one feature and the inner loops in a second cut ' +
             'feature, naming its merge_target.',
           )

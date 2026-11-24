@@ -16,6 +16,7 @@ import { parseQuery } from '@/utils/query'
 import { isFaceRestriction } from '@/kernel/faceTypes'
 import { entityPointKeys, getDefaultParams, ENTITY_BY_KIND } from '@/registry'
 import type { PartDoc } from '@/types/cad'
+import { entityDisplayName, featureDisplayName } from '@/utils/core/displayNames'
 
 /** Hex characters of the construction UUID a member id starts with. */
 export const MEMBER_ID_HEX = 8
@@ -182,14 +183,8 @@ function localProjectionSource(source: string): string | null {
   return source.startsWith('$') && source.length > 1 ? source.slice(1) : null
 }
 
-/** Spell a local entity ref for a refusal sentence. Composed without the
- *  template form the doc-ref ratchet recognizes as a wire writer. */
-function dollarRef(id: string): string {
-  return `${'$'}${id}`
-}
-
-function chainLabel(ids: readonly string[]): string {
-  return ids.map(dollarRef).join(' -> ')
+function chainLabel(ids: readonly string[], sketch: { entities?: unknown } | undefined): string {
+  return ids.map(id => entityDisplayName(sketch, id) ?? 'the picked entity').join(' -> ')
 }
 
 /** The projection rows of a sketch, as a target -> source map for a `$` chain. */
@@ -232,6 +227,8 @@ export function classifyProjectionSource(
   const features = doc.features ?? []
   const target = features.find(feature => feature.id === featureId)
   if (target === undefined || target.kind !== 'sketch') return null
+  const targetName = featureDisplayName(target, features)
+  const targetEntity = (id: string) => entityDisplayName(target, id) ?? 'the picked entity'
 
   const local = localProjectionSource(source)
   if (local !== null) {
@@ -240,7 +237,7 @@ export function classifyProjectionSource(
     if (targetEid !== null && local === targetEid) {
       return {
         kind: 'self reference',
-        message: `a projection cannot source itself ('${source}')`,
+        message: 'a projection cannot source itself',
       }
     }
     // The chain the new row would close: `$` sources are copied verbatim, so a
@@ -252,13 +249,13 @@ export function classifyProjectionSource(
       if (targetEid !== null && current === targetEid) {
         return {
           kind: 'cycle',
-          message: `cycle: ${source} follows ${chainLabel(visited)} back to ${dollarRef(targetEid)}`,
+          message: `cycle: ${targetEntity(local)} follows ${chainLabel(visited, target)} back to ${targetEntity(targetEid)}`,
         }
       }
       if (visited.includes(current)) {
         return {
           kind: 'cycle',
-          message: `cycle: ${source} follows ${chainLabel(visited)} back to ${dollarRef(current)}`,
+          message: `cycle: ${targetEntity(local)} follows ${chainLabel(visited, target)} back to ${targetEntity(current)}`,
         }
       }
       visited.push(current)
@@ -269,14 +266,13 @@ export function classifyProjectionSource(
     if (!entities.some(entity => entity.id === local)) {
       return {
         kind: 'unknown entity',
-        message: `projection source ${source} names no entity '${local}' in sketch '${featureId}'; `
-          + `entities: ${entities.map(entity => entity.id).join(', ') || 'none'}`,
+        message: `the picked source names no entity in ${targetName}`,
       }
     }
     if (target.initial?.[local] === undefined) {
       return {
         kind: 'unpositioned',
-        message: `projection source ${source} names '${featureId}/${local}', which has no position yet; `
+        message: `${targetEntity(local)} in ${targetName} has no position yet; `
           + 'solve that sketch before projecting it',
       }
     }
@@ -289,22 +285,21 @@ export function classifyProjectionSource(
   if (sketchId === featureId) {
     return {
       kind: 'self reference',
-      message: `a sketch cannot project its own entity ('${source}'); draw it, or project the part edge it came from`,
+      message: 'a sketch cannot project its own entity; draw it, or project the part edge it came from',
     }
   }
   const sourceFeature = features.find(feature => feature.id === sketchId)
   if (sourceFeature === undefined) {
-    const sketches = features.filter(feature => feature.kind === 'sketch').map(feature => feature.id)
     return {
       kind: 'unknown sketch',
-      message: `projection source ${source} names no sketch '${sketchId}'; `
-        + `existing sketches: ${sketches.join(', ') || 'none'}`,
+      message: 'the picked source names no sketch in this document',
     }
   }
+  const sourceName = featureDisplayName(sourceFeature, features)
   if (sourceFeature.kind !== 'sketch') {
     return {
       kind: 'unknown sketch',
-      message: `projection source ${source} names '${sketchId}', which is not a sketch`,
+      message: `the picked source names ${sourceName}, which is not a sketch`,
     }
   }
   const sourceAt = features.findIndex(feature => feature.id === sketchId)
@@ -312,7 +307,7 @@ export function classifyProjectionSource(
   if (sourceAt >= 0 && targetAt >= 0 && sourceAt >= targetAt) {
     return {
       kind: 'forward reference',
-      message: `forward reference: '${sketchId}' comes later than '${featureId}'; `
+      message: `forward reference: ${sourceName} comes later than ${targetName}; `
         + 'reorder or project in the other direction',
     }
   }
@@ -328,14 +323,13 @@ export function classifyProjectionSource(
     if (member) return null
     return {
       kind: 'unknown entity',
-      message: `projection source ${source} names no entity '${entityId}' in sketch '${sketchId}'; `
-        + `entities: ${entities.map(candidate => candidate.id).join(', ') || 'none'}`,
+      message: `the picked source names no entity in ${sourceName}`,
     }
   }
   if (sourceFeature.initial?.[entityId] === undefined) {
     return {
       kind: 'unpositioned',
-      message: `projection source ${source} names '${sketchId}/${entityId}', which has no position yet; `
+      message: `${entityDisplayName(sourceFeature, entityId) ?? 'the picked entity'} in ${sourceName} has no position yet; `
         + 'solve that sketch before projecting it',
     }
   }

@@ -64,7 +64,7 @@ describe('resolveSketchPlane', () => {
       pl1: { id: 'pl1', kind: 'plane' },
     }
     expect(() => resolveSketchPlane('@pl1', repo, { sketchId: 'sk1', featuresById: features })).toThrow(
-      "plane 'pl1' is defined after this sketch; move it up with reorder_features {featureId: 'pl1', before: 'sk1'}",
+      'plane 1 is defined after sketch 1; move it up with `reorder_features` (before this row)',
     )
   })
 
@@ -77,7 +77,7 @@ describe('resolveSketchPlane', () => {
       sk1: { id: 'sk1', kind: 'sketch', plane: '@pl1' },
     }
     expect(() => resolveSketchPlane('@pl1', repo, { sketchId: 'sk1', featuresById: features })).toThrow(
-      "plane 'pl1' did not resolve; its plane feature comes before this sketch but reported no frame",
+      'plane 1 did not resolve; its plane feature comes before this sketch but reported no frame',
     )
   })
 

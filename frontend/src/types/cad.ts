@@ -1507,6 +1507,10 @@ export interface SketchData {
   // A sketch's remaining degrees of freedom; its underconstrained warning
   // states the same count.
   dof?: number
+  // The entities still holding DOF, as the solve found them. The warning text
+  // names them for a reader; this list is the machine's handle on the same rows
+  // (the drive reply copies it to the feature row's `free`).
+  free_entities?: string[]
   // Informational text about geometry the solve did build (a blend's tangent
   // chain); it is not a failure and the tree shows no mark for it.
   solver_note?: string

@@ -20,6 +20,7 @@ import { resolveSketchPlane } from '../postRegister'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { initGlobalRepo } from '../../query'
+import { leakedIds } from '@/testing/warningText'
 
 const solveBytes = loadSolver()
 const topologyBytes = loadTopology()
@@ -47,6 +48,7 @@ describe.skipIf(!solveBytes || !topologyBytes)('corpus sketches report zero redu
 
   it('flags no constraint on any satisfied corpus sketch', () => {
     const flagged: string[] = []
+    const leaks: string[] = []
     let solved = 0
     for (const entry of corpusEntries()) {
       for (const feature of entry.spec.features ?? []) {
@@ -65,6 +67,13 @@ describe.skipIf(!solveBytes || !topologyBytes)('corpus sketches report zero redu
           replayFeature = { ...feature, plane: undefined }
         }
         const out = solveSketch(replayFeature, repo, {})
+        // The live warning text of every corpus sketch is the widest
+        // warning-producing replay the repo has, so the names-for-people
+        // tripwire reads it here rather than a frozen copy.
+        const warning = typeof out.solver_warning === 'string' ? out.solver_warning : ''
+        for (const token of leakedIds(warning)) {
+          leaks.push(`${entry.label}/${String(feature.id)}: ${token} in ${warning}`)
+        }
         if (out.status === 'overconstrained') continue
         solved++
         for (const [cid, c] of Object.entries(out.constraints ?? {})) {
@@ -75,5 +84,6 @@ describe.skipIf(!solveBytes || !topologyBytes)('corpus sketches report zero redu
     // A vacuous pass (nothing solved) would defeat the guard.
     expect(solved).toBeGreaterThan(0)
     expect(flagged).toEqual([])
+    expect(leaks).toEqual([])
   })
 })

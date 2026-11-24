@@ -244,7 +244,7 @@ describe('pattern_entities document write', () => {
     expect(messages[3]).toContain('count must be a whole number')
     expect(messages[4]).toContain('pitch must not be zero')
     expect(messages[5]).toContain('mode must be one of linear, grid, rotate, copy')
-    expect(messages[6]).toContain('names no entity in sketch sk1')
+    expect(messages[6]).toContain('names no entity in sketch 1')
     expect(messages[7]).toBe('pattern_entities: center is not a linear field; linear reads count, pitch, direction')
     expect(messages[8]).toContain('targetFeatureId is a copy-mode field')
   })
@@ -256,7 +256,7 @@ describe('pattern_entities document write', () => {
     const ids = many.entities.map(e => e.id)
     const before = copy(doc)
     expect(violation(doc, { sourceIds: ids, mode: 'linear', count: 50, pitch: 30 })?.message)
-      .toBe('pattern_entities: would add 4900 entities to the 100 already in sketch sk1; the sketch holds at most 4096')
+      .toBe('pattern_entities: would add 4900 entities to the 100 already in sketch 1; the sketch holds at most 4096')
     applyPatternEntities(doc, step({ sourceIds: ids, mode: 'linear', count: 50, pitch: 30 }))
     expect(doc).toEqual(before)
 

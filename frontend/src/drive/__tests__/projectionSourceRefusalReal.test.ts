@@ -67,9 +67,9 @@ describe.skipIf(!ready)('projection source refusal (real OCC + Rust solver)', ()
     )
     for (const [source, text] of [
       ['@sk2/p1', 'cannot project its own entity'],
-      ['@sk9/zz', "names no sketch 'sk9'"],
-      ['@sk1/nope', "names no entity 'nope' in sketch 'sk1'"],
-      ['@sk3/q3', "forward reference: 'sk3' comes later than 'sk2'"],
+      ['@sk9/zz', 'the picked source names no sketch in this document'],
+      ['@sk1/nope', "the picked source names no entity in sketch 'Rectangle'"],
+      ['@sk3/q3', 'forward reference: sketch 3 comes later than sketch 2'],
     ] as const) {
       const result = await runHeadless({
         doc: structuredClone(doc),
@@ -114,7 +114,7 @@ describe.skipIf(!ready)('projection source refusal (real OCC + Rust solver)', ()
       }],
     })
     expect(result.outcome.steps[0].ok).toBe(false)
-    expect(result.outcome.steps[0].error?.message).toContain('cycle: $qa follows')
+    expect(result.outcome.steps[0].error?.message).toContain('cycle: point 1 follows point 1 -> point 2 back to point 1')
     expect(projectionRows(result.doc!, 'sk2')).toHaveLength(2)
   }, 180_000)
 
@@ -197,7 +197,7 @@ describe.skipIf(!ready)('projection source refusal (real OCC + Rust solver)', ()
       ],
     })
     expect(result.outcome.steps[1].ok).toBe(false)
-    expect(result.outcome.steps[1].error?.message).toContain("names no entity 'l1' in sketch 'sk2'")
+    expect(result.outcome.steps[1].error?.message).toContain('the picked source names no entity in sketch 2')
     expect(projectionRows(result.doc!, 'sk3')).toHaveLength(0)
   }, 180_000)
 
@@ -261,7 +261,7 @@ describe.skipIf(!ready)('projection source refusal (real OCC + Rust solver)', ()
     })
     expect(refused.outcome.steps[0].ok).toBe(false)
     expect(refused.outcome.steps[0].error?.message).toContain(
-      'cannot move skA below skB: skB projects @skA/l1 (a sketch can only project earlier sketches)',
+      'cannot move sketch 2 below sketch 3: sketch 3 projects line 1 (a sketch can only project earlier sketches)',
     )
     // The refused move left the order as it was.
     const order = refused.doc!.features!.map(feature => feature.id)

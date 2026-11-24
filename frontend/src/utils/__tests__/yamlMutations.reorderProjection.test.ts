@@ -40,7 +40,7 @@ describe('applyReorderFeatures refuses a projection forward reference', () => {
     // sk1 currently sits directly above sk2. Dropping it below sk2 (index 6)
     // would make sk2 project a later sketch.
     expect(() => applyReorderFeatures(d, 'sk1', 6)).toThrow(
-      'cannot move sk1 below sk2: sk2 projects @sk1/l1 (a sketch can only project earlier sketches)',
+      'cannot move sketch 1 below sketch 2: sketch 2 projects line 1 (a sketch can only project earlier sketches)',
     )
     expect(d).toEqual(before)
   })
@@ -50,7 +50,7 @@ describe('applyReorderFeatures refuses a projection forward reference', () => {
     const before = structuredClone(d)
     // Dropping sk2 above sk1 (index 4 is sk1's own slot) inverts the pair.
     expect(() => applyReorderFeatures(d, 'sk2', 4)).toThrow(
-      'cannot move sk2 above sk1: sk2 projects @sk1/l1 (a sketch can only project earlier sketches)',
+      'cannot move sketch 2 above sketch 1: sketch 2 projects line 1 (a sketch can only project earlier sketches)',
     )
     expect(d).toEqual(before)
   })
@@ -58,7 +58,7 @@ describe('applyReorderFeatures refuses a projection forward reference', () => {
   it('inherits the check through applyMoveFeatureBefore', () => {
     const d = doc()
     const before = structuredClone(d)
-    expect(() => applyMoveFeatureBefore(d, 'sk1', 'sk3')).toThrow(/cannot move sk1 below sk2/)
+    expect(() => applyMoveFeatureBefore(d, 'sk1', 'sk3')).toThrow(/cannot move sketch 1 below sketch 2/)
     expect(d).toEqual(before)
   })
 

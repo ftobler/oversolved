@@ -57,9 +57,11 @@ describe.skipIf(!ready)('sketch plane refusal (real OCC + Rust solver)', () => {
     const problem = forward.features.find(feature => feature.id === 'sk2')
     expect(problem).toBeDefined()
     expect(problem!.status).toBe('exception')
-    expect(problem!.message).toContain(
-      "plane 'pl1' is defined after this sketch; move it up with reorder_features {featureId: 'pl1', before: 'sk2'}",
+    expect(problem!.message).toMatch(
+      /^plane \d+ is defined after sketch '.*'; move it up with `reorder_features` \(before this row\)$/,
     )
+    expect(problem!.message).not.toContain('pl1')
+    expect(problem!.message).toContain('`reorder_features` (before this row)')
     expect(forward.part.solveOutcomes().sk2.status).toBe('exception')
     // The refused sketch built nothing: only the box body is live.
     expect(forward.bodies).toEqual(['body_ex1'])

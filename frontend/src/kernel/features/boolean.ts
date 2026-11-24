@@ -38,6 +38,7 @@ import { offsetSolid, OffsetError } from '../occ/offsetShape'
 import { SubShapeMap } from '../occ/subshapeIdentity'
 import { resplitPart } from './partSplit'
 import { transferBooleanNames } from './booleanLineage'
+import { featureDisplayName, featureRows } from '@/utils/core/displayNames'
 import { readPartNames } from '../occ/partNames'
 import { stripRefSigil } from '@/utils/refSigil'
 import { patternSubject } from '@/utils/core/patternSubject'
@@ -206,6 +207,7 @@ function partialPatternWarnings(
 ): string[] {
   const warnings: string[] = []
   const order = Object.keys(featuresById)
+  const rows = featureRows(featuresById)
   const selfIndex = order.indexOf(featureId)
   for (const [fid, def] of Object.entries(featuresById)) {
     const upstream = fid !== featureId && (selfIndex < 0 || order.indexOf(fid) < selfIndex)
@@ -214,8 +216,8 @@ function partialPatternWarnings(
     const used = members.filter((id) => toolIds.has(id)).length
     if (used > 0 && used < members.length) {
       warnings.push(
-        `pattern ${fid} has ${members.length} instances, the boolean uses ${used}; ` +
-          `name '@${fid}' in tools to take every instance`,
+        `${featureDisplayName(def, rows)} has ${members.length} instances, the boolean uses ${used}; ` +
+          'name that pattern in tools to take every instance',
       )
     }
   }

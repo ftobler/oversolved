@@ -691,7 +691,7 @@ describe.skipIf(!oc || !solveBytes)('a hole as a pattern source (real OCC + Rust
         pattern('pt1', ['h1'], { mode: 'linear', count: 2, pitch: 10, direction: [1, 0, 0] }),
       ],
     })
-    expect(String(h.res(suppressed, 'pt1').exception)).toContain("source feature 'h1' is suppressed")
+    expect(String(h.res(suppressed, 'pt1').exception)).toContain('is suppressed')
 
     const reordered = h.run({
       features: [
@@ -702,7 +702,7 @@ describe.skipIf(!oc || !solveBytes)('a hole as a pattern source (real OCC + Rust
     })
     const reorderedRes = h.res(reordered, 'pt1')
     expect(reorderedRes.status).toBe('exception')
-    expect(String(reorderedRes.exception)).toContain("source feature 'h1' comes after this pattern")
+    expect(String(reorderedRes.exception)).toContain('comes after this pattern')
     expect(String(reorderedRes.exception)).toContain('reorder_features')
 
     // Every site misses the plate. With an explicit target the source resolves

@@ -7,9 +7,30 @@
 // instance pattern reads the same rule with its own nouns. One implementation
 // of the sentences is what keeps the two from disagreeing about what a sketch
 // point means.
+//
+// A refused pick is named the way every other message names document things:
+// the entity by kind and ordinal, the sketch by its label or its kind ordinal
+// (utils/core/displayNames). The raw ids never appear; a caller with no sketch
+// row or feature list gets "the sketch" / "the picked entity" instead.
+
+import {
+  entityDisplayName,
+  entityKindWord,
+  sketchDisplayName,
+  type NamingRow,
+  type SketchNamingSource,
+} from '@/utils/core/displayNames'
 
 /** What a sketch's circles offer as an alternative to a point site. */
 export type SketchCircleKind = 'none' | 'real' | 'construction'
+
+/** The naming context a refusal has in hand: the sketch row and the document's
+ *  ordered feature list. Both optional, so a shape-only caller still gets a
+ *  sentence without an id. */
+export interface SketchNaming {
+  sketch?: SketchNamingSource
+  features?: readonly NamingRow[]
+}
 
 /** The nouns one feature uses when it refuses a pick that names no point site.
  *  Every string is a fragment so the sentences below stay in one place. */
@@ -52,6 +73,18 @@ export const INSTANCE_SITE_WORDING: SiteWording = {
   pickHint: 'or list the targets one by one',
 }
 
+/** The sketch as a sentence subject, `sketch 'Holes'` / `sketch 2` / `the
+ *  sketch`. A bare sketch id is not a name the user can read. */
+function sketchSubject(sketchId: string, naming: SketchNaming): string {
+  return sketchDisplayName(sketchId, naming.features ?? [])
+}
+
+/** The picked entity as a sentence subject, falling back to a noun phrase for a
+ *  row the sketch no longer holds. */
+function entitySubject(sketchId: string, entityId: string, naming: SketchNaming, fallback: string): string {
+  return entityDisplayName(naming.sketch ?? { id: sketchId }, entityId) ?? fallback
+}
+
 /**
  * The remedy for a non-construction circle: cut it with an extrude. Construction
  * geometry is excluded from profiles, so a construction circle needs its flag
@@ -69,9 +102,11 @@ export function circleDrillSiteReason(
   entityId: string,
   construction = false,
   wording: SiteWording = HOLE_SITE_WORDING,
+  naming: SketchNaming = {},
 ): string {
   const kind = construction ? 'construction circle' : 'circle'
-  return `'${entityId}' of sketch ${sketchId} is a ${kind}, which is not a ${wording.site}: ` +
+  const subject = entitySubject(sketchId, entityId, naming, construction ? 'a construction circle' : 'a circle')
+  return `${subject} of ${sketchSubject(sketchId, naming)} is a ${kind}, which is not a ${wording.site}: ` +
     `${wording.meaning}; ${circleRemedy(construction)}`
 }
 
@@ -84,12 +119,13 @@ export function noPointDrillSiteReason(
   sketchId: string,
   circle: SketchCircleKind,
   wording: SiteWording = HOLE_SITE_WORDING,
+  naming: SketchNaming = {},
 ): string {
   if (circle === 'none') {
-    return `sketch '${sketchId}' has no point entities; ` +
+    return `${sketchSubject(sketchId, naming)} has no point entities; ` +
       `the ${wording.feature} needs a point in its sketch to ${wording.needVerb}`
   }
-  return `sketch '${sketchId}' has no point entities: ${wording.meaning}; ` +
+  return `${sketchSubject(sketchId, naming)} has no point entities: ${wording.meaning}; ` +
     circleRemedy(circle === 'construction')
 }
 
@@ -103,13 +139,20 @@ export function constructionOnlyPointsReason(
   sketchId: string,
   circle: SketchCircleKind,
   wording: SiteWording = HOLE_SITE_WORDING,
+  naming: SketchNaming = {},
 ): string {
   if (circle === 'none') {
-    return `sketch '${sketchId}' has only construction points; ` +
+    return `${sketchSubject(sketchId, naming)} has only construction points; ` +
       'construction geometry is reference only, so add a non-construction point, ' +
       `or clear the point's construction flag to ${wording.flagVerb}`
   }
-  return `sketch '${sketchId}' has ${wording.noSite}: ` +
+  return `${sketchSubject(sketchId, naming)} has ${wording.noSite}: ` +
     'add a non-construction point (or clear the point\'s construction flag), or ' +
     circleRemedy(circle === 'construction')
+}
+
+/** A picked non-point entity's name for the refusal sentences: the registry
+ *  kind word, or "curve" for a kind the registry does not know. */
+export function entityKindForRefusal(kind: string): string {
+  return entityKindWord(kind) ?? 'curve'
 }

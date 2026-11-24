@@ -13,11 +13,13 @@ import type {
   Mutation,
   PartConstraint,
   PartDoc,
+  PartFeature,
   ProjectionMemberEntityData,
   ProjectionMemberReportData,
   SketchFeature,
 } from '@/types/cad'
 import { findSketchFeature, MutationRefusal, uniqueConstraintId } from './helpers'
+import { constraintDisplayName, entityDisplayName, featureDisplayName } from '@/utils/core/displayNames'
 import { applyDeleteElements } from './sketch'
 import {
   freezeRowsForDelete,
@@ -62,7 +64,11 @@ interface ResolvedProjection {
 /** Resolve a freeze target to the projection it names. A constraint id wins,
  *  because a face projection has no other spelling; a held entity id and a face
  *  member id both resolve through the constraint rows. */
-function resolveProjectionTarget(feature: SketchFeature, target: string): ResolvedProjection {
+function resolveProjectionTarget(
+  feature: SketchFeature,
+  target: string,
+  features: readonly PartFeature[],
+): ResolvedProjection {
   const constraints = feature.constraints ?? []
   const byId = constraints.find(c => c.id === target && c.kind === 'projection')
   if (byId !== undefined) {
@@ -78,8 +84,8 @@ function resolveProjectionTarget(feature: SketchFeature, target: string): Resolv
     return { constraint: byMember, entityId: null }
   }
   throw new MutationRefusal(
-    `freeze_projection: '${target}' names no projection in sketch '${feature.id}'; `
-    + 'pass a projected entity id, a projection constraint id, or one of its member ids',
+    `freeze_projection: that pick names no projection in ${featureDisplayName(feature, features)}; `
+    + 'pass a projected entity, a projection constraint, or one of its members',
   )
 }
 
@@ -92,18 +98,24 @@ function heldEntityId(constraint: PartConstraint): string | null {
  *  stored/hand-edited "left out of the profile" state, where there is no
  *  geometry to fix. The remedy is deleting the projection, which the text names
  *  because the user cannot see the difference from a resolved one. */
-function projectionPositionProblem(feature: SketchFeature, constraint: PartConstraint): string | null {
+function projectionPositionProblem(
+  feature: SketchFeature,
+  constraint: PartConstraint,
+  features: readonly PartFeature[],
+): string | null {
+  const name = constraintDisplayName(feature, constraint.id) ?? 'the projection'
   const entityId = heldEntityId(constraint)
   if (entityId === null) {
-    return `projection '${constraint.id}' holds no entity; delete the projection instead`
+    return `${name} holds no entity; delete the projection instead`
   }
   const entity = (feature.entities ?? []).find(candidate => candidate.id === entityId)
+  const entityName = entityDisplayName(feature, entityId) ?? 'the picked entity'
   if (entity === undefined) {
-    return `projection '${constraint.id}' holds '${entityId}', which is not an entity of sketch `
-      + `'${feature.id}'; delete the projection instead`
+    return `${name} holds ${entityName}, which is not an entity of ${featureDisplayName(feature, features)}; `
+      + 'delete the projection instead'
   }
   if (!isProjectionPosition(feature.initial?.[entityId], entity.kind, entity.handles)) {
-    return `projection '${constraint.id}' holds '${entityId}', which has no position to freeze; `
+    return `${name} holds ${entityName}, which has no position to freeze; `
       + 'delete the projection instead'
   }
   return null
@@ -155,15 +167,17 @@ export function applyFreezeProjection(
   const feature = findSketchFeature(doc, featureId)
   // A stale feature id is a no-op, the same contract every sketch applier keeps.
   if (feature === undefined) return
-  const resolved = resolveProjectionTarget(feature, target)
+  const features = doc.features ?? []
+  const resolved = resolveProjectionTarget(feature, target, features)
   const constraint = resolved.constraint
 
   if (isFaceProjection(constraint)) {
     const rows = faceFreezeRows(constraint, materialize)
     if (rows.length === 0) {
       throw new MutationRefusal(
-        `freeze_projection: projection '${constraint.id}' in sketch '${featureId}' has no solved `
-        + 'member rows to freeze; rebuild the source, or delete the projection',
+        `freeze_projection: ${constraintDisplayName(feature, constraint.id) ?? 'the projection'} in `
+        + `${featureDisplayName(feature, features)} has no solved member rows to freeze; `
+        + 'rebuild the source, or delete the projection',
       )
     }
     // The delete path writes the rows under their derived ids and removes the
@@ -176,7 +190,7 @@ export function applyFreezeProjection(
     return
   }
 
-  const problem = projectionPositionProblem(feature, constraint)
+  const problem = projectionPositionProblem(feature, constraint, features)
   if (problem !== null) throw new MutationRefusal(`freeze_projection: ${problem}`)
   const entityId = resolved.entityId ?? heldEntityId(constraint)
   applyDeleteElements(doc, [`constraint:${featureId}:${constraint.id}`])
@@ -243,6 +257,7 @@ export function freezeSelectionPlan(
   selection: ReadonlySet<string>,
   mode: FreezeProjectionMode,
   reports: Readonly<Record<string, ProjectionMemberReportData>> | null | undefined,
+  features: readonly PartFeature[] = [],
 ): FreezeSelectionPlan {
   const plan: FreezeSelectionPlan = { mutations: [], notFrozen: [], refused: [] }
   for (const selectionId of projectedSelectionTargets(feature, selection)) {
@@ -250,7 +265,7 @@ export function freezeSelectionPlan(
     const target = parts[2]
     let resolved: ResolvedProjection
     try {
-      resolved = resolveProjectionTarget(feature, target)
+      resolved = resolveProjectionTarget(feature, target, features)
     } catch (e) {
       // The resolver already established this name a projection; a refusal here
       // would be a race the plan pre-check is meant to prevent.
@@ -272,7 +287,7 @@ export function freezeSelectionPlan(
       })
       continue
     }
-    const problem = projectionPositionProblem(feature, constraint)
+    const problem = projectionPositionProblem(feature, constraint, features)
     if (problem !== null) {
       plan.refused.push(problem)
       continue

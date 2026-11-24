@@ -31,6 +31,7 @@ import { makeRigidTrsf } from '../occ/transforms'
 import { resolveSketchPlane } from './postRegister'
 import { sketchToWorld2d, type PlaneLike } from './shared/planes'
 import { INSTANCE_SITE_WORDING } from './shared/drillSite'
+import { featureRows } from '@/utils/core/displayNames'
 import { sketchPointSites } from './shared/sketchPointSites'
 import {
   axisSenseContext, faceIndexCache, resolvePickTarget, type PickTarget, type PickTargetContext,
@@ -102,10 +103,18 @@ interface SketchPoint {
   plane: PlaneLike
 }
 
-/** The non-construction points of a sketch, in entity order, solved. */
-function sketchPoints(sketchId: string, sketch: Dict, globalRepo: Repository): SketchPoint[] {
+/** The non-construction points of a sketch, in entity order, solved. `names`
+ *  lets a refusal name the sketch and its entities; the ids are for the wire. */
+function sketchPoints(
+  sketchId: string,
+  sketch: Dict,
+  globalRepo: Repository,
+  featuresById: Record<string, Dict>,
+): SketchPoint[] {
   const entities = (sketch.entities as Dict[] | undefined) ?? []
-  const sites = sketchPointSites(entities, sketchId, INSTANCE_SITE_WORDING)
+  const sites = sketchPointSites(entities, sketchId, INSTANCE_SITE_WORDING, {
+    sketch, features: featureRows(featuresById),
+  })
   const initial = (sketch.initial as Record<string, number[]> | undefined) ?? {}
   const solved = globalRepo.elements.get('_pt_' + sketchId) as PlaneLike | undefined
   const plane = solved ?? resolveSketchPlane(sketch.plane as string | undefined, globalRepo) as PlaneLike
@@ -133,7 +142,7 @@ function singleProfilePoint(
   const entities = (sketch.entities as Dict[] | undefined) ?? []
   const points = entities.filter((entity) => entity.kind === 'point' && entity.construction !== true)
   if (points.length !== 1) return null
-  const sites = sketchPoints(id, sketch, globalRepo)
+  const sites = sketchPoints(id, sketch, globalRepo, featuresById)
   return sites.length === 1 ? sites[0] : null
 }
 
@@ -143,8 +152,13 @@ interface ResolvedTargets {
 }
 
 /** A sketch row's targets: one per non-construction point, keyed by entity. */
-function sketchTargets(sketchId: string, sketch: Dict, globalRepo: Repository): ResolvedTargets {
-  const points = sketchPoints(sketchId, sketch, globalRepo)
+function sketchTargets(
+  sketchId: string,
+  sketch: Dict,
+  globalRepo: Repository,
+  featuresById: Record<string, Dict>,
+): ResolvedTargets {
+  const points = sketchPoints(sketchId, sketch, globalRepo, featuresById)
   // An unsolved sketch has no plane to take a normal from; the caller drops the
   // empty list below before the normal is ever read.
   const raw = points.length === 0 ? [0, 0, 1] : points[0].plane.normal
@@ -199,7 +213,7 @@ function pickedTargets(refs: readonly string[], ctx: PickTargetContext): Resolve
     if (row !== null) {
       let expanded: PickTarget[] = []
       try {
-        expanded = sketchTargets(row.id, row.sketch, ctx.globalRepo).targets
+        expanded = sketchTargets(row.id, row.sketch, ctx.globalRepo, ctx.featuresById).targets
       } catch {
         // The shared site rule names the hole's remedy, which is not this
         // leaf's: a sketch row with no point is one dropped target among many.

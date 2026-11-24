@@ -14,6 +14,7 @@ import { isVertexPointKey } from '@/types/vertexKeys'
 import { MM_PER_LENGTH_UNIT, lengthUnitOf } from '@/utils/lengthUnit'
 import { MAX_SKETCH_ENTITIES, scaleEntityParams, transformEntityParams } from '@/utils/geometry/sketchPattern'
 import { validateClip, PASTE_NEEDS_SKETCH } from '@/utils/clipboard/sketchClipboard'
+import { featureDisplayName } from '@/utils/core/displayNames'
 
 /** The constraint kinds whose `value` is a length, so a cross-unit paste
  *  converts it. `angle` is degrees and every other carried kind has no value. */
@@ -74,7 +75,7 @@ export function applyPasteSketchEntities(
   const holding = target.entities.length
   if (holding + checked.entities.length > MAX_SKETCH_ENTITIES) {
     throw new MutationRefusal(
-      `would add ${checked.entities.length} entities to the ${holding} already in sketch ${target.id}; `
+      `would add ${checked.entities.length} entities to the ${holding} already in ${featureDisplayName(target, doc.features ?? [])}; `
       + `the sketch holds at most ${MAX_SKETCH_ENTITIES}`,
     )
   }

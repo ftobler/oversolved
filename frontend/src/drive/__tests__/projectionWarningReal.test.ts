@@ -58,7 +58,7 @@ describe('an unresolved projection reaches the drive as a feature warning', () =
     const problems = featureProblems(doc, outcomes)
     const row = problems.find(problem => problem.id === 'sk2')
     expect(row).toBeDefined()
-    expect(row!.message).toContain('projection proj_held source @sk1/doesNotExist did not resolve')
+    expect(row!.message).toContain('projection 1 did not resolve')
     // The structured split rides the same problem row: this one had a position.
     expect(row!.projectionErrors).toEqual({ keeps_last_position: ['proj_held'], unpositioned: [] })
   })
@@ -76,7 +76,7 @@ describe('an unresolved projection reaches the drive as a feature warning', () =
     }
     const out = solveSketch(feature, deadRepo(), {} as Record<string, PartSolid>, featuresById)
     expect(out.solver_warning).toContain(
-      'projection proj_held source @sk3/q3 did not resolve; forward reference',
+      'projection 1 did not resolve; forward reference',
     )
     const forwardDoc: PartDoc = {
       version: 1, kind: 'part',

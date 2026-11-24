@@ -47,19 +47,17 @@ describe('add_projected_entity refuses a source that can never resolve', () => {
     expect(d).toEqual(before)
   })
 
-  it('refuses an unknown sketch and lists the sketches', () => {
+  it('refuses an unknown sketch without printing its id', () => {
     const d = doc()
     const before = structuredClone(d)
-    expect(() => add(d, 'sk2', '@sk9/zz')).toThrow(/names no sketch 'sk9'/)
-    expect(() => add(d, 'sk2', '@sk9/zz')).toThrow(/sk1, sk2, sk3/)
+    expect(() => add(d, 'sk2', '@sk9/zz')).toThrow(/the picked source names no sketch in this document/)
     expect(d).toEqual(before)
   })
 
-  it('refuses an unknown entity in a real sketch and lists its entities', () => {
+  it('refuses an unknown entity in a real sketch without listing ids', () => {
     const d = doc()
     const before = structuredClone(d)
-    expect(() => add(d, 'sk2', '@sk1/nope')).toThrow(/names no entity 'nope' in sketch 'sk1'/)
-    expect(() => add(d, 'sk2', '@sk1/nope')).toThrow(/l1, p1/)
+    expect(() => add(d, 'sk2', '@sk1/nope')).toThrow(/the picked source names no entity in sketch 1/)
     expect(d).toEqual(before)
   })
 
@@ -67,7 +65,7 @@ describe('add_projected_entity refuses a source that can never resolve', () => {
     const d = doc()
     const before = structuredClone(d)
     expect(() => add(d, 'sk2', '@sk3/q3')).toThrow(
-      /forward reference: 'sk3' comes later than 'sk2'/,
+      /forward reference: sketch 3 comes later than sketch 2/,
     )
     expect(d).toEqual(before)
   })
@@ -83,7 +81,7 @@ describe('add_projected_entity refuses a source that can never resolve', () => {
       { id: 'p_qb', kind: 'projection', target: '$qb', source: '$qc' },
     ]
     const before = structuredClone(d)
-    expect(() => add(d, 'sk2', '$qa', 'qc')).toThrow(/cycle: \$qa follows/)
+    expect(() => add(d, 'sk2', '$qa', 'qc')).toThrow(/cycle: point 1 follows point 1 -> point 2 back to point 3/)
     expect(d).toEqual(before)
   })
 
@@ -102,7 +100,7 @@ describe('add_projected_entity refuses a source that can never resolve', () => {
     if (sk2.kind !== 'sketch') throw new Error('not a sketch')
     sk2.constraints = [{ id: 'p_q2', kind: 'projection', target: '$q2', source: '@sk1/l1' }]
     const before = structuredClone(d)
-    expect(() => add(d, 'sk1', '@sk2/q2')).toThrow(/forward reference: 'sk2' comes later than 'sk1'/)
+    expect(() => add(d, 'sk1', '@sk2/q2')).toThrow(/forward reference: sketch 2 comes later than sketch 1/)
     expect(d).toEqual(before)
   })
 

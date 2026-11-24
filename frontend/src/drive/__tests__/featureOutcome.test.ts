@@ -97,6 +97,18 @@ describe('readSolveOutcomes', () => {
     })
   })
 
+  it('keeps a sketch\'s free ids beside them, and drops an empty or malformed list', () => {
+    expect(readSolveOutcomes({
+      sk1: { status: 'underconstrained', dof: 4, free_entities: ['l1', 'l2'] },
+      sk2: { status: 'underconstrained', free_entities: [] },
+      sk3: { status: 'underconstrained', free_entities: [1, '', 'p1'] },
+    })).toEqual({
+      sk1: { status: 'underconstrained', dof: 4, free: ['l1', 'l2'] },
+      sk2: { status: 'underconstrained' },
+      sk3: { status: 'underconstrained', free: ['p1'] },
+    })
+  })
+
   it('is empty for a missing result', () => {
     expect(readSolveOutcomes(undefined)).toEqual({})
     expect(readSolveOutcomes(null)).toEqual({})
@@ -210,6 +222,24 @@ describe('featureProblems', () => {
       kind: 'sketch',
       status: 'underconstrained',
       message: 'Underconstrained: 4 degrees of freedom. Free: l1, l2, l3, l4.',
+    })
+  })
+
+  it('carries the free ids beside an underconstrained warning', () => {
+    expect(featureProblems(problemDoc(), {
+      ...outcomes,
+      sk1: {
+        status: 'underconstrained',
+        dof: 4,
+        free: ['l1', 'l2', 'l3', 'l4'],
+        warning: 'Underconstrained: 4 degrees of freedom. Free: line 1, line 2, line 3, line 4.',
+      },
+    })).toContainEqual({
+      id: 'sk1',
+      kind: 'sketch',
+      status: 'underconstrained',
+      message: 'Underconstrained: 4 degrees of freedom. Free: line 1, line 2, line 3, line 4.',
+      free: ['l1', 'l2', 'l3', 'l4'],
     })
   })
 
