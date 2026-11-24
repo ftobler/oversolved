@@ -5,6 +5,7 @@ const ALL_MUTATION_TYPES = [
   'move_vertex',
   'move_vertex_with_constraint',
   'move_entity',
+  'move_sketch_group',
   'add_constraint',
   'set_constraint_value',
   'set_constraint_pos',

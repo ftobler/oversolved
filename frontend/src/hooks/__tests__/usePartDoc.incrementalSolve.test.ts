@@ -88,12 +88,16 @@ describe('handleMutation cache policy', () => {
     expect(opts?.bypassCache).toBeFalsy()
   })
 
-  // The four drag mutations are the ones that carry `drag_anchor`, the single
-  // field findFirstDirty ignores -- so they, and only they, must bypass.
+  // The drag mutations are the ones that carry `drag_anchor`, the single field
+  // findFirstDirty ignores -- so they, and only they, must bypass.
   const dragMutations: Mutation[] = [
     { type: 'move_vertex', featureId: 'sk1', entityId: 'l1', vertexKey: 'start', to: [1, 2] },
     { type: 'move_vertex_with_constraint', featureId: 'sk1', entityId: 'l1', vertexKey: 'start', to: [1, 2], constraintKind: 'coincident' },
     { type: 'move_entity', featureId: 'sk1', entityId: 'l1', delta: [1, 2] },
+    {
+      type: 'move_sketch_group', featureId: 'sk1', delta: [1, 2],
+      members: [{ entityId: 'l1', vertexKey: 'start' }, { entityId: 'l1', vertexKey: 'end' }],
+    },
     { type: 'resize_circle', featureId: 'sk1', entityId: 'l1', radius: 5 },
   ]
   for (const m of dragMutations) {

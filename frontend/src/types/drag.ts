@@ -3,7 +3,17 @@
 // to reach into a UI store for a shape it only reads.
 import type { GizmoAxisName } from '@/utils/gizmoPickGeometry'
 
-/** Dragging a geometry vertex or whole edge. */
+/** One moved element of a group drag: the whole entity (`vertexKey: 'edge'`)
+ *  or a single point of it. The member list is built once at pointer-down from
+ *  the selection and never changes mid-gesture. */
+export interface DragMember {
+  entityId: string
+  vertexKey: string  // a vertex key, or 'edge' for the whole entity
+}
+
+/** Dragging a geometry vertex or whole edge. `group` is absent for a single
+ *  drag; when present (length > 1) every member follows the cursor delta and
+ *  the release is one `move_sketch_group` mutation. */
 export interface VertexOrEdgeDrag {
   type: 'vertex' | 'edge'
   vertexId: string  // full composite ID (entity ID for edge drags)
@@ -13,6 +23,7 @@ export interface VertexOrEdgeDrag {
   startWorld: [number, number]
   currentWorld: [number, number]
   startClient: [number, number]  // screen coordinates at pointer-down (for click-vs-drag distinction)
+  group?: DragMember[]
 }
 
 /**

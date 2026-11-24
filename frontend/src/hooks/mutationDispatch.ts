@@ -4,6 +4,7 @@ import type { FaceBoundaryLookup } from '@/kernel/features/faceBoundary'
 import {
   applyMoveVertex,
   applyMoveEntity,
+  applyMoveSketchGroup,
   applyResizeCircle,
   applyAddConstraint,
   applyDeleteElements,
@@ -237,6 +238,8 @@ export const mutationHandlers: MutationHandlers = {
   },
   move_entity: (next, m) =>
     applyMoveEntity(next, m.featureId, m.entityId, m.delta, m.solvedGeometry),
+  move_sketch_group: (next, m) =>
+    applyMoveSketchGroup(next, m.featureId, m.members, m.delta, m.solvedGeometry),
   resize_circle: (next, m) =>
     applyResizeCircle(next, m.featureId, m.entityId, m.radius, m.solvedGeometry),
   add_constraint: (next, m) => {

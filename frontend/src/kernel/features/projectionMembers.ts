@@ -15,8 +15,9 @@
 import { parseQuery } from '@/utils/query'
 import { isFaceRestriction } from '@/kernel/faceTypes'
 import { entityPointKeys, getDefaultParams, ENTITY_BY_KIND } from '@/registry'
-import type { PartDoc } from '@/types/cad'
+import type { PartConstraint, PartDoc } from '@/types/cad'
 import { entityDisplayName, entityKindPhrase, featureDisplayName, sketchDisplayName } from '@/utils/core/displayNames'
+import { CONSTRAINT_REF_FIELDS, refMatchesEntity } from '@/utils/yamlMutations/helpers'
 
 /** Hex characters of the construction UUID a member id starts with. */
 export const MEMBER_ID_HEX = 8
@@ -132,6 +133,29 @@ export function edgeUuidToken(query: string): string | null {
   }
 }
 
+/** The entity ids a drag must leave alone: the projection-pinned ids below plus
+ *  every entity a `fixed` constraint targets, whether the ref names the whole
+ *  entity or one of its points. The fallback preview and the headless delta
+ *  applier both read this one set, so a member the solve holds still is neither
+ *  previewed as moving nor shifted in the document. */
+export function heldEntityIds(feature: {
+  entities?: ReadonlyArray<{ id: string; source?: unknown }>
+  constraints?: ReadonlyArray<PartConstraint>
+}): Set<string> {
+  const held = pinnedProjectionIds(feature)
+  const entityIds = (feature.entities ?? []).map(e => e.id)
+  for (const c of feature.constraints ?? []) {
+    if (c.kind !== 'fixed') continue
+    for (const field of CONSTRAINT_REF_FIELDS) {
+      const ref = c[field]
+      for (const id of entityIds) {
+        if (refMatchesEntity(ref, id)) held.add(id)
+      }
+    }
+  }
+  return held
+}
+
 /** True when `source` names a face (any surface kind); a face projection has no
  *  target and derives its members instead of holding one entity. */
 export function isFaceProjectionSource(source: string): boolean {
@@ -141,6 +165,28 @@ export function isFaceProjectionSource(source: string): boolean {
   } catch {
     return false
   }
+}
+
+/** The entity ids a sketch solve pins from its projections: every projection
+ *  constraint's target and derived face members, plus a legacy `source` entity.
+ *  A drag must leave these out of the moved set: their params are pinned at the
+ *  solve seed, not at `paramsReference`, so translating or anchoring them moves
+ *  them in the preview and the pin snaps them back on release. */
+export function pinnedProjectionIds(feature: {
+  entities?: ReadonlyArray<{ id: string; source?: unknown }>
+  constraints?: ReadonlyArray<{ kind?: string; target?: unknown; members?: Record<string, string> }>
+}): Set<string> {
+  const pinned = new Set<string>()
+  for (const c of feature.constraints ?? []) {
+    if (c.kind !== 'projection') continue
+    const target = typeof c.target === 'string' ? c.target : ''
+    if (target.length > 0) pinned.add(target.startsWith('$') ? target.slice(1) : target)
+    for (const memberId of Object.values(c.members ?? {})) pinned.add(memberId)
+  }
+  for (const e of feature.entities ?? []) {
+    if (typeof e.source === 'string' && e.source.length > 0) pinned.add(e.id)
+  }
+  return pinned
 }
 
 /** The five causes an authored sketch projection can name at its own boundary.

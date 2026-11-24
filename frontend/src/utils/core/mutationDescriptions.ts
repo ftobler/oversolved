@@ -8,6 +8,8 @@ export function describeMutation(m: Mutation): string {
       return `snap vertex ${m.vertexKey} on ${m.entityId} with ${m.constraintKind} constraint`
     case 'move_entity':
       return `move ${m.entityId} in ${m.featureId}`
+    case 'move_sketch_group':
+      return `move ${m.members.length} element(s) in ${m.featureId}`
     case 'resize_circle':
       return `resize ${m.entityId} in ${m.featureId}`
     case 'add_constraint':

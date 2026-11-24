@@ -64,6 +64,7 @@ export function usesSettledSketchGeometry(raw: unknown, doc?: PartDoc | null): b
     case 'move_entity':
     case 'move_vertex':
     case 'move_vertex_with_constraint':
+    case 'move_sketch_group':
     case 'resize_circle':
       return true
     // The mirror, offset, fillet and pattern plans are built from the current params.

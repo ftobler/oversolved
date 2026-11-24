@@ -7,6 +7,7 @@ export { migrateLegacyPartPicks, dropDeadAxisConstraints } from '../yamlMigratio
 export {
   applyMoveVertex,
   applyMoveEntity,
+  applyMoveSketchGroup,
   applyResizeCircle,
   applyAddConstraint,
   applyToggleConstruction,

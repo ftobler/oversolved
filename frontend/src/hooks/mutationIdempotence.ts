@@ -125,6 +125,7 @@ export const IDEMPOTENT_MUTATION = {
   move_vertex: false,
   move_vertex_with_constraint: false,
   move_entity: false,
+  move_sketch_group: false,
   resize_circle: false,
   add_entity: false,
   add_entity_with_constraint: false,

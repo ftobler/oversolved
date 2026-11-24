@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { edgeDragPreview } from '@/utils/geometry/edgeDragPreview'
+import { edgeDragPreview, isTranslationDrag } from '@/utils/geometry/edgeDragPreview'
 import type { Sketch } from '@/types/cad'
 import type { VertexOrEdgeDrag } from '@/stores/sketchEditorStore'
 
@@ -175,6 +175,188 @@ describe('edgeDragPreview', () => {
     expect(fit.handleEnd).toEqual([7, 3])
   })
 
+  it('moves every member of a group drag, including a single selected point', () => {
+    const sketch: Sketch = {
+      L1: { start: [0, 0], end: [10, 0] },
+      L2: { start: [0, 5], end: [10, 5] },
+      C1: { center: [3, 3], radius: 2 },
+    } as unknown as Sketch
+    const drag: VertexOrEdgeDrag & { type: 'edge' } = {
+      type: 'edge',
+      vertexId: 'entity:S1:L1',
+      featureId: 'S1',
+      entityId: 'L1',
+      vertexKey: '',
+      startWorld: [0, 0],
+      currentWorld: [4, 2],
+      startClient: [100, 100],
+      group: [
+        { entityId: 'L1', vertexKey: 'edge' },
+        { entityId: 'L2', vertexKey: 'start' },
+        { entityId: 'C1', vertexKey: 'center' },
+      ],
+    }
+
+    const result = edgeDragPreview(sketch, drag)
+
+    const l1 = result.L1 as { start: [number, number]; end: [number, number] }
+    const l2 = result.L2 as { start: [number, number]; end: [number, number] }
+    expect(l1.start).toEqual([4, 2])
+    expect(l1.end).toEqual([14, 2])
+    // A point member moves its own pair only; the rest of its line stays.
+    expect(l2.start).toEqual([4, 7])
+    expect(l2.end).toEqual([10, 5])
+    expect((result.C1 as { center: [number, number] }).center).toEqual([7, 5])
+  })
+
+  it('translates a derived point member as its whole entity', () => {
+    // An arc endpoint is derived from center/radius/angle, so there is no pair
+    // to move on its own; the first version moves the whole arc, and the
+    // fallback preview must agree with the live solver and the commit.
+    const sketch: Sketch = {
+      A1: { center: [0, 0], radius: 5, start: [5, 0], end: [0, 5] },
+    } as unknown as Sketch
+    const drag: VertexOrEdgeDrag & { type: 'edge' } = {
+      type: 'edge',
+      vertexId: 'vertex:S1:A1:start',
+      featureId: 'S1',
+      entityId: 'A1',
+      vertexKey: 'start',
+      startWorld: [0, 0],
+      currentWorld: [2, 1],
+      startClient: [100, 100],
+      group: [
+        { entityId: 'A1', vertexKey: 'start' },
+        { entityId: 'A1', vertexKey: 'end' },
+      ],
+    }
+
+    const result = edgeDragPreview(sketch, drag)
+
+    const arc = result.A1 as {
+      center: [number, number]; start: [number, number]; end: [number, number]
+    }
+    expect(arc.center).toEqual([2, 1])
+    expect(arc.start).toEqual([7, 1])
+    expect(arc.end).toEqual([2, 6])
+  })
+
+  it('translates a group pressed on a vertex (the vertex fallback)', () => {
+    const sketch: Sketch = {
+      L1: { start: [0, 0], end: [10, 0] },
+      L2: { start: [0, 5], end: [10, 5] },
+    } as unknown as Sketch
+    const drag: VertexOrEdgeDrag = {
+      type: 'vertex',
+      vertexId: 'vertex:S1:L1:start',
+      featureId: 'S1',
+      entityId: 'L1',
+      vertexKey: 'start',
+      startWorld: [5, 0],
+      currentWorld: [8, 2],
+      startClient: [100, 100],
+      group: [
+        { entityId: 'L1', vertexKey: 'edge' },
+        { entityId: 'L2', vertexKey: 'edge' },
+      ],
+    }
+
+    const result = edgeDragPreview(sketch, drag)
+
+    expect((result.L1 as { start: [number, number] }).start).toEqual([3, 2])
+    expect((result.L2 as { start: [number, number] }).start).toEqual([3, 7])
+  })
+
+  it('leaves a plain vertex drag alone (it is the WASM path)', () => {
+    const sketch: Sketch = { L1: { start: [0, 0], end: [10, 0] } } as unknown as Sketch
+    const drag: VertexOrEdgeDrag = {
+      type: 'vertex',
+      vertexId: 'vertex:S1:L1:start',
+      featureId: 'S1',
+      entityId: 'L1',
+      vertexKey: 'start',
+      startWorld: [0, 0],
+      currentWorld: [5, 5],
+      startClient: [100, 100],
+    }
+    expect(edgeDragPreview(sketch, drag)).toBe(sketch)
+  })
+
+  it('leaves a projected member out', () => {
+    const sketch: Sketch = {
+      L1: { start: [0, 0], end: [10, 0] },
+      P1: { start: [0, 5], end: [10, 5] },
+    } as unknown as Sketch
+    const drag: VertexOrEdgeDrag & { type: 'edge' } = {
+      type: 'edge',
+      vertexId: 'entity:S1:L1',
+      featureId: 'S1',
+      entityId: 'L1',
+      vertexKey: '',
+      startWorld: [0, 0],
+      currentWorld: [3, 1],
+      startClient: [100, 100],
+      group: [
+        { entityId: 'L1', vertexKey: 'edge' },
+        { entityId: 'P1', vertexKey: 'edge' },
+      ],
+    }
+    const result = edgeDragPreview(sketch, drag, new Set(['P1']))
+    expect((result.L1 as { start: [number, number] }).start).toEqual([3, 1])
+    // Pinned by the solve: the fallback must not show it moving.
+    expect((result.P1 as { start: [number, number] }).start).toEqual([0, 5])
+  })
+
+  it('is order independent when a whole member follows a point member of the same entity', () => {
+    const sketch: Sketch = {
+      L1: { start: [0, 0], end: [10, 0] },
+      L2: { start: [0, 5], end: [10, 5] },
+    } as unknown as Sketch
+    const drag: VertexOrEdgeDrag & { type: 'edge' } = {
+      type: 'edge',
+      vertexId: 'entity:S1:L2',
+      featureId: 'S1',
+      entityId: 'L2',
+      vertexKey: '',
+      startWorld: [0, 0],
+      currentWorld: [2, 1],
+      startClient: [100, 100],
+      group: [
+        { entityId: 'L2', vertexKey: 'start' },
+        { entityId: 'L2', vertexKey: 'edge' },
+        { entityId: 'L1', vertexKey: 'edge' },
+      ],
+    }
+    const result = edgeDragPreview(sketch, drag)
+    // L2 is whole by the set rule, so it moves exactly once (not the point then
+    // the whole again).
+    expect(result.L2).toEqual({ start: [2, 6], end: [12, 6] })
+    expect(result.L1).toEqual({ start: [2, 1], end: [12, 1] })
+  })
+
+  it('moves one fit point of a point member and leaves the others', () => {
+    const sketch: Sketch = {
+      F1: { points: [[0, 0], [2, 2], [4, 0]] },
+    } as unknown as Sketch
+    const drag: VertexOrEdgeDrag = {
+      type: 'vertex',
+      vertexId: 'vertex:S1:F1:fit1',
+      featureId: 'S1',
+      entityId: 'F1',
+      vertexKey: 'fit1',
+      startWorld: [0, 0],
+      currentWorld: [1, 3],
+      startClient: [100, 100],
+      group: [
+        { entityId: 'F1', vertexKey: 'fit1' },
+        { entityId: 'F1', vertexKey: 'fit1' },
+      ],
+    }
+    const result = edgeDragPreview(sketch, drag)
+    // The duplicate member is collapsed; the interior point moves once.
+    expect((result.F1 as { points: [number, number][] }).points).toEqual([[0, 0], [3, 5], [4, 0]])
+  })
+
   it('does not mutate the input sketch', () => {
     const sketch: Sketch = {
       L1: { start: [0, 0], end: [10, 0] },
@@ -195,5 +377,35 @@ describe('edgeDragPreview', () => {
     expect(result).not.toBe(sketch)
     expect((sketch.L1 as { start: [number, number] }).start).toEqual([0, 0])
     expect((result.L1 as { start: [number, number] }).start).toEqual([5, 5])
+  })
+})
+
+describe('isTranslationDrag', () => {
+  const base: VertexOrEdgeDrag = {
+    type: 'edge',
+    vertexId: 'entity:S1:L1',
+    featureId: 'S1',
+    entityId: 'L1',
+    vertexKey: '',
+    startWorld: [0, 0],
+    currentWorld: [1, 1],
+    startClient: [0, 0],
+  }
+
+  it('routes an edge drag and a group drag, including a vertex-pressed group', () => {
+    expect(isTranslationDrag(base)).toBe(true)
+    expect(isTranslationDrag({
+      ...base, type: 'vertex', vertexKey: 'start',
+      group: [{ entityId: 'L1', vertexKey: 'start' }, { entityId: 'L2', vertexKey: 'edge' }],
+    })).toBe(true)
+  })
+
+  it('never routes a plain vertex drag', () => {
+    expect(isTranslationDrag({ ...base, type: 'vertex', vertexKey: 'start' })).toBe(false)
+    // A one-member list is not a group.
+    expect(isTranslationDrag({
+      ...base, type: 'vertex', vertexKey: 'start',
+      group: [{ entityId: 'L1', vertexKey: 'start' }],
+    })).toBe(false)
   })
 })

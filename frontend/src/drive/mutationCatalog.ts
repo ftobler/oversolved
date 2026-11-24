@@ -1255,6 +1255,16 @@ export const MUTATION_CATALOG = {
       solvedGeometry: solvedGeometry(),
     },
   },
+  move_sketch_group: {
+    summary: 'Drag a whole selection of sketch entities and points by one delta (one undo entry).',
+    note: 'Each member is `{ entityId, vertexKey }`: `vertexKey` names one point (its pair only moves) or `edge` for the whole entity. Every entity must belong to `featureId`; a member naming an unknown entity is refused by name.',
+    fields: {
+      featureId: str(),
+      members: arr('The moved elements, each `{ entityId, vertexKey }`; see the row note for the member spelling.'),
+      delta: point(),
+      solvedGeometry: solvedGeometry(),
+    },
+  },
   resize_circle: {
     summary: 'Resize one sketch circle by a new radius.',
     fields: {
@@ -2399,6 +2409,7 @@ export const MUTATION_FAMILY: Record<Mutation['type'], MutationFamily> = {
   move_vertex: 'sketch',
   move_vertex_with_constraint: 'sketch',
   move_entity: 'sketch',
+  move_sketch_group: 'sketch',
   resize_circle: 'sketch',
   add_constraint: 'sketch',
   set_constraint_value: 'sketch',

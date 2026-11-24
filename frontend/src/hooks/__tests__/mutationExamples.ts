@@ -263,6 +263,10 @@ export const MUTATION_EXAMPLES: Record<Mutation['type'], MutationExample> = {
     makeDoc: sketchDoc,
     mutation: { type: 'move_entity', featureId: 'sk1', entityId: 'l1', delta: [5, 0], solvedGeometry: { l1: [5, 0, 15, 0], l2: [5, 5, 15, 5] } },
   },
+  move_sketch_group: {
+    makeDoc: sketchDoc,
+    mutation: { type: 'move_sketch_group', featureId: 'sk1', members: [{ entityId: 'l1', vertexKey: 'edge' }, { entityId: 'l2', vertexKey: 'start' }], delta: [5, 0], solvedGeometry: { l1: [5, 0, 15, 0], l2: [5, 5, 15, 5] } },
+  },
   resize_circle: {
     makeDoc: circleDoc,
     mutation: { type: 'resize_circle', featureId: 'sk1', entityId: 'circ1', radius: 7.5, solvedGeometry: { circ1: [5, 5, 7.5] } },

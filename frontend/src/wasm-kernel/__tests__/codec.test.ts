@@ -7,8 +7,9 @@
 // no per-constraint verdicts, SKG4/SKR4: no storage quantum / moved report,
 // SKG5/SKR5: no dropped verdict bit, SKG6/SKR6: no reference params,
 // SKG7/SKR7: no realised-precision diagnostics, SKG8/SKR8: a Group row holds no
-// rotation carrier, SKR9: no weak-constraint block) are refused instead of
-// decoded with shifted offsets or misread verdicts.
+// rotation carrier, SKR9: no weak-constraint block, SKGA/SKRA: one drag anchor
+// id where the header now carries a counted list of param runs) are refused
+// instead of decoded with shifted offsets or misread verdicts.
 
 import { describe, it, expect } from 'vitest'
 import {
@@ -20,8 +21,9 @@ import { OCC_ANGULAR, OCC_CONFUSION } from '@/kernel/solverConstants'
 
 const solveBytes = loadSolver()
 
-const MAGIC_IN = 0x41474b53  // "SKGA"
-const MAGIC_OUT = 0x41524b53  // "SKRA"
+const MAGIC_IN = 0x42474b53  // "SKGB"
+const MAGIC_OUT = 0x42524b53  // "SKRB"
+const MAGIC_OUT_SKRA = 0x41524b53  // "SKRA" (rev 10, one drag anchor id)
 const MAGIC_OUT_SKR9 = 0x39524b53  // "SKR9" (no weak-constraint block)
 const MAGIC_OUT_SKR8 = 0x38524b53  // "SKR8" (a Group row holds no rotation carrier)
 const MAGIC_OUT_SKR7 = 0x37524b53  // "SKR7" (diagnostics stop at ms)
@@ -40,7 +42,7 @@ function emptyInput(): FlatInput {
     equalityPins: [],
     constraints: [],
     seedQuantum: 1e-6,
-    options: { dragMode: false, dragAnchorId: 0, skipStatusPass: true },
+    options: { dragMode: false, dragAnchors: [], skipStatusPass: true },
   }
 }
 
@@ -150,6 +152,13 @@ describe('sketch wire magic', () => {
     expect(Number.isNaN(out.diagnostics.linearMiss)).toBe(true)
   })
 
+  it('decodeOutput rejects the rev 10 (SKRA) output magic', () => {
+    // The output layout is unchanged, but the pair is the version handshake: an
+    // SKRA solver cannot decode the anchor list this host sends, so the two
+    // halves must never pair.
+    expect(() => decodeOutput(outputBytes(MAGIC_OUT_SKRA))).toThrow('bad output magic')
+  })
+
   it('decodeOutput rejects the rev 9 (SKR9) output magic', () => {
     // Rev 9's output ends at the diagnostics, with no weak block: this reader
     // would take the last precision f64's bytes as a weak count.
@@ -222,6 +231,15 @@ describe.skipIf(!solveBytes)('sketch wire stale input magic', () => {
     expect(() => solveBytes!(bytes)).toThrow()
   })
 
+  it('rejects a SKGA buffer, whose header has one drag anchor id', () => {
+    // This decoder reads a counted anchor list where that buffer holds a single
+    // entity index: it would take the first entity record as anchors and shift
+    // every following block.
+    const bytes = encodeInput(emptyInput())
+    bytes.set([0x53, 0x4b, 0x47, 0x41], 0)  // "SKGA"
+    expect(() => solveBytes!(bytes)).toThrow()
+  })
+
   it('rejects a SKG8 buffer, whose solver cannot read a rotation carrier', () => {
     // The record layout is unchanged; accepting the buffer would silently solve
     // every document group as a pure translation.
@@ -245,7 +263,7 @@ describe.skipIf(!solveBytes)('sketch wire reference params', () => {
         { kind: ConstraintKindCode.fixed, refs: [{ role: Role.target, ref: { kind: 'entity', index: 0, point: Sel.absent } }] },
       ],
       seedQuantum: 1e-6,
-      options: { dragMode: false, dragAnchorId: 0, skipStatusPass: false },
+      options: { dragMode: false, dragAnchors: [], skipStatusPass: false },
     }
     const out = decodeOutput(solveBytes!(encodeInput(input)))
     expect(out.paramsSolved[1]).toBeCloseTo(0, 6)
@@ -269,7 +287,7 @@ describe.skipIf(!solveBytes)('sketch wire storage quantum', () => {
         { kind: ConstraintKindCode.length, refs: [{ role: Role.target, ref: { kind: 'entity', index: 0, point: Sel.absent } }], value: 10 },
       ],
       seedQuantum: 1e-6,
-      options: { dragMode: false, dragAnchorId: 0, skipStatusPass: false },
+      options: { dragMode: false, dragAnchors: [], skipStatusPass: false },
     }
     const out = decodeOutput(solveBytes!(encodeInput(input)))
     expect(out.overallStatus).toBe(Status.fully_constrained)
@@ -294,7 +312,7 @@ describe.skipIf(!solveBytes)('sketch wire real-wasm round-trip', () => {
       seedQuantum: 1e-6,
       // The deleted smoke.mjs left this false (full status pass); keep that so
       // the folded test still exercises the entity-status/vertex-freedom path.
-      options: { dragMode: false, dragAnchorId: 0, skipStatusPass: false },
+      options: { dragMode: false, dragAnchors: [], skipStatusPass: false },
     }
     const out = decodeOutput(solveBytes!(encodeInput(input)))
     expect(out.overallStatus).toBe(Status.fully_constrained)
@@ -352,7 +370,7 @@ describe.skipIf(!solveBytes)('sketch wire precision contract', () => {
             },
           ],
       seedQuantum: 1e-6,
-      options: { dragMode: false, dragAnchorId: 0, skipStatusPass: false },
+      options: { dragMode: false, dragAnchors: [], skipStatusPass: false },
     }
   }
 

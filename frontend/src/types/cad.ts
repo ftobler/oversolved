@@ -1,5 +1,7 @@
 // ─── Base Types ───
 
+import type { DragMember } from './drag'
+
 export type Point = [number, number]
 
 // A numeric parameter that the user may also enter as a math expression string
@@ -1608,6 +1610,11 @@ export type Mutation =
   | { type: 'move_vertex'; featureId: string; entityId: string; vertexKey: string; to: Point; solvedGeometry?: Record<string, number[]> }
   | { type: 'move_vertex_with_constraint'; featureId: string; entityId: string; vertexKey: string; to: Point; constraintKind: string; snapVertexId?: string; snapEntityRef?: string; solvedGeometry?: Record<string, number[]> }
   | { type: 'move_entity'; featureId: string; entityId: string; delta: Point; solvedGeometry?: Record<string, number[]> }
+  // A drag that started on a selected element moves the whole selection in one
+  // step (one undo entry). `members` names whole entities (vertexKey 'edge') and
+  // single points; `solvedGeometry` is the last preview frame, so the commit
+  // lands where the drag showed.
+  | { type: 'move_sketch_group'; featureId: string; members: DragMember[]; delta: Point; solvedGeometry?: Record<string, number[]> }
   | { type: 'resize_circle'; featureId: string; entityId: string; radius: number; solvedGeometry?: Record<string, number[]> }
   | { type: 'add_constraint'; featureId: string; kind: string; targets: string[]; value?: number; pos?: Point; sign?: number; id?: string }
   | { type: 'set_constraint_value'; featureId: string; constraintId: string; value: number }

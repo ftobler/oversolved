@@ -57,7 +57,7 @@ describe.skipIf(!solveBytes)('sketch rev 3 wire (real wasm)', () => {
           refs: [{ role: Role.a, ref: { kind: 'external', x: 1234.567, y: -0.0 } }],
         },
       ],
-      options: { dragMode: false, dragAnchorId: 0, skipStatusPass: true },
+      options: { dragMode: false, dragAnchors: [], skipStatusPass: true },
     }
     const out = decodeOutput(solveBytes!(encodeInput(input)))
     expect(out.paramsSolved).toHaveLength(6)
@@ -102,7 +102,7 @@ describe.skipIf(!solveBytes)('sketch rev 3 wire (real wasm)', () => {
         { kind: ConstraintKindCode.coincident, refs: [{ role: Role.a, ref: { kind: 'entity', index: 3, point: Sel.end } }, { role: Role.b, ref: { kind: 'entity', index: 0, point: Sel.start } }] },
         { kind: ConstraintKindCode.fixed, refs: [{ role: Role.target, ref: { kind: 'entity', index: 0, point: Sel.start } }], xy: [0, 0] },
       ],
-      options: { dragMode: false, dragAnchorId: 0, skipStatusPass: false },
+      options: { dragMode: false, dragAnchors: [], skipStatusPass: false },
     }
     const out = decodeOutput(solveBytes!(encodeInput(input)))
     expect(out.overallStatus).toBe(Status.fully_constrained)

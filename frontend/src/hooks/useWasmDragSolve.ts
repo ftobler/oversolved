@@ -14,6 +14,9 @@
  *    (frame 0 = `initial`).
  *  - Edge/entity drags: each frame seeds from `initial` and translates the
  *    entity by the cursor delta, then solves.
+ *  - Group drags: the same translation path, with one anchor per member and
+ *    the cursor delta added to every member's coordinate pairs. The member
+ *    list is built once at pointer-down and never changes mid-gesture.
  *  - rAF-throttled with a dirty flag: at most one WASM call per displayed
  *    frame, and none at all while the cursor has not moved.
  *  - Convergence failure / overconstrained -> hold last good preview.
@@ -31,6 +34,7 @@ import {
   prepareDragContext,
   solveSketchDrag,
   probeCircleDragMode,
+  probeGroupDragMode,
 } from '@/kernel/features/sketch'
 import { setLastDragSolve, clearLastDragSolveFor } from '@/utils/geometry/dragSolveRegistry'
 import type { CircleDragMode } from '@/kernel/features/circleDragMode'
@@ -65,9 +69,10 @@ interface WasmDragSolveResult {
     *  The caller must NOT show a fallback preview then -- a one-frame stale preview that
     *  disagrees with the first WASM frame produces a visible jump. */
   engaged: boolean
-  /** The circle-rim drag mode resolved at activation ('translate' | 'radius' |
-    *  'locked'), or undefined for vertex drags and non-circle edge drags (which
-    *  behave as translate). Sticky for the whole gesture. */
+  /** The drag mode resolved at activation ('translate' | 'radius' | 'locked'),
+    *  or undefined for a single vertex drag and a non-circle single edge drag
+    *  (which behave as translate). A group resolves 'translate' or 'locked' from
+    *  whether any member can move. Sticky for the whole gesture. */
   mode?: CircleDragMode
 }
 
@@ -104,6 +109,11 @@ export function useWasmDragSolve(
 
   const dragEntityId = isDragHere && drag ? drag.entityId : null
   const dragVertexKey = isVertexDragHere && drag ? drag.vertexKey : null
+  // The member list is fixed at pointer-down; the per-move drag update spreads
+  // the state object, so this array keeps its identity for the whole gesture.
+  // A new list would mean a new gesture (or none).
+  const dragGroup = isDragHere && drag && 'group' in drag ? drag.group : undefined
+  const isGroupDragHere = !!dragGroup && dragGroup.length > 1
   // Scalarised so a fresh array prop identity each render does not rebuild the
   // context mid-drag (the memo key must be stable across pointermove updates).
   const originX = originLocal?.[0] ?? 0
@@ -113,11 +123,12 @@ export function useWasmDragSolve(
     if (!isSketchSolverReady()) return null
     // For vertex drags, pass the vertex key. For edge drags, pass null. The
     // resolved kinds come from the render sketch and are memoised per solve by
-    // the caller, so this dependency stays stable across a drag's frames.
-    return prepareDragContext(featureDef, dragEntityId, dragVertexKey, [originX, originY], resolvedKinds, derivedMembers)
-  }, [featureDef, dragEntityId, dragVertexKey, originX, originY, resolvedKinds, derivedMembers])
+    // the caller, so this dependency stays stable across a drag's frames. A
+    // group's member list is likewise fixed for the gesture.
+    return prepareDragContext(featureDef, dragEntityId, dragVertexKey, [originX, originY], resolvedKinds, derivedMembers, dragGroup)
+  }, [featureDef, dragEntityId, dragVertexKey, dragGroup, originX, originY, resolvedKinds, derivedMembers])
 
-  // ─── Resolve the circle-rim drag mode once per edge drag ───
+  // ─── Resolve the drag mode once per gesture ───
   // The mode is decided at activation by probing the real drag solver, then stays
   // sticky for the whole gesture: the memo is keyed on the drag identity (the same
   // key that builds ctx, which is stable across pointermove updates), so it runs
@@ -125,10 +136,14 @@ export function useWasmDragSolve(
   // "resize" one frame and "locked" the next would be a fight, so the latch is the
   // memo stability itself. Non-circle edge drags have no size param, so the mode
   // stays undefined and the commit falls back to today's translate behaviour.
+  // A group probes whether any member can move: an all-fixed or all-projected
+  // group is locked, so the release commits nothing and records no undo entry.
   const dragMode = useMemo(() => {
-    if (!ctx || !isEdgeDragHere || ctx.sizeIndex === undefined) return undefined
+    if (!ctx || !isDragHere) return undefined
+    if (ctx.group !== undefined) return probeGroupDragMode(ctx)
+    if (!isEdgeDragHere || ctx.sizeIndex === undefined) return undefined
     return probeCircleDragMode(ctx)
-  }, [ctx, isEdgeDragHere])
+  }, [ctx, isDragHere, isEdgeDragHere])
 
   // ─── Track the latest cursor and edge-drag startWorld ───
   // Mark dirty only when the cursor actually moved.
@@ -140,8 +155,9 @@ export function useWasmDragSolve(
       latestCursorRef.current = [c[0], c[1]]
       dirtyRef.current = true
     }
-    // Capture startWorld for edge drags (used to compute the cursor delta).
-    if (isEdgeDragHere && drag.type === 'edge') {
+    // Capture startWorld for edge and group drags (used to compute the cursor
+    // delta). A group drag translates even when it was pressed on a vertex.
+    if ((isEdgeDragHere || isGroupDragHere) && (drag.type === 'edge' || drag.type === 'vertex')) {
       startWorldRef.current = [drag.startWorld[0], drag.startWorld[1]]
     }
   })
@@ -174,7 +190,7 @@ export function useWasmDragSolve(
       if (dirtyRef.current && latestCursorRef.current) {
         dirtyRef.current = false
 
-        if (ctx.isEdgeDrag && startWorldRef.current) {
+        if ((ctx.isEdgeDrag || ctx.group !== undefined) && startWorldRef.current) {
           const cursor = latestCursorRef.current
           if (dragMode === 'locked') {
             // Neither the centre nor the radius can move. Solve nothing and publish

@@ -93,37 +93,43 @@ export const CONSTRAINT_FLAG = {
   dropped: 1 << 1,
 } as const
 
-// Rev 10 of the wire layout. The output gains a `weak` block: the satisfied
-// constraints whose row holds a direction only to second order (an axis
-// distance at a circle's extreme), each with the rotation it allows in degrees.
-// An older reader would read the new count's bytes as the first diagnostic, so
-// the magic moves. Rev 9 made a `Group` row's third ref name the member point
-// (role `b`) or the whole arc/ellipse angle (role `arc`) the group's rotation is
-// measured from, so one coordinate pair holds its distance instead of its two
-// coordinates. The record layout was unchanged there, which is exactly why the
-// magic had to move: a rev 8 solver would hold every group as a pure
-// translation and report one free DOF that does not exist. Rev 8 (`SKR8`)
-// appended the contract's realised precision to the output diagnostics
-// (`angularMiss`, `linearMiss`, NaN for an unsatisfied solve), so an older
-// reader stops at `ms` and an older writer leaves the two fields unread. Rev 7
-// (`SKG7`) added the input's optional reference param block (`paramsReference`):
-// `fixed` and `group` hold it when present and `params` otherwise, so a drag can
-// seed from the previous frame while the constraints still hold the last hard
-// solve's shape. Rev 6 (`SKG6`/`SKR6`) carried the dropped verdict bit: the
-// layout was unchanged but the meaning of `constraint_flags` grew, and an older
-// solver would read a dropped constraint as unflagged. `SKG5` added the
-// header's storage quantum; `SKR5` added the per-entity moved bitmask before
-// the diagnostics. The entity record itself is unchanged since `SKG4`, which
-// made it variable-size (`fit_spline` carries `2 N + 2 h` params), and rev 4's
-// per-constraint verdicts are otherwise unchanged too. The magic IS the version
-// handshake: the layout evolved before (has_sign flag + trailing sign f32)
-// without moving these, so a stale js/wasm pairing decoded shifted offsets
-// instead of failing. Bump BOTH sides (these two and sketch-solver/src/codec.rs)
-// on any layout or verdict-semantics change. Invalidating stale cached payloads
-// is acceptable and safe post-wave-1: bundle-cache reads degrade to cold
-// rebuilds.
-const MAGIC_IN = 0x41474b53  // "SKGA", little-endian on the wire
-const MAGIC_OUT = 0x41524b53  // "SKRA"
+// Rev 11 of the wire layout. The input's single `dragAnchorId` entity index is
+// now a counted list of param runs: a group drag holds several members and a
+// selected point anchors only its coordinate pair, not its whole entity, so the
+// host computes the ranges from the layout it owns. The header gains a count and
+// one record per run, so an older reader would take the first entity record as
+// anchors and shift every following block; the output layout is unchanged, but
+// the pair moves together as the version handshake. Rev 10's `SKGA`/`SKRA` pair
+// added the output's `weak` block: the satisfied constraints whose row holds a
+// direction only to second order (an axis distance at a circle's extreme), each
+// with the rotation it allows in degrees. An older reader would read the new
+// count's bytes as the first diagnostic, so the magic moved there too. Rev 9
+// made a `Group` row's third ref name the member point (role `b`) or the whole
+// arc/ellipse angle (role `arc`) the group's rotation is measured from, so one
+// coordinate pair holds its distance instead of its two coordinates. The record
+// layout was unchanged there, which is exactly why the magic had to move: a rev
+// 8 solver would hold every group as a pure translation and report one free DOF
+// that does not exist. Rev 8 (`SKR8`) appended the contract's realised precision
+// to the output diagnostics (`angularMiss`, `linearMiss`, NaN for an unsatisfied
+// solve), so an older reader stops at `ms` and an older writer leaves the two
+// fields unread. Rev 7 (`SKG7`) added the input's optional reference param block
+// (`paramsReference`): `fixed` and `group` hold it when present and `params`
+// otherwise, so a drag can seed from the previous frame while the constraints
+// still hold the last hard solve's shape. Rev 6 (`SKG6`/`SKR6`) carried the
+// dropped verdict bit: the layout was unchanged but the meaning of
+// `constraint_flags` grew, and an older solver would read a dropped constraint as
+// unflagged. `SKG5` added the header's storage quantum; `SKR5` added the
+// per-entity moved bitmask before the diagnostics. The entity record itself is
+// unchanged since `SKG4`, which made it variable-size (`fit_spline` carries
+// `2 N + 2 h` params), and rev 4's per-constraint verdicts are otherwise
+// unchanged too. The magic IS the version handshake: the layout evolved before
+// (has_sign flag + trailing sign f32) without moving these, so a stale js/wasm
+// pairing decoded shifted offsets instead of failing. Bump BOTH sides (these two
+// and sketch-solver/src/codec.rs) on any layout or verdict-semantics change.
+// Invalidating stale cached payloads is acceptable and safe post-wave-1:
+// bundle-cache reads degrade to cold rebuilds.
+const MAGIC_IN = 0x42474b53  // "SKGB", little-endian on the wire
+const MAGIC_OUT = 0x42524b53  // "SKRB"
 
 export interface FlatEntity {
   kind: number
@@ -157,6 +163,16 @@ export interface WeakConstraintReport {
   moveEstimate: number
 }
 
+/** One drag anchor: a contiguous param run the drag solve holds firm toward
+ *  its seed (Rust `DragAnchor`). A whole-entity member names the entity's
+ *  block; a selected point names just its coordinate pair, so the other end of
+ *  its line keeps the base weight. The host computes these from the layout it
+ *  already owns. */
+export interface FlatDragAnchor {
+  paramOffset: number
+  paramCount: number
+}
+
 export interface FlatInput {
   entities: FlatEntity[]
   params: number[]
@@ -171,7 +187,7 @@ export interface FlatInput {
   /** The host's storage grid in document units (the same `DOC_GRID` the sketch
    *  mutators round to). `0` disables the solver's moved report. */
   seedQuantum?: number
-  options: { dragMode: boolean; dragAnchorId: number; skipStatusPass: boolean }
+  options: { dragMode: boolean; dragAnchors: FlatDragAnchor[]; skipStatusPass: boolean }
 }
 
 // WASM solver function: flat typed-array in, flat typed-array out. Declared in
@@ -273,7 +289,11 @@ export function encodeInput(input: FlatInput): Uint8Array {
   w.u32(input.equalityPins.length)
   w.u8(input.options.dragMode ? 1 : 0)
   w.u8(input.options.skipStatusPass ? 1 : 0)
-  w.u32(input.options.dragAnchorId)
+  w.u32(input.options.dragAnchors.length)
+  for (const anchor of input.options.dragAnchors) {
+    w.u32(anchor.paramOffset)
+    w.u32(anchor.paramCount)
+  }
   w.f64(input.seedQuantum ?? 0)
   w.u32(input.paramsReference?.length ?? 0)
 

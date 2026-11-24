@@ -230,6 +230,20 @@ export function shouldActivateDrag(
   return Math.hypot(currentClient[0] - startClient[0], currentClient[1] - startClient[1]) >= CLICK_THRESHOLD_PX
 }
 
+/** True when the document holds every element the drag would move: an edge drag
+ *  on a held entity, or a group whose every member is held. The preview stays
+ *  frozen then (the fallback and the WASM solve both hold the entity), so the
+ *  release must commit nothing rather than record a dead translate. A mixed
+ *  group is not held: its free members still move. A vertex drag is never
+ *  dropped: a fixed point can still be pivoted about by the live solver, and
+ *  its preview is that solve, not the whole-entity translation. */
+export function dragIsHeld(drag: VertexOrEdgeDrag, held: ReadonlySet<string>): boolean {
+  if (drag.group && drag.group.length > 1) {
+    return drag.group.every(member => held.has(member.entityId))
+  }
+  return drag.type === 'edge' && held.has(drag.entityId)
+}
+
 /** Compute snap target and effective position for the current drag.
  *  pixelsPerUnit = p2w(camera) -- the caller extracts this from Three.js and passes it in as
  *  a plain number so this function has zero Three.js dependencies.
@@ -248,8 +262,11 @@ export function computeDragMove(
 ): DragMoveResult {
   const [x, y] = localPoint
 
-  if (drag.type !== 'vertex') {
-    // Edge drag: no snap
+  if (drag.type !== 'vertex' || drag.group) {
+    // Edge drag and any group drag: no snap. A group is a translation of
+    // several members, and snapping one vertex of it to a point is a different
+    // gesture (the plain vertex drag) that would also author a constraint the
+    // rest of the group does not share.
     return {
       snapTarget: null,
       effectivePosition: [x, y],
@@ -300,6 +317,22 @@ export function computeDragMutation(
     lastDragSolve && lastDragSolve.featureId === drag.featureId
       ? lastDragSolve.geometry
       : undefined
+
+  // A drag that started on a selected element moves the whole selection by the
+  // cursor delta. This comes before the snap branches on purpose: a group drag
+  // authors no constraint, and one group is one undo entry. A latched locked
+  // group (every member fixed or projected) commits nothing, exactly as a locked
+  // circle does, so no junk undo entry is recorded.
+  if (drag.group && drag.group.length > 1) {
+    const lastForFeature =
+      lastDragSolve && lastDragSolve.featureId === drag.featureId ? lastDragSolve : undefined
+    if (lastForFeature?.mode === 'locked') return null
+    const delta: [number, number] = [
+      drag.currentWorld[0] - drag.startWorld[0],
+      drag.currentWorld[1] - drag.startWorld[1],
+    ]
+    return { type: 'move_sketch_group', featureId: drag.featureId, members: drag.group, delta, solvedGeometry }
+  }
 
   if (drag.type === 'edge') {
     // The mode is resolved once at drag activation and latched for the gesture;

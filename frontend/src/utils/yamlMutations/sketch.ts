@@ -1,4 +1,5 @@
 import type { PartDoc, PartConstraint, PartTarget } from '@/types/cad'
+import type { DragMember } from '@/types/drag'
 import { entityVertexIndices, entityCoordPairs, constraintOperandArity } from '@/registry'
 import {
   warn, round, allFinite, findSketchFeature, parseTarget, uniqueConstraintId,
@@ -23,7 +24,7 @@ import { fitPointIndex } from '@/types/vertexKeys'
 import { hidePlanesIfFirstBoundSketch } from './featureAdmin'
 import { applyAddFitSpline, applyDeleteFitPoint, type FitSplineAddOptions } from './fitSpline'
 import {
-  deriveMemberIds, faceProjectionConstraintId, isFaceProjectionSource, reconcileFaceProjection,
+  deriveMemberIds, faceProjectionConstraintId, heldEntityIds, isFaceProjectionSource, reconcileFaceProjection,
   describeProjectionSourceProblem, projectionDependentsReport, type ProjectionDependentsReport,
 } from '@/kernel/features/projectionMembers'
 import type { FaceBoundaryLookup } from '@/kernel/features/faceBoundary'
@@ -182,6 +183,120 @@ export function applyMoveVertex(
   }
 }
 
+/** One group member resolved against the document: the params block it edits,
+ *  the coordinate pairs to translate, and the pair of a point member (absent
+ *  for a whole entity or a derived point, which translate as a unit). */
+interface ResolvedGroupMember {
+  params: number[]
+  pairs: [number, number][]
+  point?: [number, number]
+}
+
+/** Resolve a member against the document, refusing an unknown entity by name.
+ *  Resolution is separate from the write so a refused member leaves the whole
+ *  commit untouched instead of translating the members before it. */
+function resolveGroupMember(
+  initial: Record<string, number[]>,
+  entities: Array<{ id: string; kind: string; handles?: 'start' | 'end' | 'both' }> | undefined,
+  member: DragMember,
+): ResolvedGroupMember {
+  const params = initial[member.entityId]
+  const def = entities?.find(e => e.id === member.entityId)
+  if (!params || !def) {
+    throw new MutationRefusal(
+      `move_sketch_group names no entity '${member.entityId}' in this sketch`,
+    )
+  }
+  const pairs = entityCoordPairs(def.kind, params.length, def.handles)
+  if (!pairs) {
+    throw new MutationRefusal(
+      `move_sketch_group cannot translate '${member.entityId}': its kind has no coordinate pairs`,
+    )
+  }
+  if (member.vertexKey !== 'edge') {
+    const indices = entityVertexIndices(def.kind, params.length, def.handles)?.[member.vertexKey]
+    if (indices) return { params, pairs, point: indices }
+    // No direct pair: a derived point (arc start/end, ellipse axis end). Fall
+    // through to the whole-entity translation the preview uses for it.
+  }
+  return { params, pairs }
+}
+
+/** True when the member's entity is held by the document: a projection pins it
+ *  (its params do not follow a delta), or a `fixed` constraint targets the
+ *  entity or one of its points. The headless delta path must leave such a member
+ *  exactly where it is instead of translating it and letting the next solve pull
+ *  it back. */
+function memberIsHeld(held: ReadonlySet<string>, member: DragMember): boolean {
+  return held.has(member.entityId)
+}
+
+/** Drag commit for a multi-selection: every member translated in one mutation,
+ *  so the whole move is one undo step. With `solvedGeometry` (the live drag)
+ *  the last frame is baked exactly as `move_entity` does, so the document lands
+ *  where the preview showed; without it (a headless step) the members are
+ *  translated by `delta` and the next solve settles them. Projected and fixed
+ *  members are never moved: their position is held by the solve, not by the
+ *  drag. Unknown members are refused before either path writes, so a release and
+ *  a headless step agree (a member deleted mid-drag refuses in both). */
+export function applyMoveSketchGroup(
+  doc: PartDoc,
+  featureId: string,
+  members: DragMember[],
+  delta: [number, number],
+  solvedGeometry?: Record<string, number[]>,
+): void {
+  const [dx, dy] = delta
+  const feature = findSketchFeature(doc, featureId)
+  if (!feature?.initial) return
+  if (!Number.isFinite(dx) || !Number.isFinite(dy)) {
+    warn('applyMoveSketchGroup: ignoring non-finite delta', { featureId, members, delta })
+    return
+  }
+  const held = heldEntityIds(feature)
+  // Resolve before the bake and before any write: a refused member must leave
+  // the whole commit untouched, and a solved frame must not silently skip an
+  // entity the document no longer has.
+  const resolved = members
+    .filter(member => !memberIsHeld(held, member))
+    .map(member => ({
+      member,
+      target: resolveGroupMember(feature.initial!, feature.entities, member),
+    }))
+  // The adopted frame already reflects the translated positions, so the delta
+  // must not be applied on top of it (that would translate twice).
+  if (adoptSolvedGeometry(feature.initial, solvedGeometry)) return
+  if (dx === 0 && dy === 0) return
+  // A whole-entity effect is applied once per entity, however many of its
+  // points were selected (two members of one arc must not move it twice); a
+  // point member is skipped when its entity already moves whole, and duplicate
+  // point members are collapsed by (entity, key).
+  const whole = new Set(
+    resolved
+      .filter(({ target }) => target.point === undefined)
+      .map(({ member }) => member.entityId),
+  )
+  const movedWhole = new Set<string>()
+  const movedPoints = new Set<string>()
+  for (const { member, target } of resolved) {
+    if (whole.has(member.entityId)) {
+      if (movedWhole.has(member.entityId)) continue
+      movedWhole.add(member.entityId)
+      for (const [xi, yi] of target.pairs) {
+        target.params[xi] = round(target.params[xi] + dx)
+        target.params[yi] = round(target.params[yi] + dy)
+      }
+      continue
+    }
+    const pointKey = `${member.entityId}\u0000${member.vertexKey}`
+    if (movedPoints.has(pointKey)) continue
+    movedPoints.add(pointKey)
+    const point = target.point!
+    target.params[point[0]] = round(target.params[point[0]] + dx)
+    target.params[point[1]] = round(target.params[point[1]] + dy)
+  }
+}
+
 export function applyMoveEntity(
   doc: PartDoc,
   featureId: string,
@@ -192,6 +307,10 @@ export function applyMoveEntity(
   const [dx, dy] = delta
   const feature = findSketchFeature(doc, featureId)
   if (!feature?.initial) return
+  // A held entity (projected or fixed) does not follow a drag: the solve pins it,
+  // so a headless translate would offset the document and let the next solve snap
+  // it back, leaving a dead undo entry. Skip before the frame is adopted too.
+  if (heldEntityIds(feature).has(entityId)) return
   // A non-finite delta is broken pointer math upstream (a drag frame divided by
   // a zero extent, or an empty numeric input parsed). round(NaN) is still NaN,
   // so the translate would persist the poison into the doc and every later

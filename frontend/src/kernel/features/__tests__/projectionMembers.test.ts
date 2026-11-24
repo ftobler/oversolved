@@ -10,7 +10,9 @@ import {
   faceBoundaryFromParts,
   faceProjectionConstraintId,
   freezeRowsForDelete,
+  heldEntityIds,
   isFaceProjectionSource,
+  pinnedProjectionIds,
   reconcileFaceProjection,
   type FaceBoundary,
   type FaceBoundaryEdge,
@@ -51,6 +53,41 @@ describe('edgeUuidToken', () => {
     expect(edgeUuidToken('?2;@a:edge')).toBeNull()
     expect(edgeUuidToken('@sketch/e1')).toBeNull()
     expect(edgeUuidToken('not a query')).toBeNull()
+  })
+})
+
+describe('held and pinned ids', () => {
+  it('pins projection targets, face members and legacy source entities', () => {
+    const feature = {
+      entities: [
+        { id: 'l1', kind: 'line' },
+        { id: 'p1', kind: 'line', source: '?edge;x' },
+      ],
+      constraints: [
+        { id: 'proj1', kind: 'projection', target: '$l1', members: { edge0: 'm1' } },
+      ],
+    }
+    expect([...pinnedProjectionIds(feature)].sort()).toEqual(['l1', 'm1', 'p1'])
+  })
+
+  it('also holds every entity a fixed constraint names, whole or by point', () => {
+    const feature = {
+      entities: [
+        { id: 'l1', kind: 'line' },
+        { id: 'l2', kind: 'line' },
+        { id: 'p2', kind: 'point' },
+        { id: 'p3', kind: 'line', source: '?edge;x' },
+      ],
+      constraints: [
+        { id: 'f1', kind: 'fixed', target: '$l1' },
+        { id: 'f2', kind: 'fixed', target: '$l2start' },
+        { id: 'f3', kind: 'fixed', target: '$p2xy' },
+        { id: 'h1', kind: 'horizontal', target: '$p2' },
+      ],
+    }
+    // A fixed point holds its whole entity on this path (the backlog note covers
+    // the live solver's pivot about the fixed point).
+    expect([...heldEntityIds(feature)].sort()).toEqual(['l1', 'l2', 'p2', 'p3'])
   })
 })
 

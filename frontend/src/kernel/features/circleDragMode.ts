@@ -42,3 +42,15 @@ export function resolveDragMode(r: DragModeResponses): CircleDragMode {
   if (r.radius > RADIUS_RESPONSE_MIN) return 'radius'
   return 'locked'
 }
+
+// Same margin as the circle probe: a free group responds near 1, a group every
+// member of which is fixed or projected responds near 0.
+export const GROUP_MOVE_RESPONSE_MIN = 0.25
+
+/** Decide a group drag's mode from the largest member response to the two
+ *  orthogonal probe steps. A group that cannot move at all (every member fixed
+ *  or projected) is locked, so the release commits nothing and records no undo
+ *  entry. A group free along only one axis still reads as mobile. */
+export function resolveGroupDragMode(r: { x: number; y: number }): CircleDragMode {
+  return Math.max(r.x, r.y) > GROUP_MOVE_RESPONSE_MIN ? 'translate' : 'locked'
+}
