@@ -12,10 +12,12 @@ import { createDriveSurface, type DriveSurfaceDeps } from '../driveSurface'
 import type { ScriptStep } from '../scriptRunner'
 import { throughAllDistanceNote, THROUGH_ALL_DISTANCE_NOTE } from '../throughAllNote'
 
-const addThroughAll = {
+type AddExtrudeMutation = Extract<Mutation, { type: 'add_extrude' }>
+
+const addThroughAll: AddExtrudeMutation = {
   type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1',
   distance: 5, termination: 'through_all', operation: 'cut',
-} as Mutation
+}
 
 describe('the through_all distance note', () => {
   it('names the drop on an add that carried a distance', () => {
@@ -54,7 +56,7 @@ describe('the browser bridge note', () => {
       solve: { generation: 0, pending: false, running: false, lastError: null },
     }),
     editorState: () => ({
-      normalSelection: new Set<string>(), hoveredSelectionId: null, activeTool: null,
+      normalSelection: new Set<string>(), hoveredSelectionId: null, hoveredVertexId: null, activeTool: null,
       activeFeatureId: null, editingFeatureId: null, rollbackPosition: null,
       drawPoints: [], dimensionPicks: [], activePickField: null,
     }),

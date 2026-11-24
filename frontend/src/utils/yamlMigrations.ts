@@ -352,8 +352,7 @@ export function migrateInstancePatternSketch(doc: PartDoc): number {
 // stamp, and a later save must write the clean form. Loading is not a user edit,
 // so the doc hook never sees a mutation and undo has nothing to record. Both
 // spellings go, because the kernel reads `depth` as the legacy alias.
-export function normalizeThroughAllDistance(doc: PartDoc): number {
-  const features: unknown = doc.features
+export function normalizeThroughAllDistance(features: unknown): number {
   if (!Array.isArray(features)) return 0
   let rewritten = 0
   for (const entry of features) {
