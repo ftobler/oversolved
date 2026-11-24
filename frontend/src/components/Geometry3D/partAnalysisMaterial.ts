@@ -34,7 +34,6 @@ export interface PartAnalysisPatch {
   setStripeCount?: (value: number) => void
   setBaseColor?: (hex: string) => void
   setCurvature?: (kind: CurvatureKind, range: [number, number]) => void
-  setAoStrength?: (value: number) => void
 }
 
 // How much a vertex colour has to move before it counts as a highlight. The
@@ -264,16 +263,14 @@ export const AO_GLSL = `
 /**
  * Ambient-occlusion patch: multiplies the indirect light by the denoised
  * occlusion the presenter wrote, leaving direct light and every overlay
- * untouched. The texture, its size and the strength are the shared uniforms,
- * so the strength slider never recompiles a program.
+ * untouched. The texture, its size and the fixed strength are the shared
+ * uniforms, so enabling AO never recompiles a program to change them.
  */
 export class AoProgram implements PartAnalysisPatch {
   readonly name = 'body-material'
   readonly uniforms: PartAnalysisPatch['uniforms'] = {}
 
   customProgramCacheKey = (): string => 'ao'
-
-  setAoStrength = (value: number): void => { aoUniforms.uAoStrength.value = value }
 
   onBeforeCompile = (shader: WebGLProgramParametersWithUniforms): void => {
     const declarations = 'uniform sampler2D tAO;\nuniform vec2 uResolution;\nuniform float uAoStrength;\n'
@@ -340,7 +337,6 @@ export interface PartAnalysisParams {
   // Ambient occlusion on this body, already resolved by the caller through
   // isAoActive. The flag is the whole decision; the patch only needs the answer.
   ao?: boolean
-  aoStrength?: number
   // A transparent or transmissive body takes no AO sample: the occlusion of
   // what is in front of it would darken the thing behind it.
   transparent?: boolean
@@ -392,10 +388,6 @@ export function usePartAnalysisMaterial(
   useEffect(() => {
     patch?.setCurvature?.(params.curvatureKind, params.curvatureRange)
   }, [patch, params.curvatureKind, params.curvatureRange])
-
-  useEffect(() => {
-    if (params.aoStrength !== undefined) patch?.setAoStrength?.(params.aoStrength)
-  }, [patch, params.aoStrength])
 
   useEffect(() => {
     const material = materialRef.current

@@ -5,6 +5,8 @@ import { describe, expect, it, afterEach } from 'vitest'
 import * as THREE from 'three'
 import {
   AO_OCCLUDER_LAYER,
+  AO_RADIUS_FRACTION,
+  AO_STRENGTH,
   aoFallbackTexture,
   aoUniforms,
   applyAoOccluder,
@@ -53,6 +55,18 @@ describe('isAoActive', () => {
 })
 
 describe('aoRadiusFor', () => {
+  it('uses the widened fraction of the model extent', () => {
+    // The radius was set by eye (user, 2026-11-23) to spread crease shading;
+    // pin the number so a tweak is deliberate.
+    expect(AO_RADIUS_FRACTION).toBe(0.15)
+    expect(aoRadiusFor(100)).toBe(15)
+  })
+
+  it('keeps the first-frame fallback for an unmeasured extent', () => {
+    expect(aoRadiusFor(0)).toBe(1)
+    expect(aoRadiusFor(Number.NaN)).toBe(1)
+  })
+
   it('is proportional to the visible extent, so a unit change is a scale change', () => {
     expect(aoRadiusFor(2)).toBeCloseTo(2 * aoRadiusFor(1))
     expect(aoRadiusFor(25.4) / aoRadiusFor(1)).toBeCloseTo(25.4)
@@ -102,5 +116,14 @@ describe('fallback texture', () => {
     expect(aoFallbackTexture.image.width).toBe(1)
     expect(aoFallbackTexture.image.height).toBe(1)
     expect(Array.from(aoFallbackTexture.image.data as Uint8Array)).toEqual([255, 255, 255, 255])
+  })
+})
+
+describe('strength', () => {
+  it('is a constant held in the shared uniform, with no per-user override', () => {
+    // AO is an on/off view now, so the shader's mix factor has one value for
+    // every body; it lives in the uniform record the material patches share.
+    expect(AO_STRENGTH).toBe(1)
+    expect(aoUniforms.uAoStrength.value).toBe(AO_STRENGTH)
   })
 })

@@ -298,3 +298,29 @@ describe('ViewOptionsButton Section', () => {
     expect(h.notify).toHaveBeenCalledWith('Click a flat face or a reference plane.', 'warning')
   })
 })
+
+describe('ViewOptionsButton ambient occlusion', () => {
+  it('shows only the AO toggle, with no Strength slider when AO is on', () => {
+    useViewOptionsStore.setState({ ambient_occlusion: true })
+    render(<ViewOptionsButton />)
+    open()
+
+    expect(row('Ambient occlusion')).toHaveAttribute('aria-checked', 'true')
+    expect(screen.queryByRole('slider', { name: 'Strength' })).toBeNull()
+  })
+
+  it('still toggles AO from the row and disables it when shading is off', () => {
+    render(<ViewOptionsButton />)
+    open()
+
+    const ao = row('Ambient occlusion')
+    expect(ao).not.toBeDisabled()
+    fireEvent.click(ao)
+    expect(useViewOptionsStore.getState().ambient_occlusion).toBe(true)
+    expect(row('Ambient occlusion')).toHaveAttribute('aria-checked', 'true')
+
+    fireEvent.click(row('Shading'))
+    expect(row('Ambient occlusion')).toBeDisabled()
+    expect(useViewOptionsStore.getState().ambient_occlusion).toBe(false)
+  })
+})

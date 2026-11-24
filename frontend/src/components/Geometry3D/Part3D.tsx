@@ -489,7 +489,6 @@ export default function Part3D({ featureId, partId, mesh, edges = NO_EDGES, edge
   const zebra = useViewOptionsStore(s => s.zebra)
   const zebraStripes = useViewOptionsStore(s => s.zebra_stripes)
   const ambientOcclusion = useViewOptionsStore(s => s.ambient_occlusion)
-  const aoStrength = useViewOptionsStore(s => s.ao_strength)
   const sectionCapturing = useSectionStore(s => s.capturing)
   // The store keeps the two analysis rows exclusive; the order here only makes
   // the intent readable.
@@ -524,7 +523,6 @@ export default function Part3D({ featureId, partId, mesh, edges = NO_EDGES, edge
       section: sectionActive,
       capturing: sectionCapturing,
     }),
-    aoStrength,
     transparent: surface.transparency > 0 || surface.transmission > 0,
   })
 

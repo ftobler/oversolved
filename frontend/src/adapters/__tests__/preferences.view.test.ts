@@ -103,4 +103,16 @@ describe('viewer options in the preferences record', () => {
     const view = readLocalPrefs().view
     expect(view.zebra && view.curvature).toBe(false)
   })
+
+  it('drops a stale ao_strength from an old saved record without error', () => {
+    store({ view: { ambient_occlusion: true, ao_strength: 1.5 } })
+    const view = readLocalPrefs().view
+    expect(view.ambient_occlusion).toBe(true)
+    expect(view).not.toHaveProperty('ao_strength')
+  })
+
+  it('no longer puts ao_strength in the defaults', () => {
+    expect(readLocalPrefs().view).not.toHaveProperty('ao_strength')
+    expect(DEFAULT_VIEW_PREFERENCES).not.toHaveProperty('ao_strength')
+  })
 })

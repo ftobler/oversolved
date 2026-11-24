@@ -36,8 +36,6 @@ export const MAX_BRIGHTNESS = 4
 export const BRIGHTNESS_STEP = 0.05
 export const MIN_ZEBRA_STRIPES = 2
 export const MAX_ZEBRA_STRIPES = 40
-export const MIN_AO_STRENGTH = 0.2
-export const MAX_AO_STRENGTH = 1.5
 
 export interface ViewPreferences {
   shading: boolean
@@ -56,10 +54,9 @@ export interface ViewPreferences {
   // camera target. On by default: it is how the user asked to reach a corner
   // the fixed pivot cannot.
   orbit_around_cursor: boolean
-  // Screen-space ambient occlusion on the body material's indirect light.
+  // Screen-space ambient occlusion on the body material's indirect light. Its
+  // strength is a fixed shader constant, not a preference.
   ambient_occlusion: boolean
-  // How strongly the AO texture darkens creases (0.2..1.5).
-  ao_strength: number
 }
 
 export const DEFAULT_VIEW_PREFERENCES: Readonly<ViewPreferences> = Object.freeze({
@@ -74,7 +71,6 @@ export const DEFAULT_VIEW_PREFERENCES: Readonly<ViewPreferences> = Object.freeze
   curvature_range: null,
   orbit_around_cursor: true,
   ambient_occlusion: false,
-  ao_strength: 1,
 })
 
 export interface UserPreferences {
@@ -178,7 +174,7 @@ function readView(raw: unknown): ViewPreferences {
       : isRange(record.curvature_range) ? [record.curvature_range[0], record.curvature_range[1]] : null,
     orbit_around_cursor: isBoolean(record.orbit_around_cursor) ? record.orbit_around_cursor : d.orbit_around_cursor,
     ambient_occlusion: isBoolean(record.ambient_occlusion) ? record.ambient_occlusion : d.ambient_occlusion,
-    ao_strength: clampNumber(record.ao_strength, MIN_AO_STRENGTH, MAX_AO_STRENGTH, d.ao_strength),
+    // An old record's ao_strength is simply not copied into the rebuilt view.
   })
 }
 

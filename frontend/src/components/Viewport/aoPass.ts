@@ -184,8 +184,9 @@ export class AoPass {
     // with the radius: the shader uses it as the weight of a dimensionless blend
     // (mix(1., 2./float(j+2), distanceFallOff)) per disc step. A value above 1
     // makes that weight negative for every j >= 1, so the horizon accumulator
-    // moves the wrong way and sqrt(1 - c*c) goes NaN for a millimetre-scale part
-    // (radius 0.03 * extent always exceeds the 0.25 view-unit reference).
+    // moves the wrong way and sqrt(1 - c*c) goes NaN. The radius is a fraction
+    // of the model extent, not a fixed view-unit value, so it cannot be folded
+    // into this weight.
 
     const pd = this.pdMaterial.uniforms
     pd.cameraProjectionMatrixInverse.value.copy(camera.projectionMatrixInverse)
