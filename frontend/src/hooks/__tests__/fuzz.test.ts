@@ -137,10 +137,12 @@ describe('the seeded session fuzz (fake scheduler)', () => {
 // Seeds the ratchet keeps pinned under the PR gate, each to its exact length:
 // the minimiser's known fault seed and a long mixed sequence. They pin replay
 // stability, not the cap: the dedicated cap case below is what proves entries
-// are dropped, and seed 8 was measured to reach the cap without ever dropping
+// are dropped, and seed 29 was measured to reach the cap without ever dropping
 // one. A fuzz run that finds a genuine failure adds its seed here (with the
 // failing message in the note) before the fix, so the fix has a regression
-// test.
+// test. The group-drag mutation joined the registry and re-rolled every
+// sequence; these two pins were re-measured after that (seed 15 is still the
+// first to draw set_rollback, the cap seed moved from the old 8).
 const REGRESSION_SEEDS: readonly { seed: number; steps: number; note: string }[] = [
   {
     seed: 15,
@@ -148,7 +150,7 @@ const REGRESSION_SEEDS: readonly { seed: number; steps: number; note: string }[]
     note: 'first sequence reaching set_rollback; the minimiser reduces it to that step',
   },
   {
-    seed: 8,
+    seed: 29,
     steps: 100,
     note: 'long mixed sequence; measured to reach the 50-entry cap without dropping an entry',
   },

@@ -143,6 +143,28 @@ export function isFaceProjectionSource(source: string): boolean {
   }
 }
 
+/** The entity ids a sketch solve pins from its projections: every projection
+ *  constraint's target and derived face members, plus a legacy `source` entity.
+ *  A drag must leave these out of the moved set: their params are pinned at the
+ *  solve seed, not at `paramsReference`, so translating or anchoring them moves
+ *  them in the preview and the pin snaps them back on release. */
+export function pinnedProjectionIds(feature: {
+  entities?: ReadonlyArray<{ id: string; source?: unknown }>
+  constraints?: ReadonlyArray<{ kind?: string; target?: unknown; members?: Record<string, string> }>
+}): Set<string> {
+  const pinned = new Set<string>()
+  for (const c of feature.constraints ?? []) {
+    if (c.kind !== 'projection') continue
+    const target = typeof c.target === 'string' ? c.target : ''
+    if (target.length > 0) pinned.add(target.startsWith('$') ? target.slice(1) : target)
+    for (const memberId of Object.values(c.members ?? {})) pinned.add(memberId)
+  }
+  for (const e of feature.entities ?? []) {
+    if (typeof e.source === 'string' && e.source.length > 0) pinned.add(e.id)
+  }
+  return pinned
+}
+
 /** The five causes an authored sketch projection can name at its own boundary.
  *  `unpositioned` is the sixth: the named entity exists but the document holds
  *  no position for it yet, which is what a stored never-resolved projection

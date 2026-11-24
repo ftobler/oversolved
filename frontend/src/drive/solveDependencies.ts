@@ -60,7 +60,7 @@ function deletesFaceProjection(raw: RawStep, doc: PartDoc | null | undefined): b
 export function usesSettledSketchGeometry(raw: unknown, doc?: PartDoc | null): boolean {
   if (!isRecord(raw)) return false
   switch (raw.type) {
-      // Relative moves and resizes are applied to the current params.
+    // Relative moves and resizes are applied to the current params.
     case 'move_entity':
     case 'move_vertex':
     case 'move_vertex_with_constraint':

@@ -27,7 +27,7 @@ import { buildFilletCornerMap } from '@/utils/geometry/filletCorner'
 
 // Edge drag preview: frontend-only translation of the dragged entity's vertices.
 // No constraint resolution -- the WASM hard solve handles that on pointer-up.
-import { edgeDragPreview } from '@/utils/geometry/edgeDragPreview'
+import { edgeDragPreview, isTranslationDrag } from '@/utils/geometry/edgeDragPreview'
 
 // Drag-time topology staleness gate: while a drag is in progress OR the
 // held-preview geometry has not yet been rebuilt by the cold solve, the
@@ -42,6 +42,7 @@ import { topologyStale } from '@/components/Geometry3D/dragTopologyGate'
 // WASM drag solve: runs the real solver on every drag frame.
 import { useWasmDragSolve } from '@/hooks/useWasmDragSolve'
 import { resolvedKindsOfSketch } from '@/kernel/features/sketch'
+import { pinnedProjectionIds } from '@/kernel/features/projectionMembers'
 
 // Drawing tools
 import { DrawPreview, DrawPlane } from '@/components/Geometry3D/Drawing'
@@ -133,6 +134,12 @@ export default function Geometry3D({ featureId, solved, entities, projectionMemb
     () => Object.values(projectionMembers ?? {}).flatMap(report => report.entities),
     [projectionMembers],
   )
+  // Projected entities are pinned by the solve, so the fallback translation must
+  // leave them out; the WASM path gets the same set from pinProjectionTargets.
+  const dragPinnedIds = useMemo(
+    () => (featureDef ? pinnedProjectionIds(featureDef) : undefined),
+    [featureDef],
+  )
 
   // WASM drag solve for vertex drags (runs the real solver per frame with
   // warm-start continuity and rAF throttling). engaged=false for edge/dim_label
@@ -141,7 +148,8 @@ export default function Geometry3D({ featureId, solved, entities, projectionMemb
     featureId, featureDef, drag, isDraggingThis, originLocal: dragOrigin, resolvedKinds, derivedMembers,
   })
 
-  // During drag on this feature: vertex drags use WASM; edge drags use a simple
+  // During drag on this feature: vertex drags and group drags use WASM; a single
+  // edge drag (and a group drag before the WASM engages) uses a simple
   // translation preview (no constraint resolution -- the hard solve handles it
   // on pointer-up). While WASM is engaged but before the first frame lands (at
   // most one rAF tick), preview is null and displaySketch falls through to
@@ -150,20 +158,21 @@ export default function Geometry3D({ featureId, solved, entities, projectionMemb
   const preview = useMemo(
     () => {
       if (!drag || drag.featureId !== featureId) return null
-      if (drag.type === 'vertex' && wasmDrag.engaged) return wasmDrag.sketch
-      if (drag.type === 'edge') {
-        // Use the WASM-solved preview when engaged (constraint-aware), falling
-        // back to a simple translation preview when the solver path is not
-        // available (e.g. still loading, or edge drag on a non-solvable entity).
-        if (wasmDrag.engaged) return wasmDrag.sketch
-        return edgeDragPreview(solved, drag as VertexOrEdgeDrag & { type: 'edge' })
-      }
       if (drag.type === 'dim_label') return solved
+      if (drag.type === 'vertex' || drag.type === 'edge') {
+        if (wasmDrag.engaged) return wasmDrag.sketch
+        // A group drag pressed on a vertex is a translation too, so it takes the
+        // same fallback; a single vertex drag has none (its preview is the WASM
+        // solve, and without it the sketch stays static).
+        if (isTranslationDrag(drag)) {
+          return edgeDragPreview(solved, drag as VertexOrEdgeDrag, dragPinnedIds)
+        }
+      }
       return null
     },
     // Depend on the result fields, not the result object: the hook returns a
     // fresh object every render, which would defeat the memo.
-    [solved, drag, featureId, wasmDrag.engaged, wasmDrag.sketch],
+    [solved, drag, featureId, wasmDrag.engaged, wasmDrag.sketch, dragPinnedIds],
   )
 
   // On pointer-up the committed mutation re-solves asynchronously. Until the

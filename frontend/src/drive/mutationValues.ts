@@ -35,6 +35,7 @@ import { pointDistanceZeroProblem } from '@/utils/yamlMutations/helpers'
 import { addConstraintProblem, constraintOperandRefProblem, isLegacyQueryWrapper } from '@/utils/constraintProblems'
 import { dimensionSizeProblem, entitySizeProblem } from '@/utils/entitySizeProblems'
 import { isConstraintKindName } from '@/wasm-kernel/codec'
+import { isVertexPointKey } from '@/types/vertexKeys'
 import { lengthUnitOf } from '@/utils/lengthUnit'
 import { featureFieldNames, planeDefinitionSchema, type JsonSchema } from '@/persistence/partDocSchema'
 import { arrayCountProblem } from '@/persistence/docSchema'
@@ -628,6 +629,11 @@ function moveSketchGroup(raw: RawStep, ctx: ValueContext): ValueViolation | null
     ) {
       return invalid(
         `members[${i}] must be {entityId, vertexKey} with non-empty strings, got ${json(member)}`,
+      )
+    }
+    if (member.vertexKey !== 'edge' && !isVertexPointKey(member.vertexKey)) {
+      return invalid(
+        `members[${i}].vertexKey must be 'edge' or a vertex point key, got ${json(member.vertexKey)}`,
       )
     }
   }

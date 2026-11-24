@@ -14,7 +14,7 @@
 //!
 //! ```text
 //! header:
-//!   u32  magic = MAGIC ("SKG6", little-endian on the wire)
+//!   u32  magic = MAGIC ("SKGB", little-endian on the wire)
 //!   u32  n_entities
 //!   u32  n_params            // f64 count of params_initial
 //!   u32  n_constraints

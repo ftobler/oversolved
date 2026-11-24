@@ -4,6 +4,7 @@
 // No constraint resolution -- the real solver handles that on pointer-up.
 import type { Sketch } from '@/types/cad'
 import type { VertexOrEdgeDrag } from '@/types/drag'
+import { fitPointIndex } from '@/types/vertexKeys'
 
 function translateEntity(
   sketch: Sketch,
@@ -49,74 +50,89 @@ function translateEntity(
   }
 }
 
-/** Translate one named point of an entity. Returns false when the point is
- *  derived rather than stored (an arc end from radius/angle, an ellipse axis
- *  end from a/b/theta): the caller then moves the whole entity, matching the
- *  group preview rule that an unmapped member translates as a unit. */
-function translateVertex(
-  sketch: Sketch,
-  entityId: string,
-  vertexKey: string,
-  dx: number,
-  dy: number,
-): boolean {
-  const entity = sketch[entityId]
-  if (!entity) return false
-  const move = (pair: [number, number]): [number, number] => [pair[0] + dx, pair[1] + dy]
-  if ('start' in entity && 'end' in entity && 'radius' in entity) return false
-  if ('start' in entity && 'end' in entity) {
-    const line = entity as unknown as { start: [number, number]; end: [number, number] }
-    if (vertexKey === 'start') line.start = move(line.start)
-    else if (vertexKey === 'end') line.end = move(line.end)
-    else return false
-    return true
+/** A mutable view of one named point of a render-sketch entity. Null when the
+ *  point is derived rather than stored (an arc end from center/radius/angle, an
+ *  ellipse axis end from a/b/theta): the callers then move the whole entity,
+ *  which is the group preview's rule for an unmapped member. */
+interface VertexRef {
+  get: () => [number, number]
+  set: (value: [number, number]) => void
+}
+
+function vertexRef(entity: Sketch[string], vertexKey: string): VertexRef | null {
+  const e = entity as unknown as Record<string, unknown>
+  const pair = (prop: string): VertexRef => ({
+    get: () => e[prop] as [number, number],
+    set: (value) => { e[prop] = value },
+  })
+  if ('start' in e && 'end' in e && 'radius' in e) return null
+  if ('start' in e && 'end' in e) {
+    if (vertexKey === 'start' || vertexKey === 'end') return pair(vertexKey)
+    return null
   }
-  if ('p1' in entity) {
-    const sp = entity as unknown as { p1: [number, number]; p2: [number, number]; p3: [number, number]; p4: [number, number] }
-    const key = vertexKey === 'start' ? 'p1' : vertexKey === 'c1' ? 'p2' : vertexKey === 'c2' ? 'p3' : vertexKey === 'end' ? 'p4' : null
-    if (key === null) return false
-    sp[key] = move(sp[key])
-    return true
+  if ('p1' in e) {
+    const prop = vertexKey === 'start' ? 'p1'
+      : vertexKey === 'c1' ? 'p2'
+        : vertexKey === 'c2' ? 'p3'
+          : vertexKey === 'end' ? 'p4'
+            : null
+    return prop === null ? null : pair(prop)
   }
-  if ('points' in entity) {
-    const fit = entity as unknown as {
+  if ('points' in e) {
+    const fit = e as unknown as {
       points: [number, number][]
       handleStart?: [number, number]
       handleEnd?: [number, number]
     }
-    if (vertexKey === 'c1' && fit.handleStart) fit.handleStart = move(fit.handleStart)
-    else if (vertexKey === 'c2' && fit.handleEnd) fit.handleEnd = move(fit.handleEnd)
-    else if (vertexKey === 'start') fit.points[0] = move(fit.points[0])
-    else if (vertexKey === 'end') fit.points[fit.points.length - 1] = move(fit.points[fit.points.length - 1])
-    else {
-      const k = /^fit(\d+)$/.exec(vertexKey)
-      const index = k === null ? NaN : Number(k[1])
-      // fit<k> names the k-th interior fit point, which is points[k].
-      if (!Number.isInteger(index) || index < 1 || index >= fit.points.length - 1) return false
-      fit.points[index] = move(fit.points[index])
+    if (vertexKey === 'c1') {
+      return fit.handleStart === undefined ? null : {
+        get: () => fit.handleStart as [number, number],
+        set: (value) => { fit.handleStart = value },
+      }
     }
-    return true
+    if (vertexKey === 'c2') {
+      return fit.handleEnd === undefined ? null : {
+        get: () => fit.handleEnd as [number, number],
+        set: (value) => { fit.handleEnd = value },
+      }
+    }
+    if (vertexKey === 'start') {
+      return { get: () => fit.points[0], set: (value) => { fit.points[0] = value } }
+    }
+    if (vertexKey === 'end') {
+      const index = fit.points.length - 1
+      return { get: () => fit.points[index], set: (value) => { fit.points[index] = value } }
+    }
+    const index = fitPointIndex(vertexKey)
+    // fit<k> names the k-th interior fit point, which is points[k].
+    if (index === null || index < 1 || index >= fit.points.length - 1) return null
+    return { get: () => fit.points[index], set: (value) => { fit.points[index] = value } }
   }
-  if ('center' in entity) {
-    if (vertexKey !== 'center') return false
-    const circ = entity as unknown as { center: [number, number] }
-    circ.center = move(circ.center)
-    return true
+  if ('center' in e) {
+    return vertexKey === 'center' ? pair('center') : null
   }
-  if ('x' in entity) {
-    if (vertexKey !== 'xy') return false
-    const pt = entity as { x: number; y: number }
-    pt.x += dx
-    pt.y += dy
-    return true
+  if ('x' in e) {
+    if (vertexKey !== 'xy') return null
+    const pt = e as unknown as { x: number; y: number }
+    return { get: () => [pt.x, pt.y], set: ([x, y]) => { pt.x = x; pt.y = y } }
   }
-  return false
+  return null
+}
+
+/** True when the translation fallback owns this drag: an edge drag, or a group
+ *  drag (which may have been pressed on a vertex). A plain vertex drag is the
+ *  WASM solve's job, so it must never route here. */
+export function isTranslationDrag(drag: VertexOrEdgeDrag): boolean {
+  return drag.type === 'edge' || (!!drag.group && drag.group.length > 1)
 }
 
 export function edgeDragPreview(
   sketch: Sketch,
-  drag: VertexOrEdgeDrag & { type: 'edge' },
+  drag: VertexOrEdgeDrag,
+  skipIds?: ReadonlySet<string>,
 ): Sketch {
+  if (!isTranslationDrag(drag)) return sketch
+
   const dx = drag.currentWorld[0] - drag.startWorld[0]
   const dy = drag.currentWorld[1] - drag.startWorld[1]
   if (dx === 0 && dy === 0) return sketch
@@ -124,17 +140,38 @@ export function edgeDragPreview(
   const result = structuredClone(sketch)
   // A group drag moves every member, so the first frame does not show only the
   // grabbed element moving. Absent a group this is the old single translation.
-  // A whole-entity effect happens once per entity: two point members of one
-  // arc both fall back to their whole entity, which must not move twice.
   const members = drag.group && drag.group.length > 1
     ? drag.group
     : [{ entityId: drag.entityId, vertexKey: 'edge' }]
-  const movedWhole = new Set<string>()
+  // Resolve the whole-entity set before moving anything, so the outcome does not
+  // depend on member order: one whole member and one of its point members must
+  // move the entity once, whichever comes first.
+  const whole = new Set<string>()
   for (const member of members) {
-    if (member.vertexKey !== 'edge' && translateVertex(result, member.entityId, member.vertexKey, dx, dy)) continue
-    if (movedWhole.has(member.entityId)) continue
-    movedWhole.add(member.entityId)
-    translateEntity(result, member.entityId, dx, dy)
+    const entity = result[member.entityId]
+    if (!entity || member.vertexKey === 'edge' || vertexRef(entity, member.vertexKey) === null) {
+      whole.add(member.entityId)
+    }
+  }
+  const movedWhole = new Set<string>()
+  const movedPoints = new Set<string>()
+  for (const member of members) {
+    // A projected member is pinned by the solve; translating it here would only
+    // snap back on release.
+    if (skipIds?.has(member.entityId)) continue
+    if (whole.has(member.entityId)) {
+      if (movedWhole.has(member.entityId)) continue
+      movedWhole.add(member.entityId)
+      translateEntity(result, member.entityId, dx, dy)
+      continue
+    }
+    const pointKey = `${member.entityId}\u0000${member.vertexKey}`
+    if (movedPoints.has(pointKey)) continue
+    movedPoints.add(pointKey)
+    const ref = vertexRef(result[member.entityId], member.vertexKey)
+    if (!ref) continue
+    const [x, y] = ref.get()
+    ref.set([x + dx, y + dy])
   }
   return result
 }

@@ -50,9 +50,9 @@ import { loadProfileLoopsWasm, loadSolverWasm, loadTopologyWasm, resetSolverWasm
 import { setProfileLoopsBytes } from '@/wasm-kernel/profileLoops'
 import { isKernelTrap, swallowUnlessTrap } from '../errors'
 import { memoizedLoad } from '../occ/memoizedLoad'
-import { resolveDragMode, PROBE_STEP_REL, type CircleDragMode } from './circleDragMode'
+import { resolveDragMode, resolveGroupDragMode, PROBE_STEP_REL, type CircleDragMode } from './circleDragMode'
 import { resolve3dGeometry, projectTo2d, projectCenter, type PlaneFrame } from './projectionLowering'
-import { reconcileFaceProjection, classifyProjectionSource, isProjectionPosition, defaultProjectionBlock, isDefaultProjectionBlock, type ProjectionMemberEntity, type ProjectionMemberReport } from './projectionMembers'
+import { reconcileFaceProjection, classifyProjectionSource, isProjectionPosition, defaultProjectionBlock, isDefaultProjectionBlock, pinnedProjectionIds, type ProjectionMemberEntity, type ProjectionMemberReport } from './projectionMembers'
 import type { FaceBoundaryLookup } from './faceBoundary'
 import type { PlaneLike } from './shared/planes'
 import type { SolveBytes } from '@/wasm-kernel/codec'
@@ -1193,27 +1193,15 @@ export function pinProjectionTargets(
   resolvedKinds?: Readonly<Record<string, string>>,
   derivedMembers?: ReadonlyArray<ProjectionMemberEntity>,
 ): { loweredFeature: SketchFeature; pinnedIds: string[] } {
-  const pinned = new Set<string>()
+  const pinned = pinnedProjectionIds(feature)
   // A construction face projection's members stay construction on the preview
   // paths too, so a drag cannot temporarily rebuild them as a profile curve.
   const constructionMembers = new Set<string>()
-  const constraints = feature.constraints ?? []
-  for (const c of constraints) {
+  for (const c of feature.constraints ?? []) {
     if (c.kind !== 'projection') continue
-    const t = typeof c.target === 'string' ? c.target : ''
-    const id = t.startsWith('$') ? t.slice(1) : t
-    if (id) pinned.add(id)
-    // A face projection's members are derived entities, not rows; pinning their
-    // ids keeps the drag/probe paths on the same held set the hard solve uses.
     for (const memberId of Object.values(c.members ?? {})) {
-      pinned.add(memberId)
       if (c.construction === true) constructionMembers.add(memberId)
     }
-  }
-  // Legacy v5: entities carrying `source` are held.
-  for (const e of feature.entities ?? []) {
-    const src = (e as { source?: unknown }).source
-    if (src && typeof src === 'string') pinned.add(e.id)
   }
   let entities = feature.entities ?? []
   let initial = feature.initial
@@ -1393,23 +1381,30 @@ export interface DragGroupMember {
 
 /**
  * Resolve a group drag's members against the lowered layout. A member whose
- * entity is not in the layout is dropped (a stale selection entry must not wedge
- * the gesture). A point member with a direct param pair anchors and translates
- * only that pair; a derived point (an arc end, an ellipse axis end) translates
- * as its whole entity, which is the first version's rule in the preview, the
- * fallback preview and the commit applier alike.
+ * entity is pinned by a projection is skipped outright: the solve's pin mask
+ * holds its params at x0, not at the drag reference, so adding the delta would
+ * move it in the preview and the pin would snap it back on release. The skipped
+ * member still counts as part of the gesture, so the others keep the group path.
+ * A member whose entity is not in the layout is dropped (a stale selection entry
+ * must not wedge the gesture). A point member with a direct param pair anchors
+ * and translates only that pair; a derived point (an arc end, an ellipse axis
+ * end) translates as its whole entity, which is the first version's rule in the
+ * preview, the fallback preview and the commit applier alike.
  */
 function resolveGroupDragMembers(
   group: DragMember[] | undefined,
   layout: EntityLayout[],
+  pinnedIds: ReadonlySet<string>,
 ): DragGroupMember[] | undefined {
   if (!group || group.length <= 1) return undefined
-  // Resolve each member once. A member whose point is derived (an arc end, an
-  // ellipse axis end) has no pair to translate, so it takes its whole entity,
-  // exactly as the fallback preview and the commit applier do. Any whole-entity
-  // effect for one entity is applied once, however many of its points were
-  // selected: two members of one arc must not move it twice.
+  // Resolve each member once. Duplicate point members name the same pair, so
+  // they are collapsed by (entity, key): applying the delta twice would move
+  // that point twice. A member whose point is derived (an arc end, an ellipse
+  // axis end) has no pair to translate, so it takes its whole entity, exactly
+  // as the fallback preview and the commit applier do; any whole-entity effect
+  // for one entity is applied once, however many of its points were selected.
   const resolved = group.flatMap((member) => {
+    if (pinnedIds.has(member.entityId)) return []
     const ent = layout.find((l) => l.id === member.entityId)
     if (!ent) return []
     const handles = ent.kind === 'fit_spline' ? fitSplineHandlesFromFlags(ent.flags) : undefined
@@ -1418,14 +1413,15 @@ function resolveGroupDragMembers(
     const direct = member.vertexKey === 'edge'
       ? undefined
       : entityVertexIndices(ent.kind, ent.size, handles)?.[member.vertexKey]
-    return [{ ent, pairs, direct }]
+    return [{ ent, pairs, direct, key: member.vertexKey }]
   })
   const wholeIds = new Set(
     resolved.filter((r) => r.direct === undefined).map((r) => r.ent.id),
   )
   const members: DragGroupMember[] = []
   const seenWhole = new Set<string>()
-  for (const { ent, pairs, direct } of resolved) {
+  const seenPoints = new Set<string>()
+  for (const { ent, pairs, direct, key } of resolved) {
     if (wholeIds.has(ent.id)) {
       if (seenWhole.has(ent.id)) continue
       seenWhole.add(ent.id)
@@ -1435,12 +1431,15 @@ function resolveGroupDragMembers(
       })
       continue
     }
+    const pointKey = `${ent.id}\u0000${key}`
+    if (seenPoints.has(pointKey)) continue
+    seenPoints.add(pointKey)
     const [px, py] = direct!
     const x = ent.offset + px
     const y = ent.offset + py
     members.push({ anchor: { paramOffset: x, paramCount: 2 }, coordPairs: [[x, y]] })
   }
-  return members.length > 1 ? members : undefined
+  return members
 }
 
 /**
@@ -1509,7 +1508,9 @@ export function prepareDragContext(
     // A group drag is a translation of the whole selection: every member gets
     // its own anchor run and the cursor delta reaches every member's pairs. The
     // member list was built once at pointer-down and cannot change here.
-    const groupMembers = resolveGroupDragMembers(group, layout)
+    // Projected members are skipped: their params are pinned at the solve seed,
+    // so a translated seed would move them and the pin would snap them back.
+    const groupMembers = resolveGroupDragMembers(group, layout, new Set(pinnedIds))
     if (groupMembers) {
       input.options = {
         dragMode: true,
@@ -1915,4 +1916,52 @@ export function probeCircleDragMode(ctx: DragContext): CircleDragMode {
   // so a centre free along only one axis still reads as mobile (the 1-DOF
   // misclassification guard).
   return resolveDragMode({ translateX: tx, translateY: ty, radius: rr })
+}
+
+/** The probe step for a group: a fraction of the group's coordinate extent, so
+ *  the step scales with the dragged geometry instead of being a fixed unit that
+ *  is wrong on a 0.5 mm hole and a 500 mm flange at once. */
+function groupProbeStep(ctx: DragContext): number {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+  for (const member of ctx.group ?? []) {
+    for (const [xi, yi] of member.coordPairs) {
+      const x = ctx.params0[xi]
+      const y = ctx.params0[yi]
+      if (!Number.isFinite(x) || !Number.isFinite(y)) continue
+      minX = Math.min(minX, x)
+      minY = Math.min(minY, y)
+      maxX = Math.max(maxX, x)
+      maxY = Math.max(maxY, y)
+    }
+  }
+  const extent = maxX >= minX ? Math.hypot(maxX - minX, maxY - minY) : 0
+  return PROBE_STEP_REL * Math.max(extent, 1)
+}
+
+/**
+ * Probe the real drag solver at activation to decide whether a group can move at
+ * all. Runs the same per-frame solve twice, once per axis, and reads how far the
+ * most responsive member's pairs travelled. Every member fixed or projected
+ * yields 'locked', so the release commits nothing and records no undo entry; a
+ * group free along either axis yields 'translate'. Like `probeCircleDragMode`,
+ * it must not touch dragSolveRegistry, and it re-seeds from `params0` each call.
+ */
+export function probeGroupDragMode(ctx: DragContext): CircleDragMode {
+  if (!ctx.group || ctx.group.length === 0) return 'locked'
+  const h = groupProbeStep(ctx)
+  const response = (res: DragSolveResult | null): number => {
+    if (!res) return 0
+    let best = 0
+    for (const member of ctx.group ?? []) {
+      for (const [xi, yi] of member.coordPairs) {
+        const dx = (res.params[xi] ?? 0) - (ctx.params0[xi] ?? 0)
+        const dy = (res.params[yi] ?? 0) - (ctx.params0[yi] ?? 0)
+        best = Math.max(best, Math.hypot(dx, dy) / h)
+      }
+    }
+    return best
+  }
+  const probeX = solveSketchDrag(ctx, ctx.params0, [h, 0], [h, 0])
+  const probeY = solveSketchDrag(ctx, ctx.params0, [0, h], [0, h])
+  return resolveGroupDragMode({ x: response(probeX), y: response(probeY) })
 }

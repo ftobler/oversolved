@@ -6,6 +6,8 @@
 import { describe, it, expect } from 'vitest'
 import {
   resolveDragMode,
+  resolveGroupDragMode,
+  GROUP_MOVE_RESPONSE_MIN,
   TRANSLATE_RESPONSE_MIN,
   RADIUS_RESPONSE_MIN,
 } from '../circleDragMode'
@@ -42,5 +44,27 @@ describe('resolveDragMode', () => {
     // One epsilon above crosses into the mobile band.
     expect(resolveDragMode({ translateX: TRANSLATE_RESPONSE_MIN + 1e-9, translateY: 0, radius: 0 })).toBe('translate')
     expect(resolveDragMode({ translateX: 0, translateY: 0, radius: RADIUS_RESPONSE_MIN + 1e-9 })).toBe('radius')
+  })
+})
+
+describe('resolveGroupDragMode', () => {
+  it('a responsive member gives translate', () => {
+    expect(resolveGroupDragMode({ x: 1, y: 1 })).toBe('translate')
+    expect(resolveGroupDragMode({ x: 0.9, y: 0.05 })).toBe('translate')
+  })
+
+  it('no responsive member gives locked (every member fixed or projected)', () => {
+    expect(resolveGroupDragMode({ x: 0, y: 0 })).toBe('locked')
+    expect(resolveGroupDragMode({ x: 0.1, y: 0.1 })).toBe('locked')
+  })
+
+  it('a member free along one axis is still mobile', () => {
+    expect(resolveGroupDragMode({ x: 1, y: 0 })).toBe('translate')
+    expect(resolveGroupDragMode({ x: 0, y: 1 })).toBe('translate')
+  })
+
+  it('the threshold is exclusive at the boundary', () => {
+    expect(resolveGroupDragMode({ x: GROUP_MOVE_RESPONSE_MIN, y: 0 })).toBe('locked')
+    expect(resolveGroupDragMode({ x: GROUP_MOVE_RESPONSE_MIN + 1e-9, y: 0 })).toBe('translate')
   })
 })

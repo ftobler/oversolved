@@ -34,6 +34,7 @@ import {
   prepareDragContext,
   solveSketchDrag,
   probeCircleDragMode,
+  probeGroupDragMode,
 } from '@/kernel/features/sketch'
 import { setLastDragSolve, clearLastDragSolveFor } from '@/utils/geometry/dragSolveRegistry'
 import type { CircleDragMode } from '@/kernel/features/circleDragMode'
@@ -68,9 +69,10 @@ interface WasmDragSolveResult {
     *  The caller must NOT show a fallback preview then -- a one-frame stale preview that
     *  disagrees with the first WASM frame produces a visible jump. */
   engaged: boolean
-  /** The circle-rim drag mode resolved at activation ('translate' | 'radius' |
-    *  'locked'), or undefined for vertex drags and non-circle edge drags (which
-    *  behave as translate). Sticky for the whole gesture. */
+  /** The drag mode resolved at activation ('translate' | 'radius' | 'locked'),
+    *  or undefined for a single vertex drag and a non-circle single edge drag
+    *  (which behave as translate). A group resolves 'translate' or 'locked' from
+    *  whether any member can move. Sticky for the whole gesture. */
   mode?: CircleDragMode
 }
 
@@ -126,7 +128,7 @@ export function useWasmDragSolve(
     return prepareDragContext(featureDef, dragEntityId, dragVertexKey, [originX, originY], resolvedKinds, derivedMembers, dragGroup)
   }, [featureDef, dragEntityId, dragVertexKey, dragGroup, originX, originY, resolvedKinds, derivedMembers])
 
-  // ─── Resolve the circle-rim drag mode once per edge drag ───
+  // ─── Resolve the drag mode once per gesture ───
   // The mode is decided at activation by probing the real drag solver, then stays
   // sticky for the whole gesture: the memo is keyed on the drag identity (the same
   // key that builds ctx, which is stable across pointermove updates), so it runs
@@ -134,10 +136,14 @@ export function useWasmDragSolve(
   // "resize" one frame and "locked" the next would be a fight, so the latch is the
   // memo stability itself. Non-circle edge drags have no size param, so the mode
   // stays undefined and the commit falls back to today's translate behaviour.
+  // A group probes whether any member can move: an all-fixed or all-projected
+  // group is locked, so the release commits nothing and records no undo entry.
   const dragMode = useMemo(() => {
-    if (!ctx || !isEdgeDragHere || ctx.sizeIndex === undefined) return undefined
+    if (!ctx || !isDragHere) return undefined
+    if (ctx.group) return probeGroupDragMode(ctx)
+    if (!isEdgeDragHere || ctx.sizeIndex === undefined) return undefined
     return probeCircleDragMode(ctx)
-  }, [ctx, isEdgeDragHere])
+  }, [ctx, isDragHere, isEdgeDragHere])
 
   // ─── Track the latest cursor and edge-drag startWorld ───
   // Mark dirty only when the cursor actually moved.

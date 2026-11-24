@@ -234,6 +234,22 @@ describe('computeDragMutation', () => {
     expect(computeDragMutation([100, 100], drag, null)).toBeNull()
   })
 
+  it('a locked group (every member fixed or projected) commits nothing', () => {
+    const drag = makeDrag({
+      type: 'edge',
+      startClient: [100, 100],
+      startWorld: [0, 0],
+      currentWorld: [3, 4],
+      group: [
+        { entityId: 'L1', vertexKey: 'edge' },
+        { entityId: 'L2', vertexKey: 'edge' },
+      ],
+    })
+    // The activation probe latched 'locked': there is no motion to commit, so
+    // no mutation and no junk undo entry.
+    expect(computeDragMutation([200, 200], drag, null, { featureId: FEATURE, mode: 'locked' })).toBeNull()
+  })
+
   // ─── solvedGeometry pass-through (commit the WASM drag frame) ───
 
   it('attaches solvedGeometry when the last drag solve belongs to this feature', () => {

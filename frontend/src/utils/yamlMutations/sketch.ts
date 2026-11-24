@@ -24,7 +24,7 @@ import { fitPointIndex } from '@/types/vertexKeys'
 import { hidePlanesIfFirstBoundSketch } from './featureAdmin'
 import { applyAddFitSpline, applyDeleteFitPoint, type FitSplineAddOptions } from './fitSpline'
 import {
-  deriveMemberIds, faceProjectionConstraintId, isFaceProjectionSource, reconcileFaceProjection,
+  deriveMemberIds, faceProjectionConstraintId, isFaceProjectionSource, pinnedProjectionIds, reconcileFaceProjection,
   describeProjectionSourceProblem, projectionDependentsReport, type ProjectionDependentsReport,
 } from '@/kernel/features/projectionMembers'
 import type { FaceBoundaryLookup } from '@/kernel/features/faceBoundary'
@@ -222,11 +222,31 @@ function resolveGroupMember(
   return { params, pairs }
 }
 
+/** True when the member's entity is held still by the document: a projection
+ *  pins it (its params do not follow a delta), or a `fixed` constraint targets
+ *  the entity or one of its points. The headless delta path must leave such a
+ *  member exactly where it is instead of translating it and letting the next
+ *  solve pull it back. */
+function memberIsHeld(
+  feature: { constraints?: ReadonlyArray<PartConstraint> },
+  pinned: ReadonlySet<string>,
+  member: DragMember,
+): boolean {
+  if (pinned.has(member.entityId)) return true
+  return (feature.constraints ?? []).some(c =>
+    c.kind === 'fixed'
+    && CONSTRAINT_REF_FIELDS.some(field => refMatchesEntity(c[field], member.entityId)),
+  )
+}
+
 /** Drag commit for a multi-selection: every member translated in one mutation,
  *  so the whole move is one undo step. With `solvedGeometry` (the live drag)
  *  the last frame is baked exactly as `move_entity` does, so the document lands
  *  where the preview showed; without it (a headless step) the members are
- *  translated by `delta` and the next solve settles them. */
+ *  translated by `delta` and the next solve settles them. Projected and fixed
+ *  members are never moved: their position is held by the solve, not by the
+ *  drag. Unknown members are refused before either path writes, so a release and
+ *  a headless step agree (a member deleted mid-drag refuses in both). */
 export function applyMoveSketchGroup(
   doc: PartDoc,
   featureId: string,
@@ -241,24 +261,31 @@ export function applyMoveSketchGroup(
     warn('applyMoveSketchGroup: ignoring non-finite delta', { featureId, members, delta })
     return
   }
+  const pinned = pinnedProjectionIds(feature)
+  // Resolve before the bake and before any write: a refused member must leave
+  // the whole commit untouched, and a solved frame must not silently skip an
+  // entity the document no longer has.
+  const resolved = members
+    .filter(member => !memberIsHeld(feature, pinned, member))
+    .map(member => ({
+      member,
+      target: resolveGroupMember(feature.initial!, feature.entities, member),
+    }))
   // The adopted frame already reflects the translated positions, so the delta
   // must not be applied on top of it (that would translate twice).
   if (adoptSolvedGeometry(feature.initial, solvedGeometry)) return
   if (dx === 0 && dy === 0) return
-  // Resolve every member first: a refusal must not leave the earlier members
-  // translated. A whole-entity effect is applied once per entity, however many
-  // of its points were selected (two members of one arc must not move it
-  // twice), and a point member is skipped when its entity already moves whole.
-  const resolved = members.map(member => ({
-    member,
-    target: resolveGroupMember(feature.initial!, feature.entities, member),
-  }))
+  // A whole-entity effect is applied once per entity, however many of its
+  // points were selected (two members of one arc must not move it twice); a
+  // point member is skipped when its entity already moves whole, and duplicate
+  // point members are collapsed by (entity, key).
   const whole = new Set(
     resolved
       .filter(({ target }) => target.point === undefined)
       .map(({ member }) => member.entityId),
   )
   const movedWhole = new Set<string>()
+  const movedPoints = new Set<string>()
   for (const { member, target } of resolved) {
     if (whole.has(member.entityId)) {
       if (movedWhole.has(member.entityId)) continue
@@ -269,6 +296,9 @@ export function applyMoveSketchGroup(
       }
       continue
     }
+    const pointKey = `${member.entityId}\u0000${member.vertexKey}`
+    if (movedPoints.has(pointKey)) continue
+    movedPoints.add(pointKey)
     const point = target.point!
     target.params[point[0]] = round(target.params[point[0]] + dx)
     target.params[point[1]] = round(target.params[point[1]] + dy)

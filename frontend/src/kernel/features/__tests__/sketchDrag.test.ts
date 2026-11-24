@@ -18,6 +18,7 @@ import {
   prepareDragContext,
   solveSketchDrag,
   probeCircleDragMode,
+  probeGroupDragMode,
   setSketchSolver,
   resetSketchSolver,
   paramsToPreview,
@@ -718,6 +719,91 @@ describe.skipIf(!solveBytes)('prepareDragContext + solveSketchDrag (real WASM so
       },
     ])
     expect(ctx.input.options.dragAnchors).toEqual(ctx.group!.map((member) => member.anchor))
+  })
+
+  it('a group pressed on a vertex takes the translation path', () => {
+    // The press is a vertex drag, but the group moves the whole selection: no
+    // arc/ellipse vertex mapping may claim it, and every member is anchored.
+    const feature = constructionLineFeature('groupVertexPress')
+    const group = [
+      { entityId: 'ref', vertexKey: 'start' },
+      { entityId: 'edge', vertexKey: 'edge' },
+    ]
+    const ctx = prepareDragContext(feature, 'ref', 'start', [0, 0], undefined, undefined, group)!
+    expect(ctx.isEdgeDrag).toBe(true)
+    expect(ctx.arcEndpoint).toBeUndefined()
+    expect(ctx.ellipseAxis).toBeUndefined()
+    expect(ctx.group).toHaveLength(2)
+    expect(ctx.input.options.dragAnchors).toHaveLength(2)
+  })
+
+  it('collapses a duplicate point member so its pair moves once', () => {
+    const feature = constructionLineFeature('groupDupPoint')
+    const group = [
+      { entityId: 'ref', vertexKey: 'start' },
+      { entityId: 'ref', vertexKey: 'start' },
+      { entityId: 'edge', vertexKey: 'edge' },
+    ]
+    const ctx = prepareDragContext(feature, 'ref', 'start', [0, 0], undefined, undefined, group)!
+    const ref = ctx.layout.find((l) => l.id === 'ref')!
+    expect(ctx.group!.filter((m) => m.anchor.paramOffset === ref.offset)).toHaveLength(1)
+    expect(ctx.group).toHaveLength(2)
+  })
+
+  it('leaves a projected member at params0 in a group drag', () => {
+    // The solve pins the projected entity's params at x0, so the group must not
+    // anchor or translate it: adding the delta to its seed made it move in the
+    // preview and snap back on release.
+    const feature = {
+      id: 'groupProjected', kind: 'sketch', plane: '@builtin_plane_front',
+      entities: [
+        { id: 'L1', kind: 'line' },
+        { id: 'P1', kind: 'line', source: 'some>ancestry>query' },
+      ],
+      initial: { L1: [0, 0, 10, 0], P1: [0, 5, 10, 5] },
+      constraints: [],
+    } as unknown as SketchFeature
+    const group = [
+      { entityId: 'L1', vertexKey: 'edge' },
+      { entityId: 'P1', vertexKey: 'edge' },
+    ]
+    const ctx = prepareDragContext(feature, 'L1', null, [0, 0], undefined, undefined, group)!
+    const l1 = ctx.layout.find((l) => l.id === 'L1')!
+    // The gesture stays a group; the projected member has no run.
+    expect(ctx.group).toHaveLength(1)
+    expect(ctx.input.options.dragAnchors).toEqual([{ paramOffset: l1.offset, paramCount: l1.size }])
+
+    const delta: [number, number] = [3, 1]
+    const frame = solveSketchDrag(ctx, ctx.params0, delta, delta)!
+    frame.geometry.P1.forEach((value, i) => expect(value).toBeCloseTo(feature.initial!.P1[i], 3))
+    expect(frame.geometry.L1[0]).toBeCloseTo(3, 1)
+    expect(frame.geometry.L1[1]).toBeCloseTo(1, 1)
+  })
+
+  it('probes an all-fixed group as locked and a free group as translate', () => {
+    const pinned = {
+      id: 'groupFixed', kind: 'sketch', plane: '@builtin_plane_front',
+      entities: [{ id: 'p1', kind: 'point' }, { id: 'p2', kind: 'point' }],
+      initial: { p1: [0, 0], p2: [10, 0] },
+      constraints: [
+        { id: 'f1', kind: 'fixed', target: { entity: 'p1', point: 'xy' } },
+        { id: 'f2', kind: 'fixed', target: { entity: 'p2', point: 'xy' } },
+      ],
+    } as unknown as SketchFeature
+    const fixedGroup = [
+      { entityId: 'p1', vertexKey: 'edge' },
+      { entityId: 'p2', vertexKey: 'edge' },
+    ]
+    const fixedCtx = prepareDragContext(pinned, 'p1', null, [0, 0], undefined, undefined, fixedGroup)!
+    expect(probeGroupDragMode(fixedCtx)).toBe('locked')
+
+    const free = constructionLineFeature('groupFree')
+    const freeGroup = [
+      { entityId: 'ref', vertexKey: 'edge' },
+      { entityId: 'edge', vertexKey: 'edge' },
+    ]
+    const freeCtx = prepareDragContext(free, 'ref', null, [0, 0], undefined, undefined, freeGroup)!
+    expect(probeGroupDragMode(freeCtx)).toBe('translate')
   })
 
   it('a fully selected rectangle group-drags by the cursor delta', () => {

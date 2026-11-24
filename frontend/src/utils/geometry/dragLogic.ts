@@ -306,8 +306,13 @@ export function computeDragMutation(
 
   // A drag that started on a selected element moves the whole selection by the
   // cursor delta. This comes before the snap branches on purpose: a group drag
-  // authors no constraint, and one group is one undo entry.
+  // authors no constraint, and one group is one undo entry. A latched locked
+  // group (every member fixed or projected) commits nothing, exactly as a locked
+  // circle does, so no junk undo entry is recorded.
   if (drag.group && drag.group.length > 1) {
+    const lastForFeature =
+      lastDragSolve && lastDragSolve.featureId === drag.featureId ? lastDragSolve : undefined
+    if (lastForFeature?.mode === 'locked') return null
     const delta: [number, number] = [
       drag.currentWorld[0] - drag.startWorld[0],
       drag.currentWorld[1] - drag.startWorld[1],

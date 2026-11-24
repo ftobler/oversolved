@@ -5,12 +5,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 
-const { mockInit, mockReady, mockPrepare, mockSolve, mockProbe } = vi.hoisted(() => ({
+const { mockInit, mockReady, mockPrepare, mockSolve, mockProbe, mockGroupProbe } = vi.hoisted(() => ({
   mockInit: vi.fn().mockResolvedValue(null),
   mockReady: vi.fn().mockReturnValue(true),
   mockPrepare: vi.fn(),
   mockSolve: vi.fn(),
   mockProbe: vi.fn(),
+  mockGroupProbe: vi.fn(),
 }))
 
 // Spread the actual module: the global test-setup uses its setSketchTopology.
@@ -23,6 +24,7 @@ vi.mock('@/kernel/features/sketch', async (importOriginal) => {
     prepareDragContext: mockPrepare,
     solveSketchDrag: mockSolve,
     probeCircleDragMode: mockProbe,
+    probeGroupDragMode: mockGroupProbe,
   }
 })
 
@@ -114,6 +116,7 @@ beforeEach(() => {
   mockSolve.mockReset().mockReturnValue(solveResult([1, 1, 10, 0]))
   mockReady.mockReset().mockReturnValue(true)
   mockProbe.mockReset()
+  mockGroupProbe.mockReset().mockReturnValue('translate')
   setLastDragSolve(null)
 })
 
@@ -309,6 +312,54 @@ describe('useWasmDragSolve', () => {
     rerender({ drag: { ...edgeDrag([4, 5]), group } as DragState })
     pump(2)
     expect(mockPrepare).toHaveBeenCalledTimes(1)
+  })
+
+  it('a group pressed on a vertex uses the same translation frame', () => {
+    // The press is a vertex drag, but the member list is the gesture: the hook
+    // must build the group context and solve it with the cursor delta, exactly
+    // as an edge-pressed group does.
+    const group = [
+      { entityId: 'L1', vertexKey: 'start' },
+      { entityId: 'L2', vertexKey: 'edge' },
+    ]
+    const fakeGroupCtx = {
+      ...fakeEdgeCtx,
+      group: [
+        { anchor: { paramOffset: 0, paramCount: 2 }, coordPairs: [[0, 1]] },
+        { anchor: { paramOffset: 4, paramCount: 4 }, coordPairs: [[4, 5], [6, 7]] },
+      ],
+    }
+    mockPrepare.mockReturnValue(fakeGroupCtx)
+    mockSolve.mockReturnValue(solveResult([3, 4, 13, 4]))
+    renderHook(() =>
+      useWasmDragSolve({
+        featureId: 'S1', featureDef, drag: { ...vertexDrag([3, 4]), group } as DragState,
+        isDraggingThis: true,
+      }))
+    pump()
+    expect(mockPrepare).toHaveBeenCalledWith(featureDef, 'L1', 'start', [0, 0], undefined, undefined, group)
+    expect(mockSolve).toHaveBeenCalledWith(fakeGroupCtx, fakeGroupCtx.params0, [3, 4], [3, 4])
+  })
+
+  it('a locked group publishes the locked verdict and solves no frame', () => {
+    const group = [
+      { entityId: 'L1', vertexKey: 'edge' },
+      { entityId: 'L2', vertexKey: 'edge' },
+    ]
+    const fakeGroupCtx = { ...fakeEdgeCtx, group: [{ anchor: { paramOffset: 0, paramCount: 4 }, coordPairs: [[0, 1], [2, 3]] }] }
+    mockPrepare.mockReturnValue(fakeGroupCtx)
+    mockGroupProbe.mockReturnValue('locked')
+    const { result } = renderHook(() =>
+      useWasmDragSolve({
+        featureId: 'S1', featureDef, drag: { ...edgeDrag([3, 4]), group } as DragState,
+        isDraggingThis: true,
+      }))
+    expect(result.current.mode).toBe('locked')
+    pump()
+    // No preview frame is published; the pointer-up commit reads the registry's
+    // locked entry and emits nothing.
+    expect(mockSolve).not.toHaveBeenCalled()
+    expect(getLastDragSolve()).toEqual({ featureId: 'S1', mode: 'locked' })
   })
 
   it('solves edge drags with delta (not cursor pin)', () => {
