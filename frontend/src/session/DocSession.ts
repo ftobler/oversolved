@@ -490,6 +490,18 @@ export class DocSession {
     return this.move('redo')
   }
 
+  // Whether a move would do anything, from the same floor rule move() applies.
+  // The command table greys Undo/Redo from this, so a sketch standing on its
+  // first entry does not offer a keystroke that resolves to nothing, and a redo
+  // branch made entirely of pre-session entries reads as unavailable too.
+  canUndo(): boolean {
+    return this.moveAvailable('undo')
+  }
+
+  canRedo(): boolean {
+    return this.moveAvailable('redo')
+  }
+
   idle(): Promise<void> {
     return this.deps.solve.idle()
   }
@@ -972,10 +984,7 @@ export class DocSession {
     const edit = this.findTransaction('edit')
     const inSession = edit !== null && !edit.suppressed
     if (edit && inSession) {
-      const available = direction === 'undo'
-        ? this.history.undoLength() > edit.floor
-        : this.history.redoLength() > edit.foreignRedo
-      if (!available || !current) {
+      if (!this.moveAvailable(direction) || !current) {
         // At the floor (or with only a foreign redo branch left) the keystroke
         // is dead: the session stays open, nothing is emitted and no editor is
         // torn down. A brep projection banked just above the floor is the only
@@ -1028,6 +1037,19 @@ export class DocSession {
     this.emit({ type: 'changed' })
     this.restoreAwareSolve(entry.doc)
     return true
+  }
+
+  // The one availability rule, shared with the in-session branch of move(): a
+  // move inside an unsuppressed session is limited by the session's own
+  // window; anywhere else the plain stack length decides.
+  private moveAvailable(direction: 'undo' | 'redo'): boolean {
+    const edit = this.findTransaction('edit')
+    if (edit && !edit.suppressed) {
+      return direction === 'undo'
+        ? this.history.undoLength() > edit.floor
+        : this.history.redoLength() > edit.foreignRedo
+    }
+    return direction === 'undo' ? this.history.undoLength() > 0 : this.history.redoLength() > 0
   }
 
   // An undo or redo mid-edit first commits the open work as its own entry, so

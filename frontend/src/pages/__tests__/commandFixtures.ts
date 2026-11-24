@@ -59,6 +59,8 @@ export function sessionBackedPartContext(overrides: Partial<PartCommandContext> 
       undo: usePartEditorStore.getState().undoStack,
       redo: usePartEditorStore.getState().redoStack,
     }),
+    canUndo: () => usePartEditorStore.getState().undoStack.length > 0,
+    canRedo: () => usePartEditorStore.getState().redoStack.length > 0,
   } as unknown as DocSession
   return partContext({ session, ...overrides })
 }

@@ -14,6 +14,7 @@ import {
   type EditorFacts,
   type SessionEvent,
 } from '@/session/DocSession'
+import { MAX_UNDO_DEPTH } from '@/config/undoConfig'
 import { hashSavedText, type DirtyFacts } from '@/session/dirty'
 import { makeDoc, makeSketch } from '@/utils/core/testFixture'
 import type { PartDoc, Mutation, SketchData } from '@/types/cad'
@@ -690,6 +691,29 @@ describe('undo and redo', () => {
     session.execute(rename('c'))
 
     expect(session.inspect().history).toEqual({ undo: ['rename extrude-1 to c'], redo: [] })
+  })
+
+  it('a capped push lowers the session floor with the trim, so it never reaches past the session', () => {
+    const h = makeSession()
+    // Fill past the cap: the session opens on a full stack, so every in-session
+    // push trims exactly one pre-session entry and the floor has to follow it.
+    for (let i = 0; i < MAX_UNDO_DEPTH + 2; i++) h.session.pushUndo(`pre ${i}`, baseDoc())
+    expect(h.session.historyEntries().undo).toHaveLength(MAX_UNDO_DEPTH)
+
+    h.session.begin('edit', { suppressed: false })
+    for (let i = 0; i < 3; i++) h.session.execute({ type: 'add_sketch', featureId: `s${i}`, label: `S${i}` })
+    expect(h.session.historyEntries().undo).toHaveLength(MAX_UNDO_DEPTH)
+
+    // Three trims moved the floor from the cap down by three; all three
+    // session entries are still undoable in-session.
+    for (let i = 0; i < 3; i++) expect(h.session.undo()).toBe(true)
+
+    // A nonzero floor: the three surviving pre-session entries are below it, so
+    // the next undo is dead rather than reaching past the session.
+    expect(h.session.historyEntries().undo).toHaveLength(MAX_UNDO_DEPTH - 3)
+    expect(h.session.canUndo()).toBe(false)
+    expect(h.session.undo()).toBe(false)
+    expect(h.session.transactions()).toHaveLength(1)
   })
 
   it('execute does not emit a history move', () => {

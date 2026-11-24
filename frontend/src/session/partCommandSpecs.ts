@@ -180,7 +180,10 @@ const undoSpec: PartCommandSpec = {
   shortcut: partShortcut('undo'),
   params: noParams(),
   undoable: false,
-  enabled: ctx => (!ctx.session || ctx.session.historyEntries().undo.length === 0 ? 'nothing to undo' : true),
+  // The session owns the floor: inside a sketch with nothing of its own left to
+  // revert this reads unavailable, so the toolbar and the shortcut grey out
+  // instead of offering a keystroke that resolves to nothing.
+  enabled: ctx => (!ctx.session || !ctx.session.canUndo() ? 'nothing to undo' : true),
   run: ctx => {
     const st = ctx.state()
     // Undo shares Escape's cancel_gesture first stage: a half-placed draw
@@ -210,7 +213,7 @@ const redoSpec: PartCommandSpec = {
   shortcut: partShortcut('redo'),
   params: noParams(),
   undoable: false,
-  enabled: ctx => (!ctx.session || ctx.session.historyEntries().redo.length === 0 ? 'nothing to redo' : true),
+  enabled: ctx => (!ctx.session || !ctx.session.canRedo() ? 'nothing to redo' : true),
   run: ctx => {
     ctx.redo()
     return okResult()

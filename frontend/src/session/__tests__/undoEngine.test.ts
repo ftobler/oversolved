@@ -368,6 +368,33 @@ describe('the session undo engine', () => {
     expect(undoLabels(e)).toEqual(['add B'])
   })
 
+  it('a preview resolved at session start sits below the session floor', () => {
+    const e = makeEngine(makeDoc('a'))
+    e.session.begin('preview', { baseline: structuredClone(e.cell.current as PartDoc) })
+    // Inside the preview the colour mutation is preview-scope work: swallowed
+    // by the preview, but it changes the doc, which is what makes the session's
+    // own begin resolve the preview into an entry.
+    e.session.execute({ type: 'set_part_color', bodyId: 'b1', color: '#00ff00' })
+    expect(e.session.historyEntries().undo).toHaveLength(0)
+    const coloured = structuredClone(e.cell.current)
+
+    e.session.begin('edit', { suppressed: false })
+    // The resolution's entry is pre-session work: the floor sits above it.
+    expect(e.session.historyEntries().undo).toHaveLength(1)
+    const events: SessionEvent[] = []
+    e.session.subscribe(event => events.push(event))
+
+    expect(e.session.undo()).toBe(false)
+
+    // The dead keystroke cannot take the preview's colour back, and the session
+    // stays open on top of the untouched entry.
+    expect(e.cell.current).toEqual(coloured)
+    expect(e.session.transactions()).toHaveLength(1)
+    expect(e.session.historyEntries().undo).toHaveLength(1)
+    expect(e.session.canUndo()).toBe(false)
+    expect(events).toEqual([])
+  })
+
   it('a suppressed session still commits, drops and restores on a move', () => {
     const e = makeEngine(makeDoc('a'))
     const events: SessionEvent[] = []

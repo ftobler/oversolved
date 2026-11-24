@@ -307,28 +307,15 @@ export const editorState = createStore<EditorState>((set, get) => ({
   // Delegates the drag/pointer fields to clearDragState so the two lists
   // cannot drift apart the way applyUndoRedo's hand-listed reset once did
   // (see useAssemblyUndoRedo.ts) -- this is the canonical list they both draw
-  // from.
+  // from. The in-session sweep is the base; this full wipe adds the arming and
+  // document-ownership fields it deliberately keeps.
   resetTransientState: () => {
-    get().clearDragState()
-    get().clearSelectionAndHover()
+    get().resetSessionTransients()
     set({
       activeTool: null,
       activeFeatureId: null,
-      drawPoints: [],
-      drawHover: null,
-      drawSnapRefs: [],
-      dimensionPicks: [],
-      pendingBrepProjectionIds: [],
-      dimensionCursorWorld: null,
       modeStack: [],
       activePickField: null,
-      // Derived from the open document, so it belongs to the wipe for the same
-      // reason the selection does: a remount or a fresh harness must not read
-      // the previous document's entity kinds.
-      entityKindMap: {},
-      constructionEntityKeys: new Set(),
-      faceProjectionMemberKeys: new Set(),
-      filletCornerMap: {},
     })
   },
 
@@ -1460,13 +1447,17 @@ export const editorState = createStore<EditorState>((set, get) => ({
     set({ rollbackPosition: index >= 0 ? index + 1 : clampRollback(doc) })
   },
 
+  // The base transient sweep, shared with resetTransientState: everything here
+  // is document-derived or a gesture, so a restored doc invalidates it.
+  // resetSessionTransients keeps the arming (tool, pick field) and the open
+  // sketch; the full wipe adds those fields on top.
   resetSessionTransients: () => {
     get().clearDragState()
     get().clearSelectionAndHover()
     set({
       // The gesture belongs to the pre-undo doc, so its points and picks go.
-      // Neither arming survives as a gesture: the tool keeps being the tool and
-      // a pick field keeps being the field, because both describe the open
+      // Neither arming is touched here: the tool keeps being the tool and a
+      // pick field keeps being the field, because both describe the open
       // session, not the document content the move replaced. Dropping the pick
       // field would read to the page as an abandoned pick and cancel the very
       // session the move was told to keep.
@@ -1476,7 +1467,9 @@ export const editorState = createStore<EditorState>((set, get) => ({
       dimensionPicks: [],
       dimensionCursorWorld: null,
       pendingBrepProjectionIds: [],
-      // Derived from the document, whose entities the move may have replaced.
+      // Derived from the open document, so it belongs to the wipe for the same
+      // reason the selection does: a remount or a fresh harness must not read
+      // the previous document's entity kinds.
       entityKindMap: {},
       constructionEntityKeys: new Set(),
       faceProjectionMemberKeys: new Set(),

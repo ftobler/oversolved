@@ -221,7 +221,10 @@ remount.
   clamped rollback, dirty); the in-session form keeps the editing id and
   re-derives the bar just past the edited feature.
 - **Snapshot pairing.** `begin('edit')` saves the history snapshot. `cancel`
-  rewinds the doc, then restores the snapshot. `commit` clears it.
+  rewinds the doc, then restores the snapshot. `commit` clears it. A move
+  normally invalidates it, except an in-session one: `History.undo`/`redo` take
+  `{ preserveSnapshot }` because the stacks below the session floor still
+  describe the pre-session doc a later cancel rewinds to.
 - **Preview.** `begin('preview')`; mid-session it is refused, so the popover's
   mutations land as session edits (swallowed by a suppressed session,
   per-action in a sketch session). Only the `PREVIEW_SCOPE` appearance

@@ -170,6 +170,8 @@ export async function partDocMockModule(overrides: Record<string, unknown> = {})
       // crash paths only.
       session: {
         historyEntries: () => ({ undo: [], redo: [] }),
+        canUndo: () => false,
+        canRedo: () => false,
         subscribe: () => () => {},
         getDoc: () => null,
         isDirty: () => false,

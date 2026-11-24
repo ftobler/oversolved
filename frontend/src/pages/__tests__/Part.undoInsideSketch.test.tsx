@@ -108,4 +108,55 @@ describe('Part - undo inside a sketch keeps the sketch open', () => {
     expect(store.drawPoints).toEqual([])
     expect(store.modeStack).toEqual(['tool:line'])
   })
+
+  it('a mid-drag undo leaves no drag for the later window pointerup to commit', async () => {
+    partDocStoreMock({ content: SKETCH_DOC })
+    renderPart()
+    await screen.findByTitle('Feature mode')
+    fireEvent.click(screen.getByTitle('Feature mode'))
+
+    await waitFor(() => expect(screen.getByText('Sketch 1')).toBeInTheDocument())
+    fireEvent.click(screen.getByTitle('Edit sketch'))
+    await waitFor(() => expect(useEditorState.getState().editingFeatureId).toBe('sk1'))
+
+    await act(async () => { executeCommand('toggle_sketch_plane_visibility') })
+    const seeded = usePartEditorStore.getState().undoStack.length
+    expect(seeded).toBeGreaterThan(0)
+
+    // A live vertex drag: the pointer is still down when Ctrl+Z lands, so the
+    // drag's ids describe the pre-undo doc.
+    await act(async () => {
+      useSketchEditorStore.setState({
+        drag: {
+          type: 'vertex',
+          vertexId: 'entity:sk1:l1',
+          featureId: 'sk1',
+          entityId: 'l1',
+          vertexKey: 'start',
+          startWorld: [0, 0],
+          currentWorld: [1, 1],
+          startClient: [0, 0],
+        },
+        dragPending: null,
+        dragCommitted: false,
+        isPointerDown: true,
+        dragStartClient: [0, 0],
+      })
+    })
+
+    await act(async () => { executeCommand('undo') })
+    await waitFor(() => expect(usePartEditorStore.getState().undoStack.length).toBe(seeded - 1))
+    const undone = structuredClone(usePartEditorStore.getState().doc)
+
+    // The release arrives after the move. DragPlane reads the store live, finds
+    // the drag the sweep nulled and does nothing, so the restored doc stands.
+    await act(async () => { fireEvent.pointerUp(window) })
+
+    const store = useSketchEditorStore.getState()
+    expect(store.drag).toBeNull()
+    expect(store.dragPending).toBeNull()
+    expect(store.dragCommitted).toBe(false)
+    expect(usePartEditorStore.getState().doc).toEqual(undone)
+    expect(usePartEditorStore.getState().undoStack.length).toBe(seeded - 1)
+  })
 })
