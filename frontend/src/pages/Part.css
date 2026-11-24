@@ -194,7 +194,7 @@
    palette hues at alpha instead of opaque palette backgrounds. These are the
    states both editors share; the assembly's remaining row tints are scoped to
    its own cards in Assembly.css. */
-.document-panel .feature-item:hover,
+.document-panel :where(.features-list:not(.features-list--dragging)) .feature-item:hover,
 .document-panel .part-item:hover {
   background: var(--glass-hover-bg);
 }
@@ -208,12 +208,8 @@
   background: var(--glass-editing-bg);
 }
 
-.document-panel .feature-item.editing:hover {
+.document-panel :where(.features-list:not(.features-list--dragging)) .feature-item.editing:hover {
   background: var(--glass-editing-hover-bg);
-}
-
-.document-panel .rollback-bar:hover {
-  background-color: var(--glass-hover-bg);
 }
 
 .feature-edit-panel {
@@ -622,7 +618,7 @@
   filter: invert(0.6) sepia(1) saturate(3) hue-rotate(280deg);
 }
 
-.feature-item.editing:hover {
+:where(.features-list:not(.features-list--dragging)) .feature-item.editing:hover {
   background: #221222;
   color: #e060b0;
   border-color: #b83b88;
@@ -673,7 +669,12 @@
   filter: invert(0.5);
 }
 
-.feature-item:hover {
+/* An active drag keeps the pointer moving over rows that are no longer the
+   target. Gate every hover look on an idle list so the state looks (selected,
+   editing, related, rolled-back) stay and only the hover paint goes away.
+   :where keeps the gate out of the specificity, so normal hover still wins over
+   the state tints exactly as it did before. */
+:where(.features-list:not(.features-list--dragging)) .feature-item:hover {
   background: #222;
   border-color: #4fc3f7;
   color: white;
@@ -686,8 +687,8 @@
 
 /* The feature rows carry the class; the assembly tree still uses the native
    draggable attribute (its reorder is not on pointer events yet). */
-.feature-item.draggable:hover,
-.feature-item[draggable="true"]:hover {
+:where(.features-list:not(.features-list--dragging)) .feature-item.draggable:hover,
+:where(.features-list:not(.features-list--dragging)) .feature-item[draggable="true"]:hover {
   cursor: grab;
 }
 
@@ -712,7 +713,7 @@
   opacity: 1;
 }
 
-.feature-item.rolled-back:hover {
+:where(.features-list:not(.features-list--dragging)) .feature-item.rolled-back:hover {
   color: #777;
   border-color: #333;
 }
@@ -977,10 +978,17 @@
   margin: 4px 0;
 }
 
+/* The wave is a tiling image, so painting it as a background locked its colour
+   to the asset. As a mask over currentColor the one asset serves every state:
+   grey at rest, accent blue on hover and while grabbed, never a background box. */
 .rollback-bar {
   height: 10px;
   color: gray;
-  background: var(--tiling-sine) repeat-x;
+  background-color: currentColor;
+  -webkit-mask-image: var(--tiling-sine);
+  mask-image: var(--tiling-sine);
+  -webkit-mask-repeat: repeat-x;
+  mask-repeat: repeat-x;
   margin: 5px 0;
   list-style: none;
   user-select: none;
@@ -989,14 +997,20 @@
 }
 
 .rollback-bar:hover {
-  background-color: #1a1a1a;
-  border-top-color: #555;
-  opacity: 0.8;
+  color: #4fc3f7;
 }
 
 .rollback-bar.dragging {
-  opacity: 0.5;
+  color: #4fc3f7;
   cursor: grabbing;
+}
+
+.rollback-bar[aria-disabled="true"] {
+  cursor: default;
+}
+
+.rollback-bar[aria-disabled="true"]:hover {
+  color: gray;
 }
 
 .doc-editor {

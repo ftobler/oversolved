@@ -58,7 +58,7 @@
 
 /* Parity with the shared hover rule: an unselected related row still lights up
    under the pointer instead of holding the hint tint. */
-.assembly-panel .feature-item.related:not(.selected):not(.editing):hover {
+.assembly-panel :where(.features-list:not(.features-list--dragging)) .feature-item.related:not(.selected):not(.editing):hover {
   background: var(--glass-hover-bg);
 }
 
