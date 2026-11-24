@@ -6,12 +6,12 @@
 // toggle) fails them instead of hiding behind an earlier rule that still reads
 // right, while a selector-group reorder or a reordered declaration does not.
 //
-// Scope: class-only selectors and the plain descendant space, which is what
-// every rule these pins rest on is written with. A rule that reaches one of the
-// pinned elements through another form (a pseudo-class, another combinator, an
-// attribute test, a tag-qualified compound such as `div.x`, `!important`, a
-// non-media at-rule) is skipped rather than guessed at, so extend the matcher
-// before writing one of those.
+// Scope: class-only selectors with the plain descendant space and the child
+// combinator (`>`), which covers every rule these pins rest on. A rule that
+// reaches one of the pinned elements through another form (a pseudo-class,
+// another combinator, an attribute test, a tag-qualified compound such as
+// `div.x`, `!important`, a non-media at-rule) is skipped rather than guessed
+// at, so extend the matcher before writing one of those.
 //
 // Each pin is read in the contexts it names: the top-level rules (a window
 // above the breakpoint, and a landscape phone's chrome) and/or the narrow
@@ -143,25 +143,55 @@ function classesOf(compound: string): string[] | null {
   return classes.every(c => /^[A-Za-z0-9_-]+$/.test(c)) ? classes : null
 }
 
+/** One compound of a selector, and whether it must sit directly under the
+ *  previous one (the child combinator). */
+interface Step {
+  classes: string[]
+  child: boolean
+}
+
+/** The selector's compounds in source order, or null for a form the matcher
+ *  does not read (a trailing or doubled `>` included). */
+function stepsOf(selector: string): Step[] | null {
+  const steps: Step[] = []
+  let child = false
+  for (const token of selector.split(/\s+/).filter(Boolean)) {
+    if (token === '>') {
+      if (steps.length === 0 || child) return null
+      child = true
+      continue
+    }
+    const classes = classesOf(token)
+    if (!classes) return null
+    steps.push({ classes, child })
+    child = false
+  }
+  return steps.length > 0 && !child ? steps : null
+}
+
 /** Whether a selector matches the element at `chain` (its class list, then its
  *  ancestors', outermost first), or null when the selector's form is out of the
  *  matcher's scope. */
 function matches(selector: string, chain: string[][]): boolean | null {
-  const compounds: string[][] = []
-  for (const part of selector.split(/\s+/).filter(Boolean)) {
-    const classes = classesOf(part)
-    if (!classes) return null
-    compounds.push(classes)
-  }
+  const steps = stepsOf(selector)
+  if (!steps) return null
   const isOn = (layer: string[] | undefined, classes: string[]) =>
     layer !== undefined && classes.every(c => layer.includes(c))
   let at = chain.length - 1
-  if (!isOn(chain[at], compounds[compounds.length - 1])) return false
+  if (!isOn(chain[at], steps[steps.length - 1].classes)) return false
   at -= 1
-  for (let i = compounds.length - 2; i >= 0; i--) {
+  for (let i = steps.length - 2; i >= 0; i--) {
+    const step = steps[i]
+    // The combinator sits between this step and the next in source order, so
+    // the next step's flag decides how this one has to be reached.
+    if (steps[i + 1].child) {
+      if (!isOn(chain[at], step.classes)) return false
+      at -= 1
+      continue
+    }
     let found = false
     while (at >= 0) {
-      if (isOn(chain[at], compounds[i])) {
+      if (isOn(chain[at], step.classes)) {
         found = true
         at -= 1
         break
@@ -241,6 +271,108 @@ describe('phone-width chrome', () => {
         .filter(declaration => declaration.prop === '--left-cards-height')
         .map(declaration => `${rule.media} { --left-cards-height: ${declaration.value} }`))
     expect(overrides).toEqual(['(min-height: 1200px) { --left-cards-height: 85% }'])
+  })
+
+  it('keeps the share, the floors and no cap on the drawer cards', () => {
+    // The drawer keeps the base share and the same card rules; only the two
+    // floors drop, because its column is the shortest the cards meet. These
+    // pins read the winning declaration, so a competing rule (the old 60px
+    // floors, a max-height hug) fails them instead of hiding behind a substring
+    // somewhere in the sheet.
+    const css = 'pages/Part.css'
+    const desktopTop = chain('doc-container', 'doc-editor', 'viewport-stage', 'floating-left', 'document-panel', 'sidebar-top glass-panel')
+    const desktopBottom = chain('doc-container', 'doc-editor', 'viewport-stage', 'floating-left', 'document-panel', 'sidebar-bottom glass-panel')
+    const drawerTop = chain('doc-container panels-open', 'doc-editor', 'viewport-stage', 'floating-left', 'document-panel', 'sidebar-top glass-panel')
+    const drawerBottom = chain('doc-container panels-open', 'doc-editor', 'viewport-stage', 'floating-left', 'document-panel', 'sidebar-bottom glass-panel')
+    const cardPanel = chain('doc-container panels-open', 'doc-editor', 'viewport-stage', 'floating-left', 'document-panel')
+    const drawerColumn = chain('doc-container panels-open', 'doc-editor', 'viewport-stage', 'floating-left')
+
+    expect(pinned(css, 'flex', desktopTop, TOP_LEVEL)).toBe('1 1 0')
+    expect(pinned(css, 'min-height', desktopTop, TOP_LEVEL)).toBe('var(--left-top-floor)')
+    expect(pinned(css, 'flex', desktopBottom, TOP_LEVEL)).toBe('0 0 var(--left-bottom-share)')
+    expect(pinned(css, 'min-height', desktopBottom, TOP_LEVEL)).toBe('var(--left-bottom-floor)')
+
+    // The drawer keeps the panel's basis and the card rules; only the floors
+    // they read change, on the drawer's own column.
+    expect(pinned(css, 'flex', cardPanel, PORTRAIT)).toBe('0 1 var(--left-cards-height)')
+    expect(pinned(css, 'min-height', drawerTop, PORTRAIT)).toBe('var(--left-top-floor)')
+    expect(pinned(css, 'min-height', drawerBottom, PORTRAIT)).toBe('var(--left-bottom-floor)')
+    expect(pinned(css, '--left-top-floor', drawerColumn, PORTRAIT)).toBe('96px')
+    expect(pinned(css, '--left-bottom-floor', drawerColumn, PORTRAIT)).toBe('96px')
+    // Above the breakpoint nothing on the column overrides them: the base
+    // values come from :root (pinned as numbers in featureListDensity.test.ts).
+    expect(effective(css, '--left-top-floor', partCards, TOP_LEVEL)).toBeNull()
+
+    // One panel rule sums the two floors and the gap in both contexts and
+    // clamps the result to the column, so a window shorter than the floors
+    // cannot push the pair up over the toolbar.
+    const panelFloor = 'min(calc(var(--left-top-floor) + var(--left-bottom-floor) + var(--left-cards-gap)), 100%)'
+    expect(pinned(css, 'min-height', cardPanel, PORTRAIT)).toBe(panelFloor)
+    expect(pinned(css, 'min-height', cardPanel, TOP_LEVEL)).toBe(panelFloor)
+    expect(pinned(css, 'gap', cardPanel, TOP_LEVEL)).toBe('var(--left-cards-gap)')
+
+    // No rule in any sheet that reaches either editor's bottom card may cap it:
+    // a max-height (or its logical twin) would bring back the content hug this
+    // layout replaced. The assembly card carries `assembly-panel` and its sheet
+    // scopes through it, and the cards' shared frost classes also set sizes, so
+    // all three sheets are scanned.
+    const desktopAssembly = chain('doc-container', 'doc-editor', 'viewport-stage', 'floating-left', 'document-panel', 'sidebar-bottom glass-panel assembly-panel')
+    const drawerAssembly = chain('doc-container panels-open', 'doc-editor', 'viewport-stage', 'floating-left', 'document-panel', 'sidebar-bottom glass-panel assembly-panel')
+    const cards = [desktopBottom, drawerBottom, desktopAssembly, drawerAssembly]
+    const capped = ['pages/Part.css', 'pages/Assembly.css', 'components/layout/Glass.css'].flatMap(cssPath =>
+      sheet(cssPath).filter(rule =>
+        rule.declarations.some(declaration =>
+          declaration.prop === 'max-height' || declaration.prop === 'max-block-size') &&
+        rule.selectors.some(selector => cards.some(card => matches(selector, card) === true))))
+    expect(capped).toEqual([])
+  })
+
+  it('starts the drawer pair at the top and centres it with auto margins', () => {
+    // `safe center` is outside the declared browser floor, so the drawer cannot
+    // lean on it: flex-start plus the panel's auto block margins centre the
+    // pair while it fits and leave it start-aligned when it does not, with the
+    // column scrolling instead of centering the top out of reach.
+    const css = 'pages/Part.css'
+    const drawerColumn = chain('doc-container panels-open', 'doc-editor', 'viewport-stage', 'floating-left')
+    const cardPanel = chain('doc-container panels-open', 'doc-editor', 'viewport-stage', 'floating-left', 'document-panel')
+    expect(pinned(css, 'justify-content', drawerColumn, PORTRAIT)).toBe('flex-start')
+    expect(pinned(css, 'overflow-y', drawerColumn, PORTRAIT)).toBe('auto')
+    // The hidden x axis is a deliberate trade: clipping the cards' side shadow
+    // on the phone drawer keeps the column scrolling only downwards.
+    expect(pinned(css, 'overflow-x', drawerColumn, PORTRAIT)).toBe('hidden')
+    expect(pinned(css, 'margin-block', cardPanel, PORTRAIT)).toBe('auto')
+    // Above the breakpoint the pair keeps its centred look and no scrollport.
+    expect(pinned(css, 'justify-content', partCards, TOP_LEVEL)).toBe('center')
+    expect(effective(css, 'overflow-y', partCards, TOP_LEVEL)).toBeNull()
+    expect(effective(css, 'margin-block', cardPanel, TOP_LEVEL)).toBeNull()
+  })
+
+  it('keeps the chrome heights the card column arithmetic subtracts', () => {
+    // featureListDensity.test.ts turns these bars into the card column's
+    // height. The parts are pinned here, not only the sums, so a padding or
+    // size change fails in the file that owns the layout numbers instead of
+    // silently moving the cards three files away. CssBaseline (main.tsx) makes
+    // border-box global, so every height below already includes its padding.
+    const header = 'components/layout/AppHeader.css'
+    const css = 'pages/Part.css'
+    const headerPadding = pinned(header, 'padding', chain('app-header'), TOP_LEVEL)
+    const headerBorder = pinned(header, 'border-bottom', chain('app-header'), TOP_LEVEL)
+    const headerButton = pinned(header, 'height', chain('app-header', 'toolbar-btn'), TOP_LEVEL)
+    const toolbarPadding = pinned(css, 'padding', toolbar, TOP_LEVEL)
+    const toolbarBorder = pinned(css, 'border-bottom', toolbar, TOP_LEVEL)
+    const editorButton = pinned(css, 'height', chain('doc-container', 'doc-editor', 'editor-toolbar', 'editor-btn'), TOP_LEVEL)
+    const selectorPadding = pinned(css, 'padding', chain('doc-container', 'doc-editor', 'editor-toolbar', 'mode-selector'), TOP_LEVEL)
+    const modeButtonHeight = pinned(css, 'height', chain('doc-container', 'doc-editor', 'editor-toolbar', 'mode-selector', 'mode-btn'), TOP_LEVEL)
+
+    const num = (value: string) => Number.parseFloat(value)
+    const bar = (padding: string, border: string, content: number) => 2 * num(padding) + num(border) + content
+    expect(bar(headerPadding, headerBorder, num(headerButton))).toBe(53)
+    // The mode buttons fill the selector's content box at 40px, and the
+    // selector adds its own 2px padding: 44px inside the toolbar's chrome.
+    expect(2 * num(selectorPadding) + num(modeButtonHeight)).toBe(44)
+    expect(bar(toolbarPadding, toolbarBorder, 44)).toBe(53)
+    // The assembly's toolbar has no mode selector: 40px buttons only.
+    expect(bar(toolbarPadding, toolbarBorder, num(editorButton))).toBe(49)
   })
 
   it('leaves the navigators and the toolbar alone above the breakpoint', () => {

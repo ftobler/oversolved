@@ -27,11 +27,28 @@
   /* How much of the column the two navigator cards (Features/Parts for the part
      editor, Parts/Mates for the assembly) take: their old 85% share, or the
      whole column less the capped outer gap, whichever is more, so a short
-     column hands the leftover to the cards. The top card takes everything the
-     bottom one does not need (.document-panel below): it is the list that
-     scrolls in both editors. On a tall viewport the 85% share is restored
-     below, which keeps the pair centred as on the desktop. */
+     column hands the leftover to the cards. Inside the panel the bottom card
+     reserves --left-bottom-share and the top card takes the rest
+     (.document-panel below); both are lists that scroll in their editors. On a
+     tall viewport the 85% share is restored below, which keeps the pair centred
+     as on the desktop. */
   --left-cards-height: max(85%, 100% - 2 * var(--left-cards-gap-max));
+  /* The space between the two cards. It is a flex gap in the panel, and the
+     panel's own floor adds it to the two card floors, so it lives here rather
+     than inline twice. */
+  --left-cards-gap: 16px;
+  /* The bottom card's share of the panel (Parts in the part editor, Mates in
+     the assembly), reserved rather than capped: the user asked for a bigger
+     Parts card on 2026-11-23, because a part with no or one body left it at a
+     header and one empty row while the feature list above took the column. The
+     list scrolls inside the share once it is longer. Tune this one number to
+     move height between the two cards. */
+  --left-bottom-share: 34%;
+  /* Floors for the two cards: a short window cuts list rows, never a header.
+     The panel's floor adds them to --left-cards-gap, and the drawer block below
+     lowers both because its column is the shortest the cards meet. */
+  --left-top-floor: 160px;
+  --left-bottom-floor: 140px;
   /* A side panel list row is its content plus twice this block padding. Trimmed
      from 8px so a few more rows fit before a list scrolls; the features and
      parts lists both take it, so the two row rhythms cannot drift apart. */
@@ -132,41 +149,45 @@
 }
 
 /* The two left cards share --left-cards-height of the column (the gap comes out
-   of that share, it is a flex gap inside the panel). The top card (Features in
-   the part editor, Parts in the assembly) is the list that scrolls, so it takes
-   everything the bottom card does not use and scrolls internally. The bottom
-   card hugs its list up to its old 36% share instead of reserving that share up
-   front: a part with one body no longer leaves most of the card empty while the
-   list above scrolls. A long list still stops at the share and scrolls inside,
-   and the 60px floor keeps the header and one row reachable. The panel itself
-   carries the share and centers in the column (the .floating-left rule above). */
+   of that share, it is a flex gap inside the panel). The bottom card (Parts in
+   the part editor, Mates in the assembly) reserves --left-bottom-share of the
+   panel up front and scrolls its list inside that share; the top card (Features
+   in the part editor, Parts in the assembly) is the list that scrolls and takes
+   the rest. The reservation is the user's call (2026-11-23): with no or one
+   part the old content hug left the bottom card at a header and one empty row.
+   Both cards keep a floor, and so does the panel (their sum plus the gap), so a
+   short column loses list rows before it loses a header or pushes one card out
+   of the column. The panel carries the share and centers in the column (the
+   .floating-left rule above). */
 .document-panel {
   flex: 0 1 var(--left-cards-height);
-  min-height: 0;
+  /* The cards' floors plus the gap, clamped to the column. The floor keeps a
+     share smaller than them from squeezing the two cards. The clamp keeps the
+     panel's box inside a column shorter than the floors, which only happens in
+     a short drawer; there flex-start and the panel's zeroed auto block margins
+     (drawer block below) start the pair at the top, so the cards are what
+     overflow into the scrolling column instead of the pair being pushed up over
+     the toolbar. On the desktop the column is always taller than the floor. */
+  min-height: min(calc(var(--left-top-floor) + var(--left-bottom-floor) + var(--left-cards-gap)), 100%);
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--left-cards-gap);
 }
 
 .document-panel > .sidebar-top {
   flex: 1 1 0;
-  min-height: 0;
+  min-height: var(--left-top-floor);
 }
 
-/* The percentage cap is load-bearing: it is the only bound that keeps a long
-   bottom list from claiming the top card's height. `max-height` resolves
-   against the panel, whose height is definite from its flex basis in the inset
-   column. Check this in Chrome and Firefox on device, as the plan asks: a
-   browser that treated that height as indefinite would drop the cap, the bottom
-   card would grow to its whole list, and both cards (the top one keeps no
-   floor) would shrink, with the top one able to collapse. The 60px floor only
-   bounds the bottom card, not the top. If a browser drops the cap, move it to
-   a container query unit (`max-height: 36cqh` with `container-type: size` on
-   the panel). */
+/* A reserved basis, not a content hug: the card keeps its share whether its
+   list holds nothing, one row or many, and the list scrolls once it outgrows
+   the card. The share is a percentage of the panel, whose height is definite
+   from its own flex basis and floor in the inset column; if an engine ever
+   resolved it against an indefinite height it would fall back to the content
+   height, which is the old hug, not a collapsed card. */
 .document-panel > .sidebar-bottom {
-  flex: 0 1 auto;
-  max-height: 36%;
-  min-height: 60px;
+  flex: 0 0 var(--left-bottom-share);
+  min-height: var(--left-bottom-floor);
 }
 
 /* The navigator cards float over a bright model, so their row states keep the
@@ -263,17 +284,19 @@
   background: var(--glass-field-bg);
 }
 
+/* The cards' own box only. Their floors and the bottom card's share come from
+   the .document-panel rules above: a 60px floor here would sit on the same
+   elements and only lose to that rule's specificity, reading as a second,
+   unreachable answer. */
 .sidebar-top {
   display: flex;
   flex-direction: column;
-  min-height: 60px;
 }
 
 .sidebar-bottom {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  min-height: 60px;
 }
 
 .parts-list {
@@ -281,6 +304,10 @@
   margin: 0;
   padding: 0px 8px;
   flex: 1;
+  /* The card's basis is fixed now, so the list must scroll inside it rather
+     than let its content size the card. A scroll container already floors at
+     zero, but say it here so the list cannot be read as a card-sizer. */
+  min-height: 0;
   overflow-y: auto;
 }
 
@@ -1193,10 +1220,36 @@
   }
 
   /* Both editors' navigators open as a card column over the left edge,
-     narrower than the desktop 280px but the same stack. */
+     narrower than the desktop 280px but the same stack. The floor overrides
+     belong to the drawer's own column: it is the viewport less the app header
+     (53px), the editor toolbar (53px in the part editor, 49px in the assembly)
+     and this column's insets (12 + 12 + 28), which is 232px on an 844x390
+     landscape phone; the desktop 160 + 140 floors do not fit there. 96px holds
+     a header (28px) and one row (46px) with room to spare, so the pair
+     (96 + 96 + 16) fits. `flex-start` with the panel's auto block margins below
+     keeps the pair centred while it fits and starts it at the top otherwise, so
+     a column too short for the floors scrolls instead of centering the overflow
+     up over the toolbar. A scroll container clips all four edges, so the cards'
+     shadow is cut where they meet the column while the drawer fills or scrolls
+     it; that is the price of a single-axis scroll here, and the base column
+     keeps the shadow because it never scrolls. The column is also
+     pointer-events: none, so only a wheel or touch that starts on a card
+     scrolls the drawer; over the gaps the wheel still reaches the model. */
   .doc-container.panels-open .floating-left {
     display: flex;
     width: 200px;
+    --left-top-floor: 96px;
+    --left-bottom-floor: 96px;
+    justify-content: flex-start;
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+
+  /* Auto block margins absorb the free space above and below the panel, which
+     centres it in a taller column, and resolve to zero in a column no taller
+     than the panel, where it starts at the top and the lists scroll under it. */
+  .doc-container.panels-open .document-panel {
+    margin-block: auto;
   }
 
   /* The right card keeps its own scroll, so a tall editor stays reachable
