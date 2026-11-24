@@ -203,6 +203,27 @@ describe('solveExtrude guard paths', () => {
     ).toThrow(/mixing picked faces\/edges with sketch areas/)
   })
 
+  it('refuses a mixed document from its refs before any profile is resolved', () => {
+    // A hand-written or old document never went through the pick gate. The
+    // shared classifier still refuses the mix even when resolution would not
+    // have produced both a face and a loop.
+    const repo = new Repository()
+    vi.mocked(collectExtrudeLoops).mockImplementation(() => ({
+      loops: [[{ entity_id: 'e1' }]], plane, sketchId: 'sk', face: null,
+    }))
+    expect(() =>
+      solveExtrude(
+        oc,
+        scope,
+        table,
+        { id: 'f1', extrude: { sketch: ['?9;@ex1face0:flatface', '$sk'], distance: 3 } },
+        repo,
+        {},
+      ),
+    ).toThrow(/mixing picked faces\/edges with sketch areas/)
+    expect(collectExtrudeLoops).not.toHaveBeenCalled()
+  })
+
   it('refuses a multi-face pick whose faces are not coplanar', () => {
     // Two picked faces on different planes: the prisms below are all swept along
     // face 0's normal, so the second face would grow out of its own plane.

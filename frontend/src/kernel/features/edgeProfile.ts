@@ -16,25 +16,14 @@ import type { DisposeScope } from '../occ/disposeScope'
 import type { OccModule, OccShape } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
 import type { PartSolid } from '../types3d'
-import { partIdOf, parseAncestry } from '../query'
+import { partIdOf } from '../query'
 import { makeWire } from '../occ/primitives'
 import { makeEdgeIndexCache, resolveEdgesWithIndex } from './filletChamfer'
 
-/**
- * True when a profile ref addresses a B-rep edge rather than a sketch/face.
- * Matches both the ancestry forms (type restriction `edge`/`straightedge`) and
- * the `?body_x:edge:N` index alias registered by buildEdgeIndex.
- */
-export function isEdgeProfileRef(refStr: string): boolean {
-  if (!refStr.startsWith('?')) return false
-  if (/:(?:straight)?edge:\d+$/.test(refStr)) return true
-  try {
-    const [, kind] = parseAncestry(refStr)
-    return kind === 'edge' || kind === 'straightedge'
-  } catch {
-    return false
-  }
-}
+// The edge predicate lives with the family classifier so the build's split and
+// the pick gate's verdict cannot disagree; callers of this module keep the old
+// import path.
+export { isEdgeProfileRef } from './profileRefFamily'
 
 /**
  * Assemble coplanar B-rep edges into one planar profile face. Throws when the

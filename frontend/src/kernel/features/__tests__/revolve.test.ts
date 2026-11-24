@@ -115,6 +115,24 @@ describe('solveRevolve guard paths', () => {
     ).toThrow(/mixing picked faces\/edges with sketch areas/)
   })
 
+  it('refuses a mixed document from its refs before any profile is resolved', () => {
+    const repo = new Repository()
+    vi.mocked(collectExtrudeLoops).mockImplementation(() => ({
+      loops: [[{ entity_id: 'e1' }]], plane, sketchId: 'sk', face: null,
+    }))
+    expect(() =>
+      solveRevolve(
+        oc,
+        scope,
+        table,
+        { id: 'f1', revolve: { sketch: ['@b1/face/0', '$sk'], angle: 90 } },
+        repo,
+        {},
+      ),
+    ).toThrow(/mixing picked faces\/edges with sketch areas/)
+    expect(collectExtrudeLoops).not.toHaveBeenCalled()
+  })
+
   it('refuses a profile spanning two different sketch planes', () => {
     // Two sketches on different planes: every loop is lifted through the FIRST
     // sketch's frame, so the second profile would silently build in the wrong

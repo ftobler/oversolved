@@ -444,6 +444,24 @@ describe('solveSweep guard paths', () => {
     ).toThrow(/mixing picked faces\/edges with sketch areas/)
   })
 
+  it('refuses a mixed document from its refs before any profile is resolved', () => {
+    const plane = { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] }
+    vi.mocked(collectExtrudeLoops).mockImplementation(() => ({
+      loops: [[{ entity_id: 'e1' }]], plane, sketchId: 'skP', face: null,
+    }))
+    expect(() =>
+      solveSweep(
+        oc,
+        scope,
+        table,
+        { id: 'sw1', sweep: { sketch: ['@b1/face/0', '$sk'], path: '$p' } },
+        new Repository(),
+        {},
+      ),
+    ).toThrow(/mixing picked faces\/edges with sketch areas/)
+    expect(collectExtrudeLoops).not.toHaveBeenCalled()
+  })
+
   it('resolves entity-selection profile refs to their parent sketch (bug: sweep_20260613)', () => {
     // The profile was picked edge-by-edge, persisting `entity:<sketchId>:<eid>`
     // selection IDs. These must collapse to the parent sketch, not surface the
