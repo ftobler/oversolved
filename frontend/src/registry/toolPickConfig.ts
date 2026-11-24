@@ -42,6 +42,14 @@ export interface ToolPickConfig {
    * owns the decision, not the tool: the adapter consults it after a commit.
    */
   staysArmedAfterCommit: boolean
+  /**
+   * Whether a sketch that is not being edited registers its entity and vertex
+   * pick ids while this tool is armed. Idle select and every drawing tool keep
+   * inactive sketches inert so a click inside one sketch never selects another
+   * sketch's line; the project tool needs those ids because a foreign sketch is
+   * a projection source. See `sketchPickRegistrationEnabled`.
+   */
+  picksInactiveSketches: boolean
 }
 
 // Every filtered preset is the full pick-layer list minus an explicit exclusion
@@ -80,23 +88,30 @@ export const DIMENSION_EXCLUDED = [PLANE_LAYER_NAME] as const
 // ─── Presets: the only sites where a new field's default is decided ───
 // Select / drag / offset can pick anything (no filter). The dimension tool
 // drops the planes and additionally wipes selection on enter.
-const FULL_PICK: ToolPickConfig = { allowedLayers: null, clearsSelectionOnEnter: false, staysArmedAfterCommit: false }
+const FULL_PICK: ToolPickConfig = {
+  allowedLayers: null, clearsSelectionOnEnter: false, staysArmedAfterCommit: false, picksInactiveSketches: false,
+}
 const DIMENSION_PICK: ToolPickConfig = {
   allowedLayers: allExcept(DIMENSION_EXCLUDED), clearsSelectionOnEnter: true, staysArmedAfterCommit: true,
+  picksInactiveSketches: false,
 }
 const SKETCH_DRAW: ToolPickConfig = {
   allowedLayers: allExcept(SKETCH_DRAW_EXCLUDED), clearsSelectionOnEnter: false, staysArmedAfterCommit: true,
+  picksInactiveSketches: false,
 }
 const PROJECT_PICK: ToolPickConfig = {
   allowedLayers: allExcept(PROJECT_EXCLUDED), clearsSelectionOnEnter: false, staysArmedAfterCommit: true,
+  picksInactiveSketches: true,
 }
 
 /**
  * Exhaustive per-tool policy table. Keyed on the full `ActiveTool` union (minus
  * null) so the compiler forces an entry for every present and future tool. The
  * null (no active tool = idle select) case is handled by `getToolPickConfig`.
+ * Exported for the test that reads every row, so a new tool is covered by the
+ * per-field pins without a second hand-kept tool list.
  */
-const TOOL_PICK_CONFIG: Record<NonNullable<ActiveTool>, ToolPickConfig> = {
+export const TOOL_PICK_CONFIG: Record<NonNullable<ActiveTool>, ToolPickConfig> = {
   drag: FULL_PICK,
   dimension: DIMENSION_PICK,
   project: PROJECT_PICK,
@@ -148,4 +163,35 @@ export function effectiveAllowedLayers(
   const out = new Set<string>()
   for (const layer of consumed) if (allowed.has(layer)) out.add(layer)
   return out
+}
+
+export interface SketchPickRegistrationFacts {
+  // The sketch being edited, if any.
+  activeFeatureId: string | null | undefined
+  // Whether the sketch asking is the one being edited.
+  isEditing: boolean
+  activeTool: ActiveTool
+  // Whether the viewport draws this sketch (the folded visibility set).
+  visible: boolean
+  // The document's suppression flag for this feature.
+  suppressed: boolean
+}
+
+/**
+ * Whether a sketch registers its entity and vertex pick ids.
+ *
+ * The rule is stated once here so the viewport wiring, the tool table and the
+ * unit tests cannot disagree: the edited sketch always registers; without an
+ * active sketch every drawn sketch registers; while a sketch is being edited an
+ * inactive one registers only under a tool that declares
+ * `picksInactiveSketches` (today only project). A hidden or suppressed sketch
+ * never registers, whichever tool is armed: there is nothing on screen to pick.
+ */
+export function sketchPickRegistrationEnabled({
+  activeFeatureId, isEditing, activeTool, visible, suppressed,
+}: SketchPickRegistrationFacts): boolean {
+  if (!visible || suppressed) return false
+  if (isEditing) return true
+  if (!activeFeatureId) return true
+  return getToolPickConfig(activeTool).picksInactiveSketches
 }

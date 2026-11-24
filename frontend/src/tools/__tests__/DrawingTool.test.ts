@@ -525,6 +525,7 @@ describe('DrawingTool', () => {
       const toolPickConfig = await import('@/registry/toolPickConfig')
       const spy = vi.spyOn(toolPickConfig, 'getToolPickConfig').mockReturnValue({
         allowedLayers: null, clearsSelectionOnEnter: false, staysArmedAfterCommit: false,
+        picksInactiveSketches: false,
       })
       try {
         const onMutation = vi.fn()

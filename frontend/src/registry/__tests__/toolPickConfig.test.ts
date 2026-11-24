@@ -1,13 +1,14 @@
 import { describe, it, expect } from 'vitest'
 import {
-  getToolPickConfig, getToolAllowedLayers, effectiveAllowedLayers,
-  SKETCH_DRAW_EXCLUDED, PROJECT_EXCLUDED, DIMENSION_EXCLUDED,
+  getToolPickConfig, getToolAllowedLayers, effectiveAllowedLayers, sketchPickRegistrationEnabled,
+  TOOL_PICK_CONFIG, SKETCH_DRAW_EXCLUDED, PROJECT_EXCLUDED, DIMENSION_EXCLUDED,
 } from '../toolPickConfig'
 import {
   DIMENSION_LABEL_LAYER_NAME, FACE_LAYER_NAME, EDGE_LAYER_NAME, REFERENCE_EDGE_LAYER_NAME, VERTEX_LAYER_NAME,
   PLANE_LAYER_NAME, SKETCH_ENTITY_LAYER_NAME, SKETCH_VERTEX_LAYER_NAME, ORIGIN_LAYER_NAME,
   SKETCH_SURFACE_LAYER_NAME, FEATURE_HANDLE_LAYER_NAME, PART_EDITOR_PICK_LAYER_NAMES,
 } from '@/picking/layerNames'
+import type { ActiveTool } from '@/types/cad'
 
 describe('getToolAllowedLayers', () => {
   it('allows all layers under null (idle select) / drag / offset', () => {
@@ -144,5 +145,58 @@ describe('getToolPickConfig.staysArmedAfterCommit', () => {
     expect(getToolPickConfig('drag').staysArmedAfterCommit).toBe(false)
     expect(getToolPickConfig('offset').staysArmedAfterCommit).toBe(false)
     expect(getToolPickConfig(null).staysArmedAfterCommit).toBe(false)
+  })
+})
+
+describe('getToolPickConfig.picksInactiveSketches', () => {
+  // The field exists so every tool has to state the policy: the table iterated
+  // here is the exhaustive Record, so a newly added tool is covered by these
+  // pins without anyone remembering to extend a list.
+  it('is declared by every tool and by idle select', () => {
+    for (const tool of Object.keys(TOOL_PICK_CONFIG)) {
+      expect(typeof getToolPickConfig(tool as NonNullable<ActiveTool>).picksInactiveSketches, tool).toBe('boolean')
+    }
+    expect(getToolPickConfig(null).picksInactiveSketches).toBe(false)
+  })
+
+  it('is true only for the project tool', () => {
+    for (const [tool, config] of Object.entries(TOOL_PICK_CONFIG)) {
+      expect(config.picksInactiveSketches, tool).toBe(tool === 'project')
+    }
+  })
+})
+
+describe('sketchPickRegistrationEnabled', () => {
+  const facts = {
+    activeFeatureId: 'B',
+    isEditing: false,
+    activeTool: 'project' as ActiveTool,
+    visible: true,
+    suppressed: false,
+  }
+
+  it('registers the edited sketch under any tool', () => {
+    expect(sketchPickRegistrationEnabled({ ...facts, isEditing: true })).toBe(true)
+    expect(sketchPickRegistrationEnabled({ ...facts, isEditing: true, activeTool: 'line' })).toBe(true)
+  })
+
+  it('registers every sketch when no sketch is being edited', () => {
+    expect(sketchPickRegistrationEnabled({ ...facts, activeFeatureId: null })).toBe(true)
+    expect(sketchPickRegistrationEnabled({ ...facts, activeFeatureId: undefined, activeTool: null })).toBe(true)
+  })
+
+  it('registers an inactive visible sketch only while the project tool is armed', () => {
+    expect(sketchPickRegistrationEnabled(facts)).toBe(true)
+    expect(sketchPickRegistrationEnabled({ ...facts, activeTool: null })).toBe(false)
+    expect(sketchPickRegistrationEnabled({ ...facts, activeTool: 'line' })).toBe(false)
+    expect(sketchPickRegistrationEnabled({ ...facts, activeTool: 'dimension' })).toBe(false)
+  })
+
+  it('keeps a hidden or suppressed sketch out under every tool', () => {
+    expect(sketchPickRegistrationEnabled({ ...facts, visible: false })).toBe(false)
+    expect(sketchPickRegistrationEnabled({ ...facts, suppressed: true })).toBe(false)
+    // Even the edited sketch: there is no drawn geometry to pick.
+    expect(sketchPickRegistrationEnabled({ ...facts, isEditing: true, visible: false })).toBe(false)
+    expect(sketchPickRegistrationEnabled({ ...facts, activeFeatureId: null, suppressed: true })).toBe(false)
   })
 })

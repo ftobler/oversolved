@@ -753,6 +753,13 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
               otherSketches={isActiveFeature ? combinedOtherSketches : undefined}
               featureDef={fullFeatureDef}
               droppedConstraints={solveResult?.dropped_constraints}
+              // activeSketchFeatures is already the folded visible set (and
+              // drops suppressed rows), so these two are true/false for every
+              // sketch here. They are passed anyway: the registration helper is
+              // the second gate, and a caller that maps a wider feature list
+              // cannot silently skip it.
+              visible={visibleFeatures.has(f.id)}
+              suppressed={f.suppressed === true}
               onSelectionContextMenu={onSelectionContextMenu}
             />
           )

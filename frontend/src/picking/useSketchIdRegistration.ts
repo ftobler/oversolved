@@ -30,9 +30,16 @@ import { isDevBuild } from '@/kernel/isDevBuild'
  *
  * Inactive features (those not being edited) are still registered, so a
  * user can pick across other visible sketches. Suppressing those is a
- * caller decision via `enabled`.
+ * caller decision via `enabled`; `sketchPickRegistrationEnabled` in
+ * `registry/toolPickConfig.ts` is that rule (the edited sketch, or every drawn
+ * sketch with no editor open, or an inactive one under a tool that declares
+ * `picksInactiveSketches`).
+ *
+ * `inferredContacts` keeps the inferred-contact ids in step with the markers:
+ * `InferredContactMarkers` draws them only for the edited sketch, so another
+ * sketch must not register a handle nothing renders on. The caller passes
+ * `isEditing`; the default keeps a standalone hook use registering them.
  */
-
 export function useSketchIdRegistration(params: {
   featureId: string
   sketch: Sketch | undefined
@@ -40,9 +47,10 @@ export function useSketchIdRegistration(params: {
   enabled?: boolean
   constraints?: PartConstraint[]
   topology?: Topology
+  inferredContacts?: boolean
 }): void {
   const pipeline = useIdPipeline()
-  const { featureId, sketch, planeTransform, enabled = true, constraints, topology } = params
+  const { featureId, sketch, planeTransform, enabled = true, constraints, topology, inferredContacts = true } = params
 
   // Build a stable matrix key from planeTransform so the hook re-runs when
   // the plane changes but not just because the prop reference shifts.
@@ -68,8 +76,12 @@ export function useSketchIdRegistration(params: {
     // query. Clicking one selects the handle; the constraint that names it
     // materializes a real point (lazy inferred materialization). `parseVertexKey`
     // returns null for these keys, so picking one never starts an entity drag --
-    // it is select-only.
-    const inferred = inferredContactCandidates(sketch, featureId, constraints ?? [], topology, 'active_sketch')
+    // it is select-only. Only the edited sketch's markers render them, so only
+    // the edited sketch registers them: an invisible handle on an inactive
+    // sketch would otherwise beat the line a tool (project) is aiming at.
+    const inferred = inferredContacts
+      ? inferredContactCandidates(sketch, featureId, constraints ?? [], topology, 'active_sketch')
+      : []
     if (inferred.length > 0) {
       const dv = new THREE.Vector3()
       for (const dc of inferred) {
@@ -139,5 +151,5 @@ export function useSketchIdRegistration(params: {
     // object identity isn't. `constraints`/`topology` drive the inferred-contact
     // set (a new tangent or crossing adds a handle, materializing one removes it).
     // eslint-disable-next-line react-hooks/exhaustive-deps -- planeTransform identity is intentionally excluded; see note above
-  }, [pipeline, featureId, sketch, planeKey, enabled, suppressed, constraints, topology])
+  }, [pipeline, featureId, sketch, planeKey, enabled, suppressed, constraints, topology, inferredContacts])
 }

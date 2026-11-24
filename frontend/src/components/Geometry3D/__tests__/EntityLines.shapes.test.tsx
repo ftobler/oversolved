@@ -32,6 +32,7 @@ vi.mock('@react-three/fiber', () => ({
 }))
 
 import { EntityItem, EntityLines } from '@/components/Geometry3D/EntityLines'
+import { COLOR_HOVER } from '@/components/Geometry3D/constants'
 import { useEditorState } from '@/hooks/useEditorState'
 
 const ARC: Arc = { start: [1, 0], end: [0, 1], center: [0, 0], radius: 1, angle_start: 0, angle_end: 90 }
@@ -178,6 +179,22 @@ describe('EntityItem degenerate geometry', () => {
     renderItem({ ...CIRCLE, radius: NaN } as unknown as Entity)
     expect(MockLine).not.toHaveBeenCalled()
     expect(MockVertexDot).not.toHaveBeenCalled()
+  })
+})
+
+describe('EntityItem hover highlight', () => {
+  it('highlights a hovered line of an inactive sketch', () => {
+    // Hover is keyed by the composite id alone, not by isEditing: once an
+    // inactive sketch's ids are registered (the project tool) its line has to
+    // read as the next pick target exactly like an active sketch's.
+    useEditorState.setState({ hoveredSelectionId: 'entity:S1:e1' })
+    renderItem(LINE as unknown as Entity)
+
+    expect(MockLine).toHaveBeenCalledTimes(1)
+    const props = MockLine.mock.calls[0][0]
+    expect(props.color).toBe(COLOR_HOVER)
+    expect(props.lineWidth).toBe(2)  // default 1 + the hover widening
+    expect(props.depthTest).toBe(false)
   })
 })
 

@@ -336,6 +336,53 @@ describe('DrawPlane commit click', () => {
     expect(takeDrawToolClickConsumed()).toBe(true)
   })
 
+  it('lowers a foreign sketch line and endpoint from the press hit into one projection each', () => {
+    // DrawPlane seam, not a full page flow. Two halves meet here: the press
+    // pixel resolves to A's composite id, and the real project tool is handed
+    // the other-sketches geometry, so a line and an endpoint each land one live
+    // projection on B. That the ids exist to be hit at all is pinned by
+    // Geometry3D.projectPickRegistration (the registration gate); the lowering
+    // itself by projectSelection.test.ts and the drawLogic project cases.
+    toolRegistry.register(createDrawingTool({ entityKind: 'project', paramCount: 4 }))
+    const onMutation = vi.fn()
+    setSketchCallback('onMutation', onMutation)
+    useEditorState.setState({
+      activeTool: 'project',
+      activeFeatureId: 'B',
+      modeStack: ['tool:project'],
+      hoveredSelectionId: null,
+    })
+    const otherSketches = {
+      A: { L1: { start: [0, 0], end: [10, 0] } },
+    } as unknown as Record<string, import('@/types/cad').Sketch>
+    const { container } = render(
+      <DrawPlane featureId="B" activeFeatureId="B" sketch={{}} otherSketches={otherSketches} sketchGroupRef={groupRef} />,
+    )
+    const mesh = container.querySelector('mesh')!
+    proj.point = { x: 4, y: 5, z: 0 }
+
+    act(() => {
+      pick.hit = { layer: SKETCH_ENTITY_LAYER_NAME, entityKey: 'entity:A:L1' }
+      mesh.dispatchEvent(new MouseEvent('pointerdown', { clientX: 100, clientY: 100, bubbles: true, button: 0 }))
+    })
+
+    expect(onMutation).toHaveBeenCalledOnce()
+    expect(onMutation).toHaveBeenCalledWith({
+      type: 'add_projected_entity', featureId: 'B', kind: 'line', source: '@A/L1',
+    })
+    onMutation.mockClear()
+
+    act(() => {
+      pick.hit = { layer: SKETCH_VERTEX_LAYER_NAME, entityKey: 'vertex:A:L1:end' }
+      mesh.dispatchEvent(new MouseEvent('pointerdown', { clientX: 101, clientY: 101, bubbles: true, button: 0 }))
+    })
+
+    expect(onMutation).toHaveBeenCalledOnce()
+    expect(onMutation).toHaveBeenCalledWith({
+      type: 'add_projected_entity', featureId: 'B', kind: 'point', source: '@A/L1/end',
+    })
+  })
+
   it('resolves the press pixel for every drawing tool, not only project', () => {
     // The async hover lags a frame and can name a different pixel's hit. Every
     // draw tool now reads the pixel it was pressed on; the hover survives only
