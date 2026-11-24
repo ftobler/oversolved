@@ -148,6 +148,13 @@ export const SLASH_FACE = /^@([^/]+)\/face\/(\d+)$/
  * grown count with no identity is accepted because there is no signal to
  * detect the shift against (the identity-bearing case, where the shift is
  * detectable, fails loud above).
+ *
+ * This sentence keeps its ids on purpose: it is not a refusal of user input but
+ * an identity-integrity alarm (the body says it names its faces, yet this pick's
+ * face has no construction UUID to rebind by). The ref, the part and the index
+ * are what make a ghost uuid diagnosable, and the reader cannot act on it by
+ * re-picking -- a fresh pick would hide the bug. Every other profile refusal in
+ * this file addresses the user and prints no id.
  */
 export function remapFaceIndex(
   oc: OccModule,

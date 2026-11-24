@@ -82,18 +82,31 @@ describe('profilePickRefusal', () => {
     expect(refusal(areaOf(['a1']))).toContain('an arc has no area of its own')
   })
 
+  it('reads a vertex pick as the entity that owns the vertex', () => {
+    // A vertex pick names the curve it sits on, so a line endpoint is the line
+    // gesture and not an unnamed point: it must be refused the same way.
+    expect(refusal('vertex:sk1:l1:start')).toContain('a line has no area of its own')
+    expect(refusal('vertex:sk1:a1:center')).toContain('an arc has no area of its own')
+    expect(refusal('vertex:sk1:c1:center')).toBeNull()
+  })
+
   it('accepts a `?` area pick of a region and a whole-sketch ref', () => {
     expect(refusal(areaOf(['l1', 'l2', 'l3']))).toBeNull()
     expect(refusal('@sk1')).toBeNull()
     expect(refusal('?9;@builtin_plane_front:flatface')).toBeNull()
   })
 
-  it('keeps the document ids out of the sentence', () => {
-    for (const id of ['l1', 'a1', 'p1']) {
-      const reason = refusal(`entity:sk1:${id}`)!
-      expect(reason).not.toContain('sk1')
-      expect(reason).not.toContain(id)
+  it('keeps every document id out of the sentence', () => {
+    // Every entity in the fixture, refused or not: a sentence that comes back
+    // must not name the sketch or any entity, including the ones it did not
+    // refuse.
+    const ids = ['sk1', 'l1', 'c1', 'l2', 'a1', 'e1', 'p1', 's1', 'f1', 'l3']
+    for (const eid of ids.slice(1)) {
+      const reason = refusal(`entity:sk1:${eid}`)
+      if (reason === null) continue
+      for (const id of ids) expect(reason, `${eid}: ${id}`).not.toContain(id)
     }
+    expect(refusal(`vertex:sk1:l1:start`)).not.toContain('sk1')
   })
 
   it('lets the pick through when the feature list is not supplied', () => {
@@ -142,6 +155,23 @@ describe('entityDisplayName', () => {
     expect(entityDisplayName(sketch, 'ln_d')).toBe('line 3')
     expect(entityDisplayName(sketch, 'ci_b')).toBe('circle 1')
     expect(entityDisplayName(sketch, 'ar_e')).toBe('arc 1')
+  })
+
+  it('counts a projected entity as its base kind', () => {
+    // A projection is a base-kind entity carrying a `source` query, not a
+    // distinct kind, so it takes a number in the line sequence. Deliberate:
+    // the ordinal counts what the user sees in the sketch, and the tree shows
+    // the projected line like any other line.
+    const projected = {
+      id: 'skp',
+      kind: 'sketch',
+      entities: [
+        { id: 'pl_one', kind: 'line', source: '?9;@body_ex1:edge' },
+        { id: 'dl_two', kind: 'line' },
+      ],
+    } as unknown as PartFeature
+    expect(entityDisplayName(projected, 'pl_one')).toBe('line 1')
+    expect(entityDisplayName(projected, 'dl_two')).toBe('line 2')
   })
 
   it('returns null for an entity the sketch does not have', () => {

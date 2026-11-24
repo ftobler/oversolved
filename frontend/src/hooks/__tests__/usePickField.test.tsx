@@ -15,7 +15,7 @@ import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { DEFAULT_SECTION_STATE, useSectionStore } from '@/stores/sectionStore'
 import { useEditorState } from '@/hooks/useEditorState'
 import { partsWantKey, type WantKeyOf } from '@/utils/query/pickIntake'
-import { EXTRUDE_SCHEMA } from '@/components/editors/featureEditorSchemas'
+import { EXTRUDE_SCHEMA, REVOLVE_SCHEMA } from '@/components/editors/featureEditorSchemas'
 import type { PickFieldDef } from '@/components/editors/widgets/fieldTypes'
 import { makeAncestryQuery } from '@/kernel/query'
 import type { PartFeature, PartResult } from '@/types/cad'
@@ -438,6 +438,7 @@ describe('usePickField  -  profile pick rule', () => {
       { id: 'l2', kind: 'line' },
       { id: 'l3', kind: 'line' },
       { id: 'l4', kind: 'line' },
+      { id: 'c1', kind: 'circle' },
     ],
   } as unknown as PartFeature
   const FEATURES: PartFeature[] = [SKETCH]
@@ -468,6 +469,8 @@ describe('usePickField  -  profile pick rule', () => {
     expect(spy.refusal).toBe(
       'Pick refused: a line has no area of its own; pick the area beside it, or a closed curve such as a circle',
     )
+    expect(spy.refusal).not.toContain('sk1')
+    expect(spy.refusal).not.toContain('l1')
     expect(useSketchEditorStore.getState().normalSelection.size).toBe(0)
 
     // The area fill the line borders is the very next click, and it lands.
@@ -476,6 +479,36 @@ describe('usePickField  -  profile pick rule', () => {
       useSketchEditorStore.getState().setNormalSelection(new Set([area]))
     })
     expect(onPick).toHaveBeenCalledWith(area)
+  })
+
+  it('the revolve Profile refuses the same line and accepts a circle', () => {
+    // The rule belongs to the FIELD, and every profile field gets it. Revolve is
+    // one of the other three: arming it and clicking a line must not dispatch,
+    // while the circle beside it is a valid profile.
+    const onPick = vi.fn()
+    const revolveField = REVOLVE_SCHEMA.fields.find(
+      (field): field is PickFieldDef => field.type === 'pick' && field.key === 'sketch',
+    )!
+    act(() => {
+      useSketchEditorStore.getState().setActivePickField({ featureId: 'rv1', field: 'sketch', multi: true })
+    })
+    const spy = mountPickField('rv1', 'sketch', onPick, {
+      multi: true,
+      features: FEATURES,
+      validatePick: revolveField.validatePick,
+    })
+
+    act(() => {
+      useSketchEditorStore.getState().setNormalSelection(new Set(['entity:sk1:l2']))
+    })
+    expect(onPick).not.toHaveBeenCalled()
+    expect(spy.isPicking).toBe(true)
+    expect(spy.refusal).toContain('a line has no area of its own')
+
+    act(() => {
+      useSketchEditorStore.getState().setNormalSelection(new Set(['entity:sk1:c1']))
+    })
+    expect(onPick).toHaveBeenCalledWith('entity:sk1:c1')
   })
 })
 

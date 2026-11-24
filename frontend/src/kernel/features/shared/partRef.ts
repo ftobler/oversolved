@@ -1,5 +1,7 @@
 // Reference parsing shared by the leaf feature solvers: surface ancestry ids
-// and viewport sketch picks. Pure, no OCC.
+// and viewport sketch picks. Pure, no OCC. It also owns the user-facing naming
+// helpers (`entityKindWord`, `entityDisplayName`, `noAreaReason`) so a pick
+// refusal and a build message name an entity the same way.
 
 import { parseAncestry, type Repository } from '../../query'
 import { ENTITY_BY_KIND } from '@/registry/entityRegistry'
