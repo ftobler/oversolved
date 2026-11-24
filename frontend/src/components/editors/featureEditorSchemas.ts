@@ -7,6 +7,7 @@ import {
 } from '@/utils/yamlMutations'
 import { THREAD_TABLE, threadEntry, threadLabel, threadDesignations, DRILL_POINT_ANGLE } from '@/kernel/threadTable'
 import { pickedSketchEntity, entityKindPhrase, noAreaReason } from '@/kernel/features/shared/partRef'
+import { isNonPlanarProfileFace, profileRefFamily } from '@/kernel/features/profileRefFamily'
 import { ENTITY_BY_KIND } from '@/registry/entityRegistry'
 import { circleDrillSiteReason, HOLE_SITE_WORDING } from '@/kernel/features/shared/drillSite'
 import type { PartFeature, ThreadSpec } from '@/types/cad'
@@ -138,7 +139,7 @@ export const SWEEP_SCHEMA: FeatureEditorSchema = {
     { type: 'pick', key: 'sketch', label: 'Profile', multi: true,
       addMutationType: 'add_sweep_profile', addValueKey: 'sketchQuery',
       removeMutationType: 'remove_sweep_profile', transform: stripSelectionWrapper,
-      validatePick: profilePickRefusal },
+      validatePick: sketchOnlyProfilePickRefusal },
     // Off by default: with it on, each outer loop is a section the path pierces
     // and the body is blended between them, so a same-plane multi-profile sweep
     // keeps its old body until the user opts in.
@@ -272,7 +273,7 @@ export const WRAP_SCHEMA: FeatureEditorSchema = {
   defaults: { sketch: '', height: DEFAULT_WRAP_HEIGHT, operation: 'add' },
   fields: [
     { type: 'pick', key: 'sketch', label: 'Profile', transform: stripSelectionWrapper,
-      validatePick: profilePickRefusal,
+      validatePick: sketchOnlyProfilePickRefusal,
       hint: 'Project a circular edge of the target as a point (its centre is on the axis) and dimension the footprint to it.' },
     // Two picks and a number: the target's own axis is the datum, so there is
     // nothing to place. The kernel refuses a planar or freeform face by name;
@@ -391,10 +392,40 @@ function holeSketchPickRefusal(selectionId: string, features?: readonly PartFeat
  * open entity is the same gesture as a curve pick and gets the same verdict; a
  * whole-sketch ref and a region bounded by several entities are untouched.
  *
- * The reason names the kind and no id: the user just clicked the curve, so the
- * area fill beside it is the next thing to try.
+ * It also gates the two things the build refuses without a solve: a face from
+ * the other family than the chips already held (the build only has one profile
+ * route), and a face whose query names a non-planar surface. Both families come
+ * from the kernel classifier the build uses, so the chip and the build cannot
+ * disagree about what a ref means. Whether several flat faces are parallel is
+ * a solve fact and stays with the build. Every reason names the rule, never an
+ * id: the user just clicked the element, so the next gesture is the fix.
  */
-export function profilePickRefusal(selectionId: string, features?: readonly PartFeature[]): string | null {
+export function profilePickRefusal(
+  selectionId: string,
+  features?: readonly PartFeature[],
+  data?: SchemaData,
+  options: { sketchOnly?: boolean } = {},
+): string | null {
+  const family = profileRefFamily(selectionId)
+  if (options.sketchOnly === true && family === 'part') {
+    return 'a picked part face or edge cannot be a profile here; pick a sketch area'
+  }
+  // Only a picked face carries a surface kind; a sketch area query may also end
+  // in `:face`, but its planarity is a solve fact, not a refusal here.
+  if (family === 'part' && isNonPlanarProfileFace(selectionId)) {
+    return 'a profile face must be flat; pick a flat face or a sketch area'
+  }
+  const held = heldProfileRefs(data?.sketch)
+  const partHeld = held.some((value) => profileRefFamily(value) === 'part')
+  const sketchHeld = held.some((value) => profileRefFamily(value) === 'sketch')
+  if (family === 'part' && sketchHeld) {
+    return 'the profile already holds sketch areas; a part face cannot join them. ' +
+      'Clear the profile to switch to part faces.'
+  }
+  if (family === 'sketch' && partHeld) {
+    return 'the profile already holds part faces; a sketch area cannot join them. ' +
+      'Clear the profile to switch to sketch areas.'
+  }
   if (features === undefined) return null
   const sketchIds = new Set(features.filter((feature) => feature.kind === 'sketch').map((feature) => feature.id))
   const picked = pickedSketchEntity(selectionId, sketchIds)
@@ -406,6 +437,25 @@ export function profilePickRefusal(selectionId: string, features?: readonly Part
   if (entity === undefined || ENTITY_BY_KIND.get(entity.kind)?.closesAlone !== 'never') return null
   const phrase = entityKindPhrase(entity.kind)
   return phrase === null ? null : noAreaReason(phrase)
+}
+
+/** The field's own stored values, whatever shape the form handed over. */
+function heldProfileRefs(value: unknown): string[] {
+  if (Array.isArray(value)) return value.filter((ref): ref is string => typeof ref === 'string' && ref !== '')
+  return typeof value === 'string' && value !== '' ? [value] : []
+}
+
+/**
+ * Sweep and wrap refuse every picked face or edge at build time, not just the
+ * curved ones, so their chips apply the same family gate on top of the shared
+ * profile rule.
+ */
+export function sketchOnlyProfilePickRefusal(
+  selectionId: string,
+  features?: readonly PartFeature[],
+  data?: SchemaData,
+): string | null {
+  return profilePickRefusal(selectionId, features, data, { sketchOnly: true })
 }
 
 export const HOLE_SCHEMA: FeatureEditorSchema = {
@@ -544,7 +594,8 @@ export const MIRROR_SCHEMA: FeatureEditorSchema = {
       hint: 'Reflected in feature-log order; the source keeps its own copy.' },
     { type: 'pick', key: 'target_body', label: 'Target part', transform: resolvePartPickRef, names: 'body',
       showWhen: (d) => d.subject === 'feature', emptyText: '(the part the source shaped)' },
-    { type: 'pick', key: 'plane', label: 'Mirror Plane', transform: stripSelectionWrapper },
+    { type: 'pick', key: 'plane', label: 'Mirror Plane', transform: stripSelectionWrapper,
+      validatePick: planePickRefusal },
     // The source's own operation is reapplied in the same body, so these two
     // whole-body modes have no meaning on a feature mirror (the drive and the
     // kernel refuse them by name). The editor hides them.
@@ -558,7 +609,7 @@ export const MIRROR_SCHEMA: FeatureEditorSchema = {
 /** A plane pick: a builtin or datum plane id, or a flat-face query. The
  *  surface kind is the kernel classification carried in the query, so a curved
  *  face is refused here rather than sampled from triangles. */
-const planePickRefusal = (id: string): string | null => {
+function planePickRefusal(id: string): string | null {
   if (id.startsWith('?')) {
     return id.endsWith(':flatface') ? null : 'pick a plane or a flat face, not an edge, vertex or curved face'
   }

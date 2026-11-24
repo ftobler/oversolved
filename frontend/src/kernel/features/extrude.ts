@@ -33,6 +33,7 @@ import { makeTranslationTrsf, transformCopy } from '../occ/transforms'
 import { extrudeProfileWithLineage } from '../occ/prismLineage'
 import { sweepBuilderFor } from '../occ/twistPrism'
 import { isEdgeProfileRef, resolveEdgeProfileFace } from './edgeProfile'
+import { mixedProfileRefs } from './profileRefFamily'
 import { resolveUpToTarget, orientToTarget, trimAtPlane, UP_TO_REACH, type CutPlane, type UpToTarget } from './upTo'
 import {
   embossAtNext,
@@ -402,6 +403,15 @@ export function solveExtrude(
   }
   if (sketchRefs.length === 0) {
     throw new Error('extrude: requires at least one profile reference')
+  }
+  // The pick gate refuses this mix for chips; a hand-written or old document
+  // skips that gate, so the same classifier refuses it here before any geometry
+  // is resolved. The resolved-face check below stays as the backstop.
+  if (mixedProfileRefs(sketchRefs)) {
+    throw new Error(
+      'extrude: a profile mixing picked faces/edges with sketch areas is not supported; ' +
+        'use one or the other',
+    )
   }
 
   // B-rep edge picks define their profile from selected solid edges, not from a

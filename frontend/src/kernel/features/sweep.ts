@@ -35,6 +35,7 @@ import type { HelixAxis } from './shared/helixPath'
 import { stripRefSigil } from '@/utils/refSigil'
 import { TOL_LENGTH_SLACK, TOL_LOOP_CLOSURE } from '../solverConstants'
 import { maxPrecision, sketchPrecision, type KernelPrecision } from '../precision'
+import { mixedProfileRefs } from './profileRefFamily'
 
 type Dict = Record<string, unknown>
 
@@ -919,6 +920,14 @@ export function solveSweep(
 
   if (rawRefs.length === 0) throw new Error('sweep: requires at least one profile reference')
   if (pathRefs.length === 0) throw new Error('sweep: requires a path reference')
+  // The chip refuses this mix; the same classifier refuses it in a document
+  // that skipped the chip (hand-written or older), before any profile resolves.
+  if (mixedProfileRefs(rawRefs)) {
+    throw new Error(
+      'sweep: a profile mixing picked faces/edges with sketch areas is not supported; ' +
+        'use one or the other',
+    )
+  }
 
   // Partition profile refs. `entity:`/`vertex:` picks are edge-precise: only the
   // picked entity's edges contribute, and several picks on one sketch assemble

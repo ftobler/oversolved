@@ -11,7 +11,7 @@ import {
   SWEEP_SCHEMA,
   WRAP_SCHEMA,
 } from '@/components/editors/featureEditorSchemas'
-import { profilePickRefusal } from '@/components/editors/featureEditorSchemas'
+import { profilePickRefusal, sketchOnlyProfilePickRefusal } from '@/components/editors/featureEditorSchemas'
 import { entityDisplayName } from '@/kernel/features/shared/partRef'
 import type { PickFieldDef } from '@/components/editors/widgets/fieldTypes'
 import { makeAncestryQuery } from '@/kernel/query'
@@ -36,6 +36,8 @@ const SKETCH = {
 } as unknown as PartFeature
 
 const FEATURES: PartFeature[] = [SKETCH]
+const FACE = '?9;@body_ex1:flatface'
+const EDGE = '?body_ex1:edge:0'
 
 function refusal(selectionId: string): string | null {
   return profilePickRefusal(selectionId, FEATURES)
@@ -114,16 +116,58 @@ describe('profilePickRefusal', () => {
     // build-order guard has.
     expect(profilePickRefusal('entity:sk1:l1')).toBeNull()
   })
+
+  it('refuses a part face when the profile already holds sketch areas', () => {
+    const reason = profilePickRefusal(FACE, FEATURES, { sketch: ['@sk5'] })
+    expect(reason).toContain('the profile already holds sketch areas; a part face cannot join them')
+    expect(reason).toContain('Clear the profile to switch to part faces')
+    for (const id of ['sk5', 'body_ex1', 'sk1']) expect(reason, id).not.toContain(id)
+  })
+
+  it('refuses a sketch area when the profile already holds a part face', () => {
+    const reason = profilePickRefusal(areaOf(['l1', 'l2', 'l3']), FEATURES, { sketch: [FACE] })
+    expect(reason).toContain('the profile already holds part faces; a sketch area cannot join them')
+    expect(reason).toContain('Clear the profile to switch to sketch areas')
+    for (const id of ['sk5', 'body_ex1', 'sk1']) expect(reason, id).not.toContain(id)
+  })
+
+  it('keeps same-family picks and an empty profile', () => {
+    expect(profilePickRefusal(FACE, FEATURES, { sketch: [] })).toBeNull()
+    expect(profilePickRefusal(FACE, FEATURES, { sketch: [EDGE] })).toBeNull()
+    expect(profilePickRefusal(areaOf(['l1', 'l2', 'l3']), FEATURES, { sketch: ['@sk5'] })).toBeNull()
+    expect(profilePickRefusal('entity:sk1:c1', FEATURES, { sketch: ['@sk5'] })).toBeNull()
+  })
+
+  it('refuses a curved face query because a profile face must be flat', () => {
+    // The surface kind rides in the query, so this is decidable without a solve.
+    expect(profilePickRefusal('?9;@body_ex1:cylinderface', FEATURES)).toContain('a profile face must be flat')
+    expect(profilePickRefusal('?9;@body_ex1:coneface', FEATURES)).toContain('a profile face must be flat')
+    expect(profilePickRefusal(FACE, FEATURES)).toBeNull()
+    // A wrapped face pick carries the same query the chip will store.
+    expect(profilePickRefusal(`face:ex1:${FACE}`, FEATURES)).toBeNull()
+    expect(profilePickRefusal('face:ex1:?9;@body_ex1:cylinderface', FEATURES)).toContain('a profile face must be flat')
+  })
 })
 
 describe('profile field wiring', () => {
-  it('all four profile fields carry the rule', () => {
-    // Extrude, revolve, sweep profile and wrap: the four picks that name a
-    // profile area.
+  it('all four profile fields carry a profile rule', () => {
+    // Extrude and revolve build a face profile; sweep and wrap refuse every
+    // picked face at build time, so their chips add the family gate on top of
+    // the shared rule.
     expect(fieldOf(EXTRUDE_SCHEMA, 'sketch').validatePick).toBe(profilePickRefusal)
     expect(fieldOf(REVOLVE_SCHEMA, 'sketch').validatePick).toBe(profilePickRefusal)
-    expect(fieldOf(SWEEP_SCHEMA, 'sketch').validatePick).toBe(profilePickRefusal)
-    expect(fieldOf(WRAP_SCHEMA, 'sketch').validatePick).toBe(profilePickRefusal)
+    expect(fieldOf(SWEEP_SCHEMA, 'sketch').validatePick).toBe(sketchOnlyProfilePickRefusal)
+    expect(fieldOf(WRAP_SCHEMA, 'sketch').validatePick).toBe(sketchOnlyProfilePickRefusal)
+  })
+
+  it('sweep and wrap accept sketch areas but no picked face', () => {
+    const sweepRule = fieldOf(SWEEP_SCHEMA, 'sketch').validatePick!
+    const wrapRule = fieldOf(WRAP_SCHEMA, 'sketch').validatePick!
+    for (const rule of [sweepRule, wrapRule]) {
+      expect(rule(areaOf(['l1', 'l2', 'l3']), FEATURES, { sketch: [] })).toBeNull()
+      expect(rule(FACE, FEATURES, { sketch: [] })).toContain('pick a sketch area')
+      expect(rule(FACE, FEATURES, { sketch: [] })).not.toContain('body_ex1')
+    }
   })
 
   it('the sweep Path field keeps accepting a line or an arc', () => {

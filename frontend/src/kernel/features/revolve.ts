@@ -25,6 +25,7 @@ import { faceCentroid, type Vec3 } from '../occ/primitives'
 import { loopCentroid, loopPts, pointInLoop } from '../profileLoops'
 import { sketchDisplayName, featureRows } from '@/utils/core/displayNames'
 import { angularHandle } from './featureHandles'
+import { mixedProfileRefs } from './profileRefFamily'
 
 type Dict = Record<string, unknown>
 
@@ -244,6 +245,14 @@ export function solveRevolve(
   if (!Number.isFinite(angle) || angle === 0) throw new Error('revolve: angle must be non-zero')
   if (Math.abs(angle) > 360) throw new Error('revolve: angle must be between -360 and 360')
   if (sketchRefs.length === 0) throw new Error('revolve: requires at least one profile reference')
+  // Same gate as the chip, for documents written by hand or before the pick
+  // rule existed: a profile cannot name both a part face and a sketch area.
+  if (mixedProfileRefs(sketchRefs)) {
+    throw new Error(
+      'revolve: a profile mixing picked faces/edges with sketch areas is not supported; ' +
+        'use one or the other',
+    )
+  }
 
   const allLoops: Dict[][] = []
   const cqFaces: OccShape[] = []

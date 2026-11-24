@@ -46,7 +46,7 @@ function mountPickField(
     multi?: boolean
     onUnpick?: (id: string) => void
     features?: readonly PartFeature[]
-    validatePick?: (id: string) => string | null
+    validatePick?: (id: string, features?: readonly PartFeature[], data?: Record<string, unknown>) => string | null
     held?: readonly string[]
     wantKeyOf?: WantKeyOf
     labelOf?: (heldValue: string) => string
@@ -509,6 +509,43 @@ describe('usePickField  -  profile pick rule', () => {
       useSketchEditorStore.getState().setNormalSelection(new Set(['entity:sk1:c1']))
     })
     expect(onPick).toHaveBeenCalledWith('entity:sk1:c1')
+  })
+
+  it('a face pick against a held sketch chip dispatches nothing and stays armed', () => {
+    // The reported bug: a face chip joined a sketch area chip, and the build
+    // threw the mix out later. The rule now refuses it at the chip, where the
+    // reason is shown and the field stays ready for a valid pick.
+    const onPick = vi.fn()
+    const held = ['@sk5']
+    const face = '?9;@body_ex1:flatface'
+    const rule = (id: string, featureRows?: readonly PartFeature[]) =>
+      profileField.validatePick!(id, featureRows, { sketch: held })
+    act(() => {
+      useSketchEditorStore.getState().setActivePickField({ featureId: 'ex1', field: 'sketch', multi: true })
+      useSketchEditorStore.getState().syncChipSelection(held)
+    })
+    const spy = mountPickField('ex1', 'sketch', onPick, {
+      multi: true, features: FEATURES, held, validatePick: rule,
+    })
+
+    act(() => {
+      useSketchEditorStore.getState().toggleNormalSelection(face)
+    })
+
+    expect(onPick).not.toHaveBeenCalled()
+    expect(spy.isPicking).toBe(true)
+    expect(spy.refusal).toContain('the profile already holds sketch areas; a part face cannot join them')
+    expect(spy.refusal).not.toContain('sk5')
+    expect(spy.refusal).not.toContain('body_ex1')
+    expect(useSketchEditorStore.getState().activePickField).not.toBeNull()
+    expect([...useSketchEditorStore.getState().chipOwnedSelection]).toEqual(held)
+
+    const area = makeAncestryQuery(['@sk1/l1', '@sk1/l2', 'surface:0', '@sk1'], 'flatface')
+    act(() => {
+      useSketchEditorStore.getState().toggleNormalSelection(area)
+    })
+    expect(onPick).toHaveBeenCalledWith(area)
+    expect(spy.refusal).toBe('')
   })
 })
 
