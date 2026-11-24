@@ -423,6 +423,41 @@ describe('sketchEditorStore', () => {
       setSketchCallback('cancelPlacement', null)
     })
 
+    it('a second brep pick after an insert banks the placement and clears its bookkeeping', () => {
+      // The commit in finalize leaves the projection id pending and the prompt
+      // open. Starting a new brep pick must resolve that gesture first: a later
+      // delete must not remove the now-committed projection, and the stale
+      // prompt must not confirm a second entry.
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      const commitPlacement = vi.fn()
+      setSketchCallback('commitPlacement', commitPlacement)
+      setSketchCallback('getSketch', () => ({}))
+      const store = useSketchEditorStore.getState()
+      store.addBrepDimensionPick('?b1/edge:3', { isVertexPick: false, sourceKind: 'line' })
+      const eid = handler.mock.calls[0][0].entityId
+      store.finalizeDimensionPlacement([0, 0])
+      expect(useSketchEditorStore.getState().pendingBrepProjectionIds).toEqual([eid])
+      expect(useSketchEditorStore.getState().pendingPlacementConstraintId).not.toBeNull()
+      // Once the insert commits, the projection is solved on the sketch, so a
+      // second pick of the same edge reuses it instead of projecting again.
+      setSketchCallback('getSketch', () => ({
+        [eid]: { start: [0, 0], end: [1, 0], projected: true, source: '?b1/edge:3' },
+      } as never))
+      handler.mockClear()
+
+      useSketchEditorStore.getState().addBrepDimensionPick('?b1/edge:3', { isVertexPick: false, sourceKind: 'line' })
+
+      expect(commitPlacement).toHaveBeenCalledTimes(1)
+      expect(useSketchEditorStore.getState().pendingPlacementConstraintId).toBeNull()
+      expect(useSketchEditorStore.getState().pendingBrepProjectionIds).toEqual([])
+      expect(useSketchUiStore.getState().pendingDialog).toBeNull()
+      // The banked projection is not deleted: the new pick reused it.
+      expect(handler).not.toHaveBeenCalled()
+      setSketchCallback('getSketch', null)
+      setSketchCallback('commitPlacement', null)
+    })
+
     it('a projected body edge dimensions as a length once solved', () => {
       const handler = vi.fn()
       setSketchCallback('onMutation', handler)
@@ -647,7 +682,7 @@ describe('sketchEditorStore', () => {
         // The loud refusal is dev/test only; in every build the insert and the
         // placement begin are behind it.
         expect(() => useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0]))
-          .toThrow(/dialog port/)
+          .toThrow(/openDialog port/)
 
         expect(handler).not.toHaveBeenCalled()
         expect(beginPlacement).not.toHaveBeenCalled()

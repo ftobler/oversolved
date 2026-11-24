@@ -20,6 +20,7 @@ export function createHeadlessCommandState(): PartCommandState {
     drawPoints: [],
     dimensionPicks: [],
     pendingPlacementConstraintId: null,
+    pendingBrepProjectionIds: [],
     activePickField: null,
     pendingDialog: null,
     setActiveTool: () => {},

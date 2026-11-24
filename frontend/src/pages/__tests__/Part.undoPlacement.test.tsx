@@ -11,11 +11,12 @@ import { render, screen, fireEvent, act, waitFor } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import Part from '@/pages/Part'
 import { executeCommand } from '@/hooks/commandRegistry'
-import { useSketchEditorStore, useSketchUiStore } from '@/stores/sketchEditorStore'
+import { useSketchEditorStore, useSketchUiStore, getSketchCallback } from '@/stores/sketchEditorStore'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { Wrapper, partDocStoreMock } from '@/__tests__/test-utils'
 import { initializeTools } from '@/tools'
 import { useEditorState } from '@/hooks/useEditorState'
+import type { Mutation } from '@/types/cad'
 
 vi.mock('../../components/Viewport', async () =>
   (await import('@/__tests__/test-utils')).viewportMockModule({ cancelPendingFit: vi.fn() }))
@@ -26,6 +27,11 @@ features:
   - id: sk1
     kind: sketch
     label: Sketch 1
+    entities:
+      - id: l1
+        kind: line
+    initial:
+      l1: [0, 0, 10, 0]
 `
 
 function renderPart() {
@@ -68,6 +74,20 @@ describe('Part - toolbar undo resolves an open placement prompt', () => {
     const seeded = usePartEditorStore.getState().undoStack.length
     expect(seeded).toBeGreaterThan(0)
 
+    // A real placement transaction: the page's own ports begin it and insert a
+    // dimension, so the cancel below has a document to rewind.
+    const baseline = structuredClone(usePartEditorStore.getState().doc)
+    await act(async () => { getSketchCallback('beginPlacement')!() })
+    await act(async () => {
+      (getSketchCallback('onMutation') as (m: Mutation) => unknown)({
+        type: 'add_constraint', id: 'c_len_1', featureId: 'sk1', kind: 'length',
+        targets: ['entity:sk1:l1'], value: 12,
+      })
+    })
+    const inserted = usePartEditorStore.getState().doc
+    const constraints = (inserted?.features?.[0] as { constraints?: { id: string }[] })?.constraints ?? []
+    expect(constraints.some(c => c.id === 'c_len_1')).toBe(true)
+
     // The freshly inserted dimension's prompt is up.
     act(() => {
       useSketchEditorStore.setState({
@@ -87,11 +107,16 @@ describe('Part - toolbar undo resolves an open placement prompt', () => {
 
     await act(async () => { executeCommand('undo') })
 
-    // The store and the prompt came down with the gesture; no entry moved.
+    // The store and the prompt came down with the gesture; no entry moved and
+    // the document went back to the placement's baseline.
     expect(useSketchEditorStore.getState().pendingPlacementConstraintId).toBeNull()
     expect(useSketchUiStore.getState().pendingDialog).toBeNull()
     expect(usePartEditorStore.getState().undoStack.length).toBe(seeded)
     expect(usePartEditorStore.getState().redoStack.length).toBe(0)
+    expect(usePartEditorStore.getState().doc).toEqual(baseline)
+    // The inserted row is gone with the rewind.
+    const after = (usePartEditorStore.getState().doc?.features?.[0] as { constraints?: { id: string }[] })?.constraints ?? []
+    expect(after.some(c => c.id === 'c_len_1')).toBe(false)
 
     // Nothing in progress now, so the next press pops the real entry.
     await act(async () => { executeCommand('undo') })

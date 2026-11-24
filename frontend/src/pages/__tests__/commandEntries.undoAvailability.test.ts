@@ -69,6 +69,14 @@ describe('undo/redo availability from the session', () => {
     } finally {
       useEditorState.setState({ pendingPlacementConstraintId: null })
     }
+
+    // A projection-only gesture is the same condition the tool switch uses.
+    useEditorState.setState({ pendingBrepProjectionIds: ['proj1'] })
+    try {
+      expect(undoEnabled(session)).toBe(true)
+    } finally {
+      useEditorState.setState({ pendingBrepProjectionIds: [] })
+    }
   })
 
   it('a redo branch made only of pre-session entries is unavailable inside the session', () => {    const { session } = makeSession()

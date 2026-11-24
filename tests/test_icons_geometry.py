@@ -173,6 +173,34 @@ def test_draw_arc_arrow_strokes_the_arc_and_points_both_heads_outward(monkeypatc
         assert (actual - expected_deg + 180) % 360 - 180 == pytest.approx(0, abs=1e-6)
 
 
+def test_dimension_angle_drawing_is_centred_in_its_slot(monkeypatch):
+    _load(monkeypatch)
+    import icon_cairo
+
+    _path, draw, angle, offset_x, offset_y = next(
+        entry for entry in icon_cairo._registry
+        if pathlib.Path(entry[0]).name == "dimension-angle.svg"
+    )
+    assert angle == 0
+
+    ctx = RecordingCtx()
+    draw(ctx)
+
+    # The drawn bbox includes the legs, the arc endpoints and both heads. The
+    # decorator's translation is the slot centring; apply it here because
+    # _draw_one owns it, not the drawing function.
+    xs = [point[0] + offset_x for op in ("move_to", "line_to") for point in ctx.points(op)]
+    ys = [point[1] + offset_y for op in ("move_to", "line_to") for point in ctx.points(op)]
+    for cx, cy, r, a0, a1 in (coords for name, coords in ctx.ops if name == "arc"):
+        for a in (a0, a1):
+            xs.append(cx + r * math.cos(a) + offset_x)
+            ys.append(cy + r * math.sin(a) + offset_y)
+
+    # Within one 24px pixel of the slot's centre.
+    assert (min(xs) + max(xs)) / 2 == pytest.approx(0.5, abs=1 / 24)
+    assert (min(ys) + max(ys)) / 2 == pytest.approx(0.5, abs=1 / 24)
+
+
 def test_draw_arc_arrow_does_not_eat_a_short_arc(monkeypatch):
     icons = _load(monkeypatch)
     ctx = RecordingCtx()

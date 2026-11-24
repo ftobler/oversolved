@@ -83,8 +83,10 @@ export interface PartCommandState {
   drawPoints: readonly [number, number][]
   dimensionPicks: readonly unknown[]
   // The constraint id a placement prompt is open for (null when no placement
-  // editor is up). Undo resolves that gesture before it pops history.
+  // editor is up) and the projections the gesture materialized. Undo and redo
+  // resolve that gesture before they pop or reach history.
   pendingPlacementConstraintId: string | null
+  pendingBrepProjectionIds: readonly string[]
   activePickField: unknown
   pendingDialog: unknown
   setActiveTool(tool: ActiveTool): void
@@ -178,6 +180,17 @@ function toolSpec(id: CommandName, label: string, tool: ActiveTool): PartCommand
   }
 }
 
+// A dimension placement is open when the store still names its prompt or holds
+// the projections the gesture materialized. This is the tool switch's condition:
+// every path that abandons a placement (undo, redo, a tool switch, leaving the
+// sketch, arming a pick) resolves the same gesture.
+function placementOpen(st: {
+  pendingPlacementConstraintId: string | null
+  pendingBrepProjectionIds: readonly string[]
+}): boolean {
+  return st.pendingPlacementConstraintId !== null || st.pendingBrepProjectionIds.length > 0
+}
+
 const undoSpec: PartCommandSpec = {
   id: 'undo',
   label: 'Undo',
@@ -190,7 +203,7 @@ const undoSpec: PartCommandSpec = {
   // is always undoable: the press cancels it even when no entry sits above the
   // session floor.
   enabled: ctx => {
-    if (ctx.state().pendingPlacementConstraintId !== null) return true
+    if (placementOpen(ctx.state())) return true
     return !ctx.session || !ctx.session.canUndo() ? 'nothing to undo' : true
   },
   run: ctx => {
@@ -211,7 +224,7 @@ const undoSpec: PartCommandSpec = {
     // stops there, exactly as the keyboard path would. Without this the toolbar
     // undo would cancel the transaction in the session while the store's
     // pending id and the dialog survived against a constraint the rewind removed.
-    if (st.pendingPlacementConstraintId !== null) {
+    if (placementOpen(st)) {
       st.cancelPlacementGesture()
       return okResult()
     }
@@ -236,7 +249,7 @@ const redoSpec: PartCommandSpec = {
     // Redo resolves a placement the way the session does: the finished
     // dimension is kept by committing it. Clearing only in the session would
     // leave the store believing a prompt is still up.
-    if (st.pendingPlacementConstraintId !== null) {
+    if (placementOpen(st)) {
       st.commitPlacementGesture()
       return okResult()
     }

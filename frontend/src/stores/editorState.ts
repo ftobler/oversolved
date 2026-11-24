@@ -1031,10 +1031,18 @@ export const editorState = createStore<EditorState>((set, get) => ({
   // vertex picked with the dimension tool is projected into the active sketch
   // first and the pick targets that projection.
   addBrepDimensionPick: (query, { isVertexPick, sourceKind }) => {
-    const { activeFeatureId, dimensionPicks } = get()
+    const { activeFeatureId } = get()
     if (!activeFeatureId) return
     const onMutation = requireMutation('addBrepDimensionPick')
     if (!onMutation) return
+    // A finished placement (its insert already landed) is banked by
+    // beginPlacement below. Resolve the store's copy first: otherwise its
+    // marker, prompt and pending projection ids would survive the bank, a later
+    // pick could delete a committed projection and the stale prompt would
+    // confirm into a second entry. A projection-only gesture carries no marker
+    // and must stay open: its next pick belongs to the same dimension.
+    if (get().pendingPlacementConstraintId !== null) get().commitPlacementGesture()
+    const dimensionPicks = get().dimensionPicks
     const sketch = sketchCallbacks.getSketch?.(activeFeatureId) ?? null
     const { mutations, pick } = planBrepDimensionPick({
       query,
@@ -1089,6 +1097,11 @@ export const editorState = createStore<EditorState>((set, get) => ({
 
   commitPlacementGesture: () => {
     sketchCallbacks.commitPlacement?.()
+    // The prompt belongs to the gesture: a commit reached from a second pick,
+    // a redo or a double-click must not leave it open over a constraint the
+    // store no longer names. The dialog shell's own confirm already closes it;
+    // closeDialog is idempotent.
+    sketchCallbacks.closeDialog?.()
     set({ pendingBrepProjectionIds: [], pendingPlacementConstraintId: null })
   },
 
@@ -1126,7 +1139,7 @@ export const editorState = createStore<EditorState>((set, get) => ({
     // would commit a dimension nobody can edit, behind a placement transaction
     // that would never close. Refuse before anything is written.
     if (!dimensionEditorAvailable()) {
-      failLoud('[editorState] finalizeDimensionPlacement: no dialog port registered, the value dialog cannot open (import stores/sketchEditorStore in the editor build)')
+      failLoud('[editorState] finalizeDimensionPlacement: no openDialog port registered, the value dialog cannot open (import stores/sketchEditorStore in the editor build)')
       return
     }
     const featureId = activeFeatureId

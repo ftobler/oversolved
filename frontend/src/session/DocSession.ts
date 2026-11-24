@@ -238,9 +238,11 @@ const PREVIEW_COMMIT_FALLBACK: Mutation = { type: 'preview_commit', description:
 // labels its commit like the projection it banked before placements existed.
 const PLACEMENT_COMMIT_FALLBACK: Mutation = { type: 'preview_commit', description: 'add projected edge' }
 
-// The sketch target a projection mutation materializes, in the spelling a
-// scratch delete names. A face projection has no entity row, so it has no
-// target here.
+// The sketch target a projection mutation names in a scratch delete. A face
+// projection has no entity row, but the planner still mints a phantom entity id
+// and a replaced pick's delete names that same phantom; tracking it keeps the
+// harmless cleanup inside the gesture. Returning null for a face source would
+// resolve the placement on that delete instead.
 function projectionTarget(m: Extract<Mutation, { type: 'add_projected_entity' }>): string | null {
   return m.entityId === undefined ? null : `entity:${m.featureId}:${m.entityId}`
 }
