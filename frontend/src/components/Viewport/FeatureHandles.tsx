@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import { useFrame, useThree } from '@react-three/fiber'
-import { Html } from '@react-three/drei'
+import { OverlayHtml } from '@/components/Geometry3D/OverlayHtml'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { useEditorState } from '@/hooks/useEditorState'
 import { useSketchEditorStore, useSketchUiStore, getSketchCallback, type FeatureHandleDrag } from '@/stores/sketchEditorStore'
@@ -497,7 +497,7 @@ function HandleArrow({ featureId, feature, handle, variables, laterVariables }: 
         pixelsPerWorld={pxToWorld}
       >
         {showLabel && (
-          <Html position={[0, TIP, 0]} center style={{ pointerEvents: 'none' }} zIndexRange={[100, 0]}>
+          <OverlayHtml position={[0, TIP, 0]} center style={{ pointerEvents: 'none' }} zIndexRange={[100, 0]}>
             <div style={{
               color, fontSize: LABEL_FONT_PX, fontFamily: "'Roboto Mono', monospace", background: '#111',
               padding: '0 5px', borderRadius: 2, whiteSpace: 'nowrap',
@@ -506,7 +506,7 @@ function HandleArrow({ featureId, feature, handle, variables, laterVariables }: 
             }}>
               {labelText}
             </div>
-          </Html>
+          </OverlayHtml>
         )}
       </ScreenArrow>
     </group>

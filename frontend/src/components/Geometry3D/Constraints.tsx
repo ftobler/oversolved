@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Html } from '@react-three/drei'
+import { OverlayHtml } from '@/components/Geometry3D/OverlayHtml'
 import type { Sketch, Constraints, Entity, PlaneTransform, PartConstraint, DroppedSketchConstraint } from '@/types/cad'
 import { useSketchEditorStore, useSketchUiStore } from '@/stores/sketchEditorStore'
 import { getEntityBounds, ICON_SIZE, ICON_COLS, getIconUrl } from '@/utils/geometry/sketchHelpers'
@@ -270,13 +270,13 @@ export function ConstraintOverlays({ constraints, sketch, extent, featureId, pla
   for (const [atKey, { at, icons }] of atGroups) {
     const cols = Math.min(icons.length, ICON_COLS)
     symbolElements.push(
-      <Html key={`icons-${atKey}`} position={[at[0], at[1], LABEL_Z_OFFSET]} style={{ pointerEvents: 'none' }}>
+      <OverlayHtml key={`icons-${atKey}`} position={[at[0], at[1], LABEL_Z_OFFSET]} style={{ pointerEvents: 'none' }}>
         <div style={{ marginLeft: 20, marginTop: -8, display: 'grid', gridTemplateColumns: `repeat(${cols}, ${ICON_SIZE}px)`, width: cols * ICON_SIZE + (cols - 1) * 2, gap: 2 }}>
           {icons.map(({ url, title, key, highlightIds, superfluous, culprit, weak }) => (
             <ConstraintTile key={key} url={url} title={title} id={key} featureId={featureId} highlightIds={highlightIds} superfluous={superfluous} culprit={culprit} weak={weak} onContextMenu={onSelectionContextMenu ? pos => onSelectionContextMenu(`constraint:${featureId}:${key}`, pos) : undefined} />
           ))}
         </div>
-      </Html>
+      </OverlayHtml>
     )
   }
 
@@ -292,7 +292,7 @@ export function ConstraintOverlays({ constraints, sketch, extent, featureId, pla
   if (!geometryStale) {
     for (const tile of droppedConstraintTiles(droppedConstraints ?? [], authoredConstraints, sketch)) {
       droppedElements.push(
-        <Html key={`dropped-${tile.id}`} position={[tile.at[0], tile.at[1], LABEL_Z_OFFSET]} style={{ pointerEvents: 'none' }}>
+        <OverlayHtml key={`dropped-${tile.id}`} position={[tile.at[0], tile.at[1], LABEL_Z_OFFSET]} style={{ pointerEvents: 'none' }}>
           <div style={{ marginLeft: 20, marginTop: -8, display: 'flex' }}>
             <ConstraintTile
               url={tile.url}
@@ -303,7 +303,7 @@ export function ConstraintOverlays({ constraints, sketch, extent, featureId, pla
               culprit
             />
           </div>
-        </Html>
+        </OverlayHtml>
       )
     }
   }

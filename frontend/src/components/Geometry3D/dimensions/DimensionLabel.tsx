@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef } from 'react'
-import { Html } from '@react-three/drei'
+import { OverlayHtml } from '@/components/Geometry3D/OverlayHtml'
 import { LABEL_Z_OFFSET } from '@/components/Geometry3D/constants'
 import { registerDimensionLabelElement } from '@/picking/dimensionLabelDom'
 
@@ -70,7 +70,7 @@ export function DimensionLabel({
   useEffect(() => () => { unregisterRef.current() }, [])
 
   return (
-    <Html position={[x, y, LABEL_Z_OFFSET]} center style={{ pointerEvents: 'none' }}>
+    <OverlayHtml position={[x, y, LABEL_Z_OFFSET]} center style={{ pointerEvents: 'none' }}>
       <div
         ref={attachText}
         // No background: the label sits under the cursor while dragging, and
@@ -92,6 +92,6 @@ export function DimensionLabel({
           {title}
         </div>
       )}
-    </Html>
+    </OverlayHtml>
   )
 }
