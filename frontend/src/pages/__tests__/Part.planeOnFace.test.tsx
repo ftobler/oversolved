@@ -93,12 +93,10 @@ describe('plane-on-face and the nested edit session guard', () => {
     fireEvent.click(within(sk0Item()).getByTitle('Show'))
     await waitFor(() => expect(within(sk0Item()).queryByTitle('Hide')).not.toBeNull())
 
-    // Undo always tears down whatever session is open (registerUndoTeardown),
-    // so this cannot use editingFeatureId surviving as its signal. Instead:
-    // one undo must pop only the SECOND toggle, landing sk0 back on hidden. A
-    // suppressed (aggregate) session would have swallowed both toggles with
-    // no entries of their own, so this undo would instead revert add_sketch
-    // itself and delete the new sketch feature entirely.
+    // Undo inside the open sketch stays in it and pops only the SECOND toggle,
+    // landing sk0 back on hidden. A suppressed (aggregate) session would have
+    // swallowed both toggles with no entries of their own, so this undo would
+    // instead find nothing of the session's own to revert.
     await act(async () => { executeCommand('undo') })
 
     await waitFor(() => {

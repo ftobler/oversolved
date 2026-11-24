@@ -147,6 +147,15 @@ export interface EditorState extends SketchEditorState, PartEditorFsm, ViewportD
   // list, and the open editor the move consumed comes down. One unit, so an
   // undo can never leave a stale editing id over a restored doc.
   restoreHistory: (doc: PartDoc) => void
+  // The in-session twin: the move stayed inside the open sketch, so the editor
+  // keeps its feature and pick boundary and only the bar is re-derived, just
+  // past the edited feature as enterEditFeature parks it.
+  restoreHistoryInSession: (doc: PartDoc) => void
+  // The transient sweep an in-session move needs: everything the restored doc
+  // may have invalidated (selection, hover, gesture, drag, projection
+  // bookkeeping) goes, while the open sketch, its armed tool and an armed pick
+  // field stay.
+  resetSessionTransients: () => void
   // The unmount reset: drops every field this store owns that describes the
   // previous document, leaving the sketch-transient reset to resetTransientState.
   resetEditorState: () => void
@@ -298,28 +307,15 @@ export const editorState = createStore<EditorState>((set, get) => ({
   // Delegates the drag/pointer fields to clearDragState so the two lists
   // cannot drift apart the way applyUndoRedo's hand-listed reset once did
   // (see useAssemblyUndoRedo.ts) -- this is the canonical list they both draw
-  // from.
+  // from. The in-session sweep is the base; this full wipe adds the arming and
+  // document-ownership fields it deliberately keeps.
   resetTransientState: () => {
-    get().clearDragState()
-    get().clearSelectionAndHover()
+    get().resetSessionTransients()
     set({
       activeTool: null,
       activeFeatureId: null,
-      drawPoints: [],
-      drawHover: null,
-      drawSnapRefs: [],
-      dimensionPicks: [],
-      pendingBrepProjectionIds: [],
-      dimensionCursorWorld: null,
       modeStack: [],
       activePickField: null,
-      // Derived from the open document, so it belongs to the wipe for the same
-      // reason the selection does: a remount or a fresh harness must not read
-      // the previous document's entity kinds.
-      entityKindMap: {},
-      constructionEntityKeys: new Set(),
-      faceProjectionMemberKeys: new Set(),
-      filletCornerMap: {},
     })
   },
 
@@ -1435,6 +1431,49 @@ export const editorState = createStore<EditorState>((set, get) => ({
       rollbackPosition: clampRollback(doc),
       pickBoundary: null,
       editingFeatureId: null,
+    })
+  },
+
+  restoreHistoryInSession: (doc) => {
+    // The move stayed inside the open sketch: the editor, its pick boundary and
+    // the armed tool keep describing the doc the user is still editing, and
+    // only the bar is re-derived. It sits just past the edited feature, the
+    // same rule enterEditFeature uses, so the solve rebuilds the sketch's whole
+    // prefix and not past it.
+    const editingFeatureId = get().editingFeatureId
+    const index = editingFeatureId === null
+      ? -1
+      : (doc.features ?? []).findIndex(feature => feature.id === editingFeatureId)
+    set({ rollbackPosition: index >= 0 ? index + 1 : clampRollback(doc) })
+  },
+
+  // The base transient sweep, shared with resetTransientState: everything here
+  // is document-derived or a gesture, so a restored doc invalidates it.
+  // resetSessionTransients keeps the arming (tool, pick field) and the open
+  // sketch; the full wipe adds those fields on top.
+  resetSessionTransients: () => {
+    get().clearDragState()
+    get().clearSelectionAndHover()
+    set({
+      // The gesture belongs to the pre-undo doc, so its points and picks go.
+      // Neither arming is touched here: the tool keeps being the tool and a
+      // pick field keeps being the field, because both describe the open
+      // session, not the document content the move replaced. Dropping the pick
+      // field would read to the page as an abandoned pick and cancel the very
+      // session the move was told to keep.
+      drawPoints: [],
+      drawHover: null,
+      drawSnapRefs: [],
+      dimensionPicks: [],
+      dimensionCursorWorld: null,
+      pendingBrepProjectionIds: [],
+      // Derived from the open document, so it belongs to the wipe for the same
+      // reason the selection does: a remount or a fresh harness must not read
+      // the previous document's entity kinds.
+      entityKindMap: {},
+      constructionEntityKeys: new Set(),
+      faceProjectionMemberKeys: new Set(),
+      filletCornerMap: {},
     })
   },
 

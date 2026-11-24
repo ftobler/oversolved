@@ -25,6 +25,13 @@ export interface HistoryOptions<Doc> {
   cap: number
 }
 
+export interface HistoryMoveOptions {
+  // An undo inside an open session leaves the pre-session restore point valid:
+  // the stacks it parked below the session floor still describe the doc a later
+  // cancel rewinds to. The default is the old rule, a move invalidates it.
+  preserveSnapshot?: boolean
+}
+
 // The pure undo/redo machine, built on utils/core/undoStack. It owns the two
 // stacks and the one pre-session snapshot slot, never the live document:
 // callers pass the departing doc into undo/redo exactly as the hook engine did,
@@ -67,23 +74,26 @@ export class History<Doc, Meta = unknown> {
     return this.redoStack
   }
 
-  push(label: string, doc: Doc, meta?: Meta): void {
-    this.pushEntry({ label, doc: this.cloneDoc(doc), meta })
+  // Returns the number of oldest entries the cap trimmed off the bottom: a
+  // caller that tracks a position in the stack (the session's floor) has to
+  // move it down by exactly that much.
+  push(label: string, doc: Doc, meta?: Meta): number {
+    return this.pushEntry({ label, doc: this.cloneDoc(doc), meta })
   }
 
   // For callers that already hold an independent snapshot (a preview or session
   // baseline): cloning it again would only copy a throwaway. The caller
   // guarantees it will not be mutated afterwards; a live doc still belongs to push.
-  pushSnapshot(label: string, doc: Doc, meta?: Meta): void {
-    this.pushEntry({ label, doc, meta })
+  pushSnapshot(label: string, doc: Doc, meta?: Meta): number {
+    return this.pushEntry({ label, doc, meta })
   }
 
-  undo(current: Doc): HistoryEntry<Doc, Meta> | null {
-    return this.move('undo', current)
+  undo(current: Doc, options: HistoryMoveOptions = {}): HistoryEntry<Doc, Meta> | null {
+    return this.move('undo', current, options)
   }
 
-  redo(current: Doc): HistoryEntry<Doc, Meta> | null {
-    return this.move('redo', current)
+  redo(current: Doc, options: HistoryMoveOptions = {}): HistoryEntry<Doc, Meta> | null {
+    return this.move('redo', current, options)
   }
 
   // A compound step (a pattern expansion) pushes many entries. The mark is the
@@ -127,13 +137,20 @@ export class History<Doc, Meta = unknown> {
     this.snapshot = null
   }
 
-  private pushEntry(entry: HistoryEntry<Doc, Meta>): void {
-    this.undoStack = pushCapped(this.undoStack, entry, this.cap)
+  private pushEntry(entry: HistoryEntry<Doc, Meta>): number {
+    const capped = pushCapped(this.undoStack, entry, this.cap)
+    const trimmed = this.undoStack.length + 1 - capped.length
+    this.undoStack = capped
     // A fresh edit invalidates any redo branch.
     this.redoStack = []
+    return Math.max(0, trimmed)
   }
 
-  private move(direction: 'undo' | 'redo', current: Doc): HistoryEntry<Doc, Meta> | null {
+  private move(
+    direction: 'undo' | 'redo',
+    current: Doc,
+    options: HistoryMoveOptions,
+  ): HistoryEntry<Doc, Meta> | null {
     const from = direction === 'undo' ? this.undoStack : this.redoStack
     const to = direction === 'undo' ? this.redoStack : this.undoStack
     if (from.length === 0) return null
@@ -150,8 +167,9 @@ export class History<Doc, Meta = unknown> {
       this.undoStack = move.to
     }
     // A move invalidates the pre-session restore point: the stacks it parked no
-    // longer describe the live doc.
-    this.snapshot = null
+    // longer describe the live doc, unless the caller is moving inside the very
+    // session that parked them.
+    if (!options.preserveSnapshot) this.snapshot = null
     return entry
   }
 }

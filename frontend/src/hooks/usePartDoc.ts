@@ -39,6 +39,9 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
   // session (forced visibility, sketch-editor selection/pick, popovers, panel
   // mode). The adapter runs it on the engine's teardown event.
   const undoTeardownRef = useRef<(() => void) | null>(null)
+  // The in-session half: a move that stayed inside an open sketch tears nothing
+  // down, so only the transients the restored doc invalidated are swept.
+  const inSessionUndoRef = useRef<(() => void) | null>(null)
 
   // The load path solves through the session, not the raw solver: the ref is
   // filled with the session's requestSolve once the session exists.
@@ -140,8 +143,15 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
       } else if (event.type === 'historyRestored') {
         // The store owns the rollback/edit FSM: it clamps the bar to the
         // restored doc and brings the consumed editor down, so the adapter does
-        // no UI writes on this path beyond the dirty flag.
-        editorState.getState().restoreHistory(event.entry.doc)
+        // no UI writes on this path beyond the dirty flag. A move that stayed
+        // inside the open sketch keeps its editor: only the transients the
+        // restored doc invalidated are swept, and the store re-derives the bar.
+        if (event.inSession) {
+          inSessionUndoRef.current?.()
+          editorState.getState().restoreHistoryInSession(event.entry.doc)
+        } else {
+          editorState.getState().restoreHistory(event.entry.doc)
+        }
         useUnsavedChangesStore.getState().setDirty(true)
       }
       onStoreChange()
@@ -289,6 +299,10 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
     undoTeardownRef.current = fn
   }, [])
 
+  const registerInSessionUndo = useCallback((fn: (() => void) | null) => {
+    inSessionUndoRef.current = fn
+  }, [])
+
   const stacks = useMemo(() => {
     const entries = session.historyEntries()
     const toStack = (list: readonly { doc: PartDoc; label: string; meta?: Mutation }[]): StackEntry[] =>
@@ -355,5 +369,6 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
     commitEditSession,
     cancelEditSession,
     registerUndoTeardown,
+    registerInSessionUndo,
   }
 }

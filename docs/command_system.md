@@ -207,14 +207,24 @@ remount.
   save fingerprint. The brep arm/consume/steal and the preview escape live in
   the session's mutation funnel.
 - **Undo/redo.** `session.undo()`/`redo()` resolve open work first (bank a
-  pending projection, commit a would-push session or preview), move one entry
-  across, swap the doc, emit `transactionsDropped` + `historyRestored`, and
-  re-solve with any retained pre-delete snapshot. A move whose own commit
-  emptied the branch still tears the editor down, because the session knows
-  what it just committed. The adapter applies the editor writes on
-  `historyRestored` (editing id, pick boundary, clamped rollback, dirty).
+  pending projection, commit a would-push session or preview), then move one
+  entry across and swap the doc. A move with no unsuppressed session open (or
+  one whose own commit emptied the branch) emits `transactionsDropped` +
+  `historyRestored { inSession: false }` and re-solves with any retained
+  pre-delete snapshot; the teardown still runs there, because the session knows
+  what it just committed. An unsuppressed (sketch) session records a floor at
+  `begin`, after any preview resolution: a move whose entry lies above it keeps
+  the session, skips the teardown and emits `historyRestored { inSession: true }`,
+  while a move at the floor (or a redo reaching only pre-session entries) is a
+  dead keystroke. The floor follows a capped push's trim down. The adapter
+  applies the editor writes on `historyRestored` (editing id, pick boundary,
+  clamped rollback, dirty); the in-session form keeps the editing id and
+  re-derives the bar just past the edited feature.
 - **Snapshot pairing.** `begin('edit')` saves the history snapshot. `cancel`
-  rewinds the doc, then restores the snapshot. `commit` clears it.
+  rewinds the doc, then restores the snapshot. `commit` clears it. A move
+  normally invalidates it, except an in-session one: `History.undo`/`redo` take
+  `{ preserveSnapshot }` because the stacks below the session floor still
+  describe the pre-session doc a later cancel rewinds to.
 - **Preview.** `begin('preview')`; mid-session it is refused, so the popover's
   mutations land as session edits (swallowed by a suppressed session,
   per-action in a sketch session). Only the `PREVIEW_SCOPE` appearance

@@ -170,6 +170,8 @@ export async function partDocMockModule(overrides: Record<string, unknown> = {})
       // crash paths only.
       session: {
         historyEntries: () => ({ undo: [], redo: [] }),
+        canUndo: () => false,
+        canRedo: () => false,
         subscribe: () => () => {},
         getDoc: () => null,
         isDirty: () => false,
@@ -196,6 +198,7 @@ export async function partDocMockModule(overrides: Record<string, unknown> = {})
       beginBrepProjection: vi.fn(),
       cancelBrepProjection: vi.fn(),
       registerUndoTeardown: vi.fn(),
+      registerInSessionUndo: vi.fn(),
       featureTimings: {},
       validation: null,
       pickStateReady: false,

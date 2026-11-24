@@ -193,6 +193,20 @@ describe('the snapshot slot', () => {
     expect(history.redoLabels()).toEqual(['one'])
   })
 
+  it('a move can keep the saved restore point for an in-session undo', () => {
+    const history = makeHistory()
+    history.push('one', doc('a'))
+    history.push('two', doc('b'))
+    history.saveSnapshot()
+    history.push('three', doc('c'))
+
+    expect(history.undo(doc('c'), { preserveSnapshot: true })).toEqual({ label: 'three', doc: doc('c') })
+    expect(history.restoreSnapshot()).toBe(true)
+    // The parked pair is exactly the pre-session stacks again.
+    expect(history.undoLabels()).toEqual(['one', 'two'])
+    expect(history.redoLabels()).toEqual([])
+  })
+
   it('clear drops both stacks and the slot', () => {
     const history = makeHistory()
     history.push('one', doc('a'))
