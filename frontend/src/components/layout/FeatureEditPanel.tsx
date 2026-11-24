@@ -4,6 +4,7 @@ import { usePartEditorCallbacks } from '@/contexts/PartEditorContext'
 import { featureFailure } from '@/utils/core/featureFailure'
 import { FeatureItemEditors, featureHasEditor } from '@/components/layout/FeatureItemEditors'
 import { getFeatureIcon } from '@/components/layout/featureIcons'
+import { CardHeader } from '@/components/shared/CardHeader'
 import { StatusPanel } from '@/components/shared/StatusPanel'
 import { BUILTIN_FEATURE_IDS } from '@/utils/builtins'
 import { canManageFeature } from '@/pages/buildContextMenu'
@@ -75,35 +76,36 @@ export function FeatureEditPanel() {
   return (
     <>
       <div className="glass-panel feature-edit-panel">
-        <div className="feature-edit-panel-header">
-          <img
-            className="feature-icon"
-            src={getFeatureIcon(feature.kind)}
-            alt={feature.kind || 'feature'}
-          />
-          <span className="feature-edit-panel-title">{displayName}</span>
-          {canRename && (
-            <button
-              type="button"
-              className="feature-rename-btn"
-              onClick={() => onRequestRename({
-                kind: 'feature',
-                id: feature.id,
-                currentName: renameSeed,
-              })}
-              title="Rename"
-              aria-label="Rename"
-            >
-              <img src={renameIcon} alt="" />
-            </button>
+        <CardHeader
+          icon={getFeatureIcon(feature.kind)}
+          iconAlt={feature.kind || 'feature'}
+          title={displayName}
+          actions={(
+            <>
+              {canRename && (
+                <button
+                  type="button"
+                  className="feature-rename-btn"
+                  onClick={() => onRequestRename({
+                    kind: 'feature',
+                    id: feature.id,
+                    currentName: renameSeed,
+                  })}
+                  title="Rename"
+                  aria-label="Rename"
+                >
+                  <img src={renameIcon} alt="" />
+                </button>
+              )}
+              <button className="feature-ok-btn" onClick={onEditCommit} title="OK">
+                <img src={okIcon} alt="OK" />
+              </button>
+              <button className="feature-cancel-btn" onClick={onEditCancel} title="Cancel">
+                <img src={cancelIcon} alt="Cancel" />
+              </button>
+            </>
           )}
-          <button className="feature-ok-btn" onClick={onEditCommit} title="OK">
-            <img src={okIcon} alt="OK" />
-          </button>
-          <button className="feature-cancel-btn" onClick={onEditCancel} title="Cancel">
-            <img src={cancelIcon} alt="Cancel" />
-          </button>
-        </div>
+        />
         <div className="feature-edit-panel-body">
           <FeatureItemEditors
             feature={feature}

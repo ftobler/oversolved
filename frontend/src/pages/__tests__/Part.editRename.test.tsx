@@ -84,7 +84,7 @@ describe('Part - rename from the open feature card', () => {
     renameFromCard('Boss')
 
     await waitFor(() => {
-      expect(document.querySelector('.feature-edit-panel-title')!.textContent).toBe("extrude 'Boss'")
+      expect(document.querySelector('.card-header-title')!.textContent).toBe("extrude 'Boss'")
     })
     expect(screen.getByText("extrude 'Boss'", { selector: '.feature-name' })).toBeInTheDocument()
   })
@@ -99,7 +99,7 @@ describe('Part - rename from the open feature card', () => {
     expect(before).toBeGreaterThan(0)
 
     renameFromCard('Boss')
-    await waitFor(() => expect(document.querySelector('.feature-edit-panel-title')!.textContent).toBe("extrude 'Boss'"))
+    await waitFor(() => expect(document.querySelector('.card-header-title')!.textContent).toBe("extrude 'Boss'"))
 
     fireEvent.click(cardButton('.feature-cancel-btn'))
 
@@ -119,7 +119,7 @@ describe('Part - rename from the open feature card', () => {
 
     fireEvent.change(screen.getByLabelText('Distance, millimetres'), { target: { value: '20' } })
     renameFromCard('Boss')
-    await waitFor(() => expect(document.querySelector('.feature-edit-panel-title')!.textContent).toBe("extrude 'Boss'"))
+    await waitFor(() => expect(document.querySelector('.card-header-title')!.textContent).toBe("extrude 'Boss'"))
 
     fireEvent.click(cardButton('.feature-ok-btn'))
     await waitFor(() => expect(document.querySelector('.feature-edit-panel')).toBeNull())

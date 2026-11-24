@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { backendBundle } from '@/adapters/backend'
 import MessageDialog from '@/components/dialogs/MessageDialog'
 import { SelectionSetRow } from '@/components/bugReport/SelectionSetRow'
+import { CardHeader } from '@/components/shared/CardHeader'
 import { useEditorState, editorState } from '@/hooks/useEditorState'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { isDraftEmpty, useBugReportStore } from '@/stores/bugReportStore'
@@ -11,6 +12,10 @@ import { insertReference, unknownReferences } from '@/utils/core/reportReference
 import type { Mutation } from '@/types/cad'
 import '@/components/layout/Glass.css'
 import '@/components/bugReport/BugReportPanel.css'
+import bugIcon from '@/assets/icons/bug-report.svg'
+import submitIcon from '@/assets/icons/dialog-ok.svg'
+import discardIcon from '@/assets/icons/context-delete.svg'
+import closeIcon from '@/assets/icons/dialog-cancel.svg'
 
 type UndoEntry = { doc: unknown; mutation: Mutation }
 
@@ -168,36 +173,45 @@ export default function BugReportPanel({ canPick = false, placement = 'overlay' 
         <div
           className={`glass-panel bug-report-panel${placement === 'header' ? ' bug-report-panel--header' : ''}`}
         >
-          <div className="bug-report-panel-header">
-            <span className="material-icons-outlined bug-report-icon">bug_report</span>
-            <span className="bug-report-panel-title">Report a bug</span>
-            <button
-              type="button"
-              className="bug-report-submit"
-              onClick={handleSubmit}
-              disabled={submitting}
-            >
-              {submitting ? 'Submitting...' : 'Submit'}
-            </button>
-            <button
-              type="button"
-              className="bug-report-discard"
-              onClick={requestDiscard}
-              disabled={submitting}
-            >
-              Discard
-            </button>
-            <button
-              type="button"
-              className="bug-report-close"
-              title="Close"
-              aria-label="Close report"
-              onClick={() => { setError(null); close() }}
-              disabled={submitting}
-            >
-              ×
-            </button>
-          </div>
+          <CardHeader
+            icon={bugIcon}
+            title="Report a bug"
+            actions={(
+              <>
+                {/* The report's own verdicts: submit is the green tick, discard
+                    is the red bin (it destroys the draft, so it is not the
+                    feature card's cross), and close is the neutral cross. */}
+                <button
+                  type="button"
+                  className="feature-ok-btn"
+                  title={submitting ? 'Submitting...' : 'Submit'}
+                  onClick={handleSubmit}
+                  disabled={submitting}
+                >
+                  <img src={submitIcon} alt="" />
+                </button>
+                <button
+                  type="button"
+                  className="feature-cancel-btn"
+                  title="Discard"
+                  onClick={requestDiscard}
+                  disabled={submitting}
+                >
+                  <img src={discardIcon} alt="" />
+                </button>
+                <button
+                  type="button"
+                  className="feature-neutral-btn"
+                  title="Close"
+                  aria-label="Close report"
+                  onClick={() => { setError(null); close() }}
+                  disabled={submitting}
+                >
+                  <img src={closeIcon} alt="" />
+                </button>
+              </>
+            )}
+          />
 
           <div className="bug-report-panel-body">
             <input

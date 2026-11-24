@@ -798,7 +798,7 @@ describe('AssemblyEditor (Stage 6b)', () => {
     // The card lives in the same flow stack the part editor uses, where its
     // status card can follow it.
     expect(document.querySelector('.right-overlay-stack')!.contains(card)).toBe(true)
-    expect(card.querySelector('.feature-edit-panel-title')!.textContent).toBe('Bracket')
+    expect(card.querySelector('.card-header-title')!.textContent).toBe('Bracket')
     // The form is in the card, never in the row it describes.
     expect(card.querySelector('input')).not.toBeNull()
     expect(document.querySelector('.feature-item.editing input')).toBeNull()
@@ -912,7 +912,7 @@ describe('AssemblyEditor (Stage 6b)', () => {
     await tick()
 
     const card = document.querySelector('.feature-edit-panel') as HTMLElement
-    expect(card.querySelector('.feature-edit-panel-title')!.textContent).toBe('Fixed 1')
+    expect(card.querySelector('.card-header-title')!.textContent).toBe('Fixed 1')
     expect(card.querySelector('.mate-editor')).not.toBeNull()
     expect(screen.queryByLabelText('Position X, millimetres')).toBeNull()
     expect(document.querySelectorAll('.feature-edit-panel')).toHaveLength(1)

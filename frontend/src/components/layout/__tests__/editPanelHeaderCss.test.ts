@@ -1,13 +1,15 @@
 // jsdom applies no stylesheet, so the header row's alignment is pinned against
 // the stylesheets themselves: the verdict pair and the neutral third button live
-// in the shared Glass.css (a dialog must not depend on Part.css), while the
-// row's other icon buttons keep the Part.css row.
+// in the shared Glass.css (a dialog must not depend on Part.css), the row itself
+// travels with components/shared/CardHeader.tsx in CardHeader.css, and the part
+// and assembly pages keep only the tree row's own icon buttons.
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 const PART_CSS = readFileSync(join(__dirname, '../../../pages/Part.css'), 'utf8')
 const GLASS_CSS = readFileSync(join(__dirname, '../Glass.css'), 'utf8')
+const CARD_HEADER_CSS = readFileSync(join(__dirname, '../CardHeader.css'), 'utf8')
 
 describe('edit card header buttons', () => {
   it('keeps the tree row on the shared 28px icon-button rule', () => {
@@ -37,5 +39,19 @@ describe('edit card header buttons', () => {
     expect(GLASS_CSS).toMatch(
       /\.feature-rename-btn:hover,\s*\n\.feature-neutral-btn:hover\s*\{[^}]*background:\s*var\(--glass-hover-bg\)/,
     )
+  })
+
+  it('keeps the shared header row with the component, out of Part.css', () => {
+    expect(CARD_HEADER_CSS).toMatch(/\.card-header\s*\{[^}]*gap:\s*8px/)
+    expect(CARD_HEADER_CSS).toMatch(/\.card-header\s*\{[^}]*padding:\s*6px 8px/)
+    expect(CARD_HEADER_CSS).toMatch(/\.card-header-title\s*\{[^}]*text-overflow:\s*ellipsis/)
+    for (const selector of ['.card-header', '.card-header-title']) {
+      const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      expect(new RegExp(`(?:^|\\n)${escaped}\\s*\\{`).test(PART_CSS), selector).toBe(false)
+    }
+  })
+
+  it('keeps a disabled verdict at its size and colour', () => {
+    expect(GLASS_CSS).toMatch(/\.feature-ok-btn:disabled[\s\S]*?\{[^}]*cursor:\s*not-allowed/)
   })
 })

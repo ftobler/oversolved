@@ -58,6 +58,51 @@ def dialog_cancel(ctx):
     _draw_x(ctx)
 
 
+@icon("frontend/src/assets/icons/bug-report.svg")
+def bug_report(ctx):
+    """Icon for Report a bug: a beetle silhouette, so the card's white tint
+    reads the same as every feature icon beside it."""
+    cx, cy, rx, ry = 0.5, 0.60, 0.15, 0.22
+    k = 0.5523
+
+    # Body: a vertical oval from head to tail, drawn as four bezier quarters.
+    ctx.move_to(cx, cy - ry)
+    ctx.curve_to(cx + rx * k, cy - ry, cx + rx, cy - ry * k, cx + rx, cy)
+    ctx.curve_to(cx + rx, cy + ry * k, cx + rx * k, cy + ry, cx, cy + ry)
+    ctx.curve_to(cx - rx * k, cy + ry, cx - rx, cy + ry * k, cx - rx, cy)
+    ctx.curve_to(cx - rx, cy - ry * k, cx - rx * k, cy - ry, cx, cy - ry)
+    ctx.close_path()
+    stroke(ctx, 1.5)
+
+    # The wing split keeps the oval from reading as a plain disc at 20px.
+    ctx.move_to(cx, 0.42)
+    ctx.line_to(cx, 0.78)
+    stroke(ctx, 1.5)
+
+    # Head, filled so it stays a separate lobe from the body.
+    ctx.arc(cx, 0.32, 0.055, 0, 2 * math.pi)
+    ctx.fill()
+
+    # Antennae.
+    for x_end in (0.40, 0.60):
+        ctx.move_to(cx + (x_end - cx) * 0.5, 0.26)
+        ctx.line_to(x_end, 0.15)
+    stroke(ctx, 1.5)
+
+    # Three legs a side, splayed from the body's own edge.
+    for start, end in (
+        ((0.38, 0.49), (0.24, 0.42)),
+        ((0.35, 0.60), (0.21, 0.60)),
+        ((0.38, 0.71), (0.24, 0.79)),
+        ((0.62, 0.49), (0.76, 0.42)),
+        ((0.65, 0.60), (0.79, 0.60)),
+        ((0.62, 0.71), (0.76, 0.79)),
+    ):
+        ctx.move_to(*start)
+        ctx.line_to(*end)
+    stroke(ctx, 1.5)
+
+
 @icon("frontend/src/assets/icons/icon-eye.svg")
 def icon_eye(ctx):
     """Icon for Eye symbol: visible state."""

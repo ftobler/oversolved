@@ -223,26 +223,6 @@
   overflow: hidden;
 }
 
-.feature-edit-panel-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 8px;
-  border-bottom: 1px solid var(--glass-border);
-  flex-shrink: 0;
-}
-
-.feature-edit-panel-title {
-  flex: 1 1 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 14px;
-  color: #e060b0;
-  /* #root centers text app-wide; a header line reads left-aligned. */
-  text-align: left;
-}
-
 .feature-edit-panel-body {
   min-height: 0;
   overflow-y: auto;
