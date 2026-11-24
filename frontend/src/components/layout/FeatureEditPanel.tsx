@@ -7,7 +7,7 @@ import { getFeatureIcon } from '@/components/layout/featureIcons'
 import { CardHeader } from '@/components/shared/CardHeader'
 import { StatusPanel } from '@/components/shared/StatusPanel'
 import { BUILTIN_FEATURE_IDS } from '@/utils/builtins'
-import { canManageFeature } from '@/pages/buildContextMenu'
+import { canRenameFeature } from '@/pages/buildContextMenu'
 import { featureDisplayName } from '@/utils/core/displayNames'
 import '@/components/layout/Glass.css'
 import okIcon from '@/assets/icons/dialog-ok.svg'
@@ -31,7 +31,6 @@ import renameIcon from '@/assets/icons/rename.svg'
  */
 export function FeatureEditPanel() {
   const editingFeatureId = useEditorState(s => s.editingFeatureId)
-  const activeSketchFeatureId = useEditorState(s => s.activeSketchFeatureId)
   const features = usePartEditorStore(s => s.features)
   const doc = usePartEditorStore(s => s.doc)
   const partLabels = usePartEditorStore(s => s.partLabels)
@@ -48,13 +47,11 @@ export function FeatureEditPanel() {
   if (!feature || !featureHasEditor(feature)) return null
 
   // The card's Rename is the menu's Rename, gate included: a headless caller
-  // with no dialog opener gets no button. The kind check does not trust the
-  // published activeSketchFeatureId alone: the page writes that one effect
-  // after editingFeatureId, so the sketch's own card must be refused from the
-  // feature in hand, not from a value that can still trail the previous edit.
-  const canRename = !!onRequestRename
-    && feature.kind !== 'sketch'
-    && canManageFeature(feature.id, BUILTIN_FEATURE_IDS, activeSketchFeatureId ?? undefined)
+  // with no dialog opener gets no button. Rename only needs an authored id, so
+  // the open sketch keeps its button; unlike Delete and Suppress it does not
+  // touch the sketch's geometry mid-session. Not reading activeSketchFeatureId
+  // also keeps the button stable across the frame that derived id trails.
+  const canRename = !!onRequestRename && canRenameFeature(feature.id, BUILTIN_FEATURE_IDS)
 
   // The feature's own last solve result, for a row that shows a solved value
   // (the linear pattern's directive-length spacing). A feature that never

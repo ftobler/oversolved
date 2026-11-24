@@ -9,7 +9,7 @@ import { selectionSourceFeatureIds } from '@/utils/query/pickOrder'
 import { isFaceRestriction } from '@/kernel/occ/primitives'
 import { findEdgeKindForQuery } from '@/picking/partDispatchCallbacks'
 import { classifyPendingAdd } from '@/kernel/features/constraintProbe'
-import { variableRenameProblem } from '@/kernel/features/variable'
+import { variableRenameProblem, variableNameInput } from '@/kernel/features/variable'
 import { PROJECTION_NOT_FROZEN_TITLE, projectionNotFrozenMessage } from '@/kernel/features/projectionMembers'
 import { projectedSelectionTargets } from '@/utils/yamlMutations/freezeProjection'
 import { executeCommand } from '@/hooks/commandRegistry'
@@ -1759,6 +1759,7 @@ export default function Part() {
         validate={renameFeatureId !== null && renameIsVariable
           ? name => variableRenameProblem(features, renameFeatureId, name)
           : undefined}
+        normalize={renameIsVariable ? variableNameInput : undefined}
         onRename={handleRenameConfirm}
         onCancel={() => setRenameTarget(null)}
       />

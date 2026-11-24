@@ -26,6 +26,15 @@ features:
     extrude: { sketch: '$sk1', distance: 10, direction: 'normal' }
 `
 
+const SKETCH_DOC = `version: 1
+kind: part
+features:
+  - id: sk1
+    kind: sketch
+    label: Sketch 1
+    plane: '@builtin_plane_top'
+`
+
 function renderPart() {
   return render(
     <MemoryRouter initialEntries={['/documents/doc-1']}>
@@ -108,6 +117,28 @@ describe('Part - rename from the open feature card', () => {
     })
     expect(usePartEditorStore.getState().undoStack.length).toBe(before)
     expect(usePartEditorStore.getState().redoStack.length).toBe(0)
+  })
+
+  // A sketch edit is a real edit session (enterEditSketch opens one with undo
+  // enabled), so a rename from its card is one mutation in that session: Cancel
+  // reverts it just as it does for every other kind's card.
+  it('reverts a sketch rename from its card when the sketch edit is cancelled', async () => {
+    partDocStoreMock({ content: SKETCH_DOC })
+    renderPart()
+    await waitFor(() => expect(screen.getByTitle('Feature mode')).toBeInTheDocument())
+    fireEvent.click(screen.getByTitle('Feature mode'))
+    fireEvent.click(screen.getByTitle('Edit sketch'))
+    await waitFor(() => expect(document.querySelector('.feature-edit-panel')).not.toBeNull())
+
+    renameFromCard('Profile 1')
+    await waitFor(() => {
+      expect(usePartEditorStore.getState().features.find(f => f.id === 'sk1')!.label).toBe('Profile 1')
+    })
+
+    fireEvent.click(cardButton('.feature-cancel-btn'))
+    await waitFor(() => {
+      expect(usePartEditorStore.getState().features.find(f => f.id === 'sk1')!.label).toBe('Sketch 1')
+    })
   })
 
   it('OK commits the rename and a same-session parameter change as one undo step', async () => {

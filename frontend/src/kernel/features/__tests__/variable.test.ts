@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import type { PartFeature } from '@/types/cad'
 import {
-  solveVariable, isValidVariableName, variableRenameProblem, variableScopeAt, laterVariablesAt,
+  solveVariable, isValidVariableName, variableRenameProblem, variableNameInput, variableScopeAt, laterVariablesAt,
   type VariableSolveInput,
 } from '../variable'
 
@@ -33,6 +33,18 @@ describe('isValidVariableName', () => {
     for (const n of ['pi', 'e', 'i', 'Infinity', 'NaN', 'true', 'false', 'null']) {
       expect(isValidVariableName(n)).toBe(false)
     }
+  })
+})
+
+describe('variableNameInput', () => {
+  it('turns plain spaces into underscores as the field is typed', () => {
+    expect(variableNameInput('wall thickness')).toBe('wall_thickness')
+    expect(variableNameInput('  a  b ')).toBe('__a__b_')
+  })
+
+  it('leaves other characters to the validator', () => {
+    expect(variableNameInput('my-var')).toBe('my-var')
+    expect(variableNameInput('tab\there')).toBe('tab\there')
   })
 })
 

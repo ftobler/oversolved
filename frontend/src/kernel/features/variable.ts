@@ -42,6 +42,14 @@ export function isValidVariableName(name: string): boolean {
   return !RESERVED.has(name)
 }
 
+/** Folds plain spaces into underscores as a variable name is typed. Only the
+ *  rename dialog uses this: a script states the name it wants, and the applier
+ *  and MCP still refuse a space by name. Other whitespace and punctuation are
+ *  left for `variableRenameProblem` to report. */
+export function variableNameInput(input: string): string {
+  return input.replace(/ /g, '_')
+}
+
 /** Why `name` cannot be variable `featureId`'s new label, or null when it can.
  *  The rename applier, the rename dialog and the MCP reply all read this one
  *  sentence, so the user sees the same words wherever the rename is refused. */

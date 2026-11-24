@@ -56,17 +56,27 @@ export interface RenameTarget {
   currentName: string
 }
 
-// Whether an authored feature exposes its management verbs (Rename, Delete,
-// Suppress). A built-in has no author and no place in the doc to change. The
-// sketch under edit is left out on purpose: renaming or deleting it mid-session
-// would fight the edit that owns it. The open editor card asks this same
-// question before drawing its Rename button, so the menu and the card agree.
+// Whether an authored feature exposes the verbs that fight the open sketch
+// session (Delete, Suppress). A built-in has no author and no place in the doc
+// to change. Rename is deliberately not one of those verbs: it only changes a
+// label, so it has its own gate below and the open sketch can be renamed.
 export function canManageFeature(
   featureId: string | undefined,
   builtInIds: Set<string>,
   activeSketchFeatureId: string | undefined,
 ): boolean {
   return !!featureId && !builtInIds.has(featureId) && featureId !== activeSketchFeatureId
+}
+
+// Rename only needs an authored id. Unlike Delete and Suppress it does not touch
+// the sketch's geometry, so the open sketch keeps its Rename entry on both the
+// card and the sketch board. builtInIds is the whole refusal: a built-in plane
+// has no row in the document to carry a new label.
+export function canRenameFeature(
+  featureId: string | undefined,
+  builtInIds: Set<string>,
+): boolean {
+  return !!featureId && !builtInIds.has(featureId)
 }
 
 export interface FaceFrame {
@@ -254,8 +264,9 @@ function resolveBoardContext(input: BuildContextMenuInput): BoardContext {
   const canToggleVisibility = featureEye || part !== null
   const canManage = target !== undefined
     && canManageFeature(featureId, input.builtInIds, input.activeSketchFeatureId)
+  const canRename = target !== undefined && canRenameFeature(featureId, input.builtInIds)
 
-  const featureRename: RenameTarget | null = canManage && featureId
+  const featureRename: RenameTarget | null = canRename && featureId
     ? {
         kind: 'feature',
         id: featureId,
@@ -320,13 +331,13 @@ function suppressItem(ctx: BoardContext, callbacks: BuildContextMenuCallbacks): 
   }
 }
 
-function renameItem(ctx: BoardContext, callbacks: BuildContextMenuCallbacks): ContextMenuItem {
+function renameItem(rename: RenameTarget | null, callbacks: BuildContextMenuCallbacks): ContextMenuItem {
   return {
     label: 'Rename',
     icon: iconRenameIcon,
-    disabled: ctx.rename === null,
+    disabled: rename === null,
     onClick: () => {
-      if (ctx.rename) callbacks.onRequestRename(ctx.rename)
+      if (rename) callbacks.onRequestRename(rename)
     },
   }
 }
@@ -375,7 +386,7 @@ export function buildPartBoard(
       colorItem(ctx, input, callbacks),
       exportItem(ctx, callbacks),
       suppressItem(ctx, callbacks),
-      renameItem(ctx, callbacks),
+      renameItem(ctx.rename, callbacks),
       deleteFeatureItem(ctx, callbacks),
     ],
   }
@@ -398,7 +409,7 @@ export function buildTreeRowBoard(
       rebuildItem(callbacks),
       visibilityItem(ctx, callbacks),
       suppressItem(ctx, callbacks),
-      renameItem(ctx, callbacks),
+      renameItem(ctx.rename, callbacks),
       deleteFeatureItem(ctx, callbacks),
     ],
   }
@@ -420,18 +431,17 @@ export function buildPartRowBoard(
       visibilityItem(ctx, callbacks),
       colorItem(ctx, input, callbacks),
       exportItem(ctx, callbacks),
-      renameItem(ctx, callbacks),
+      renameItem(ctx.rename, callbacks),
       deletePartItem(ctx, callbacks),
     ],
   }
 }
 
 /**
- * The board while a sketch edit is open: the session verbs, the freeze pair on
- * a projected pick, the cleanup for the open sketch, and Normal to. It is the
- * whole menu even for a tree row clicked during the edit; the row's own eye and
- * double-click rename stay on the row, and leaving the session is what brings
- * the part board back.
+ * The board while a sketch edit is open: the session verbs, Rename for the open
+ * sketch, the freeze pair on a projected pick, the cleanup for the open sketch,
+ * and Normal to. It is the whole menu even for a tree row clicked during the
+ * edit; leaving the session is what brings the part board back.
  */
 export function buildSketchBoard(
   input: BuildContextMenuInput,
@@ -447,6 +457,19 @@ export function buildSketchBoard(
   const sketchVisible = !!sketchId && input.visibleFeatures.has(sketchId)
   const canFreeze = input.projectedTargetIds.length > 0
   const targets = input.projectedTargetIds
+  // Rename names the open sketch itself, not the right-click target: this board
+  // is the whole sketch session even when a tree row was clicked. It uses the
+  // same authored-id gate as the card, so the two cannot disagree.
+  const sketchFeature = sketchId ? input.features.find(f => f.id === sketchId) : undefined
+  const sketchRename: RenameTarget | null = sketchId && canRenameFeature(sketchId, input.builtInIds)
+    ? {
+        kind: 'feature',
+        id: sketchId,
+        currentName: sketchFeature && typeof sketchFeature.label === 'string' && sketchFeature.label.trim() !== ''
+          ? sketchFeature.label
+          : sketchFeature ? featureDisplayName(sketchFeature, input.features) : sketchId,
+      }
+    : null
 
   return {
     items: [
@@ -468,6 +491,7 @@ export function buildSketchBoard(
           if (sketchId) callbacks.onToggleVisibility(sketchId)
         },
       },
+      renameItem(sketchRename, callbacks),
       {
         label: input.showConstraintTiles ? 'Hide Constraints' : 'Show Constraints',
         icon: input.showConstraintTiles ? contextConstraintsHideIcon : contextConstraintsShowIcon,

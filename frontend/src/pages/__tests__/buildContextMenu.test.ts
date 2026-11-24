@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { buildContextMenu, canManageFeature } from '@/pages/buildContextMenu'
+import { buildContextMenu, canManageFeature, canRenameFeature } from '@/pages/buildContextMenu'
 import type { BuildContextMenuInput, BuildContextMenuCallbacks, RenameTarget } from '@/pages/buildContextMenu'
 import type { ContextMenuItem } from '@/components/dialogs/RightClickMenu'
 import type { PartFeature } from '@/types/cad'
@@ -99,6 +99,7 @@ const SKETCH_BOARD = [
   'Normal to sketch',
   'Normal to',
   'Show',
+  'Rename',
   'Hide Constraints',
   'Convert to fixed',
   'Break link (keep free)',
@@ -870,9 +871,46 @@ describe('sketch board commands', () => {
       'Exit Sketch',
       'Normal to sketch',
       'Hide',
+      'Rename',
       'Hide Constraints',
       'Rebuild',
     ])
+  })
+
+  it('puts the open-sketch Rename after the eye and before the constraint toggle', () => {
+    const result = buildContextMenu(
+      defaultInput({ features: planeAndSketch, visibleFeatures: new Set(['sketch1']), activeSketchFeatureId: 'sketch1' }),
+      defaultCallbacks(),
+    )
+    const labels = result.items.map(i => i.label)
+    expect(labels.indexOf('Rename')).toBe(labels.indexOf('Hide') + 1)
+    expect(labels.indexOf('Hide Constraints')).toBe(labels.indexOf('Rename') + 1)
+  })
+
+  it('requests a feature rename of the open sketch, named as the tree shows it', () => {
+    const seen: RenameTarget[] = []
+    const callbacks = defaultCallbacks()
+    callbacks.onRequestRename = t => { seen.push(t) }
+    const features = [
+      ...planeAndSketch.slice(0, 1),
+      makeFeature({ id: 'sketch1', kind: 'sketch', label: 'Profile' }),
+    ]
+    const result = buildContextMenu(
+      defaultInput({ features, visibleFeatures: new Set(['sketch1']), activeSketchFeatureId: 'sketch1' }),
+      callbacks,
+    )
+    const item = findLabel(result.items, 'Rename')!
+    expect(item.disabled).toBeFalsy()
+    item.onClick()
+    expect(seen).toEqual([{ kind: 'feature', id: 'sketch1', currentName: 'Profile' }])
+  })
+
+  it('greys the open-sketch Rename when that id is built in', () => {
+    const result = buildContextMenu(
+      defaultInput({ activeSketchFeatureId: 'Top', builtInIds: new Set(['Top']) }),
+      defaultCallbacks(),
+    )
+    expect(findLabel(result.items, 'Rename')!.disabled).toBe(true)
   })
 
   it('shows Show and keeps it live when the edited sketch is not visible', () => {
@@ -1062,14 +1100,15 @@ describe('sketch board commands', () => {
     expect(seen).toEqual(['sketch1'])
   })
 
-  it('drops the part-board slots inside sketch edit', () => {
+  it('drops the part-board management slots inside sketch edit but keeps Rename', () => {
     const result = buildContextMenu(
       defaultInput({ features: planeAndSketch, activeSketchFeatureId: 'sketch1' }),
       defaultCallbacks(),
     )
-    for (const label of ['New Sketch', 'Suppress', 'Rename', 'Delete']) {
+    for (const label of ['New Sketch', 'Suppress', 'Delete']) {
       expect(findLabel(result.items, label)).toBeUndefined()
     }
+    expect(findLabel(result.items, 'Rename')).toBeTruthy()
   })
 })
 
@@ -1264,8 +1303,8 @@ describe('board icons', () => {
   })
 })
 
-// The open editor card asks this same predicate before it draws its Rename
-// button, so a built-in and the sketch under edit stay off limits at both ends.
+// Management verbs (Suppress, Delete) must not fight the open sketch session.
+// Rename uses its own gate now, so this one is only about those two verbs.
 describe('canManageFeature', () => {
   const builtIns = new Set(['Top'])
 
@@ -1284,5 +1323,21 @@ describe('canManageFeature', () => {
 
   it('refuses a menu with no feature target', () => {
     expect(canManageFeature(undefined, builtIns, undefined)).toBe(false)
+  })
+})
+
+// Rename only needs an authored id: renaming the open sketch is allowed, unlike
+// Suppress and Delete, so the card and every board share this looser gate.
+describe('canRenameFeature', () => {
+  const builtIns = new Set(['Top'])
+
+  it('refuses a built-in id and a missing target', () => {
+    expect(canRenameFeature('Top', builtIns)).toBe(false)
+    expect(canRenameFeature(undefined, builtIns)).toBe(false)
+  })
+
+  it('allows any authored feature, including the open sketch', () => {
+    expect(canRenameFeature('ex1', builtIns)).toBe(true)
+    expect(canRenameFeature('sketch1', builtIns)).toBe(true)
   })
 })

@@ -19,6 +19,7 @@ import { usePartEditorStore } from '@/stores/partEditorStore'
 import { PartEditorProvider } from '@/contexts/PartEditorContext'
 import type { PartEditorCallbacks } from '@/contexts/PartEditorContext'
 import { useEditorState } from '@/hooks/useEditorState'
+import { EDITOR_SCHEMAS } from '@/components/editors/featureEditorSchemas'
 import renameIcon from '@/assets/icons/rename.svg'
 import errorIcon from '@/assets/icons/status-error.svg'
 import warningIcon from '@/assets/icons/status-warning.svg'
@@ -159,22 +160,44 @@ describe('FeatureEditPanel', () => {
     expect(screen.queryByRole('button', { name: 'Rename' })).toBeNull()
   })
 
-  // The menu refuses to rename the sketch under edit because it would fight the
-  // open session; the card shares that gate, so the sketch's own editor has no
-  // Rename either.
-  it('draws no Rename button for the sketch under edit', () => {
+  // Rename no longer borrows the management gate: the sketch under edit is an
+  // authored feature too, and its card carries the same button as every other.
+  it('draws Rename on the sketch under edit', () => {
     const sketch: PartFeature = { id: 'sk1', kind: 'sketch', label: 'Sketch 1', plane: '@builtin_plane_top' }
-    renderPanel([sketch], 'sk1', { onRequestRename: vi.fn() }, { version: 1, kind: 'part', features: [sketch] }, 'sk1')
-    expect(screen.queryByRole('button', { name: 'Rename' })).toBeNull()
+    const onRequestRename = vi.fn()
+    renderPanel([sketch], 'sk1', { onRequestRename }, { version: 1, kind: 'part', features: [sketch] }, 'sk1')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Rename' }))
+    expect(onRequestRename).toHaveBeenCalledWith({ kind: 'feature', id: 'sk1', currentName: 'Sketch 1' })
   })
 
-  // Part.tsx derives activeSketchFeatureId one effect after editingFeatureId, so
-  // for a frame the sketch card can see a stale value. The kind check keeps the
-  // button off it for that frame, not just once the derived id catches up.
-  it('draws no Rename button for the sketch card before its derived id lands', () => {
+  // Part.tsx derives activeSketchFeatureId one effect after editingFeatureId.
+  // Rename no longer reads that lagging value, so the button is stable across
+  // the frame before the derived id catches up.
+  it('draws Rename on the sketch card before its derived id lands', () => {
     const sketch: PartFeature = { id: 'sk1', kind: 'sketch', label: 'Sketch 1', plane: '@builtin_plane_top' }
-    renderPanel([sketch], 'sk1', { onRequestRename: vi.fn() }, { version: 1, kind: 'part', features: [sketch] })
-    expect(screen.queryByRole('button', { name: 'Rename' })).toBeNull()
+    const onRequestRename = vi.fn()
+    renderPanel([sketch], 'sk1', { onRequestRename }, { version: 1, kind: 'part', features: [sketch] })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Rename' }))
+    expect(onRequestRename).toHaveBeenCalledWith({ kind: 'feature', id: 'sk1', currentName: 'Sketch 1' })
+  })
+
+  // A table over the editor table itself, so a kind added later inherits the
+  // button without anyone remembering to extend this test.
+  it('offers Rename on the card of every kind with an editor body', () => {
+    const kinds = [...Object.keys(EDITOR_SCHEMAS), 'sketch', 'plane', 'import_step']
+    for (const kind of kinds) {
+      const feature = {
+        id: 'f1', kind, label: 'Feature 1', plane: '@builtin_plane_top', file_id: '',
+      } as PartFeature
+      const onRequestRename = vi.fn()
+      const view = renderPanel([feature], 'f1', { onRequestRename }, { version: 1, kind: 'part', features: [feature] })
+      expect(document.querySelector('.feature-edit-panel')).not.toBeNull()
+      fireEvent.click(screen.getByRole('button', { name: 'Rename' }))
+      expect(onRequestRename).toHaveBeenCalledWith({ kind: 'feature', id: 'f1', currentName: 'Feature 1' })
+      view.unmount()
+    }
   })
 
   it('draws the same solve mark the tree row carries', () => {
@@ -317,5 +340,8 @@ describe('FeatureEditPanel', () => {
     // frame with an empty body if one ever does.
     renderPanel([{ id: 'Top', kind: 'plane' }], 'Top')
     expect(document.querySelector('.feature-edit-panel')).toBeNull()
+    // No card renders for a built-in id (both origin and the built-in planes
+    // fail featureHasEditor), so the built-in refusal is pinned on the gate
+    // itself in buildContextMenu.test.ts, not here.
   })
 })
