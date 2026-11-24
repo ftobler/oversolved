@@ -1,13 +1,7 @@
 import type { ConstraintDef, EntityDef } from '@/registry'
-import { iconModules } from '@/utils/core/iconModules'
+import { iconUrl } from '@/utils/core/iconUrl'
 
-const iconMap = Object.fromEntries(
-  Object.entries(iconModules).map(([k, v]) => [k.split('/').pop()?.replace(/\.svg$/, ''), v])
-)
-
-export function iconUrl(filename: string): string {
-  return iconMap[filename] ?? ''
-}
+export { iconUrl }
 
 export function shortcutHint(def: ConstraintDef | EntityDef): string {
   return def.shortcut ? ` (${def.shortcut.toUpperCase()})` : ''

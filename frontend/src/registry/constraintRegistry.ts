@@ -46,7 +46,7 @@ export interface ConstraintDef {
    * The dimension editor's leading icon when it differs from the dimension
    * tool's. Only the angular dimension sets it: the toolbar's dimension glyph
    * stands for every linear size. `undefined` falls back to
-   * `TOOL_DEFS.dimension.icon` (stores/dimensionEditor `dimensionEditorIcon`).
+   * `DIMENSION_TOOL_ICON` (stores/dimensionEditor `dimensionEditorIcon`).
    */
   dimensionIcon?: string
 
@@ -134,6 +134,13 @@ export interface ConstraintDef {
 }
 
 // ─── Registry ───
+
+/**
+ * The dimension tool's toolbar glyph, the dimension editor's fallback icon.
+ * Declared here rather than read from `TOOL_DEFS` because a store cannot import
+ * the component tree; `dimensionAngleIcon.test.ts` keeps the two in agreement.
+ */
+export const DIMENSION_TOOL_ICON = 'constraint-dimension'
 
 export const CONSTRAINTS: readonly ConstraintDef[] = [
   // ─── Geometric constraints ───

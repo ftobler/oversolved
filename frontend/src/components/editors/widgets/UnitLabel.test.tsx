@@ -5,7 +5,9 @@ import { render, screen } from '@testing-library/react'
 import { UnitBox, UnitLabel, UnitText } from './UnitLabel'
 import { ExpressionInput } from './ExpressionInput'
 
-const PART_CSS = readFileSync(join(__dirname, '../../../pages/Part.css'), 'utf8')
+// The dialog and the assembly show the same field primitives, so their rules
+// live in the shared glass sheet rather than the part page's stylesheet.
+const GLASS_CSS = readFileSync(join(__dirname, '../../layout/Glass.css'), 'utf8')
 
 describe('UnitLabel', () => {
   it('renders the adornment in the quantity vocabulary', () => {
@@ -81,16 +83,16 @@ describe('the unit adornment is not a target', () => {
   // jsdom does no hit testing, so the guarantee is in the CSS: a click over the
   // adornment reaches the input behind it, and the text cannot be selected.
   it('is pointer-events: none inside the box, and its text is not selectable', () => {
-    const boxRule = /\.field-unit-box > \.field-unit \{([^}]*)\}/.exec(PART_CSS)
-    expect(boxRule, '.field-unit-box > .field-unit rule in pages/Part.css').not.toBeNull()
+    const boxRule = /\.field-unit-box > \.field-unit \{([^}]*)\}/.exec(GLASS_CSS)
+    expect(boxRule, '.field-unit-box > .field-unit rule in components/layout/Glass.css').not.toBeNull()
     expect(boxRule![1]).toMatch(/pointer-events:\s*none/)
-    const baseRule = /(?:^|\n)\.field-unit \{([^}]*)\}/.exec(PART_CSS)
-    expect(baseRule, '.field-unit rule in pages/Part.css').not.toBeNull()
+    const baseRule = /(?:^|\n)\.field-unit \{([^}]*)\}/.exec(GLASS_CSS)
+    expect(baseRule, '.field-unit rule in components/layout/Glass.css').not.toBeNull()
     expect(baseRule![1]).toMatch(/user-select:\s*none/)
   })
 
   it('gives the input a right padding from the shared slot, never a pixel guess', () => {
-    expect(PART_CSS).toMatch(/\.field-unit-box \{[^}]*--field-unit-slot:/)
-    expect(PART_CSS).toMatch(/\.field-unit-box--with-unit > input \{[^}]*padding-right:\s*var\(--field-unit-slot\)/)
+    expect(GLASS_CSS).toMatch(/\.field-unit-box \{[^}]*--field-unit-slot:/)
+    expect(GLASS_CSS).toMatch(/\.field-unit-box--with-unit > input \{[^}]*padding-right:\s*var\(--field-unit-slot\)/)
   })
 })

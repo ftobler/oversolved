@@ -9,9 +9,8 @@ import { refusalText } from '@/utils/core/statusMark'
 import { expressionRefusal, positive } from '@/utils/core/valueRules'
 import { dimensionValueRule } from '@/utils/core/dimensionValueRules'
 import { isConstraintKindName } from '@/wasm-kernel/codec'
-import { CONSTRAINT_BY_KIND } from '@/registry/constraintRegistry'
-import { TOOL_DEFS } from '@/components/Toolbar/tools/toolsConfig'
-import { iconUrl } from '@/components/Toolbar/tools/toolUtils'
+import { CONSTRAINT_BY_KIND, DIMENSION_TOOL_ICON } from '@/registry/constraintRegistry'
+import { iconUrl } from '@/utils/core/iconUrl'
 import { getSketchCallback } from './sketchEditorCallbacks'
 import type { DialogState } from './sketchEditorTypes'
 import { failLoud } from './stateInvariants'
@@ -35,7 +34,7 @@ export function formatDimensionInput(value: number): string {
  *  a linear dimension and the toolbar read as the same tool. */
 export function dimensionEditorIcon(kind: string | undefined): string {
   const override = kind === undefined ? undefined : CONSTRAINT_BY_KIND.get(kind)?.dimensionIcon
-  return iconUrl(override ?? TOOL_DEFS.dimension.icon)
+  return iconUrl(override ?? DIMENSION_TOOL_ICON)
 }
 
 export interface DimensionEditorOptions {

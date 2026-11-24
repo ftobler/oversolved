@@ -4,6 +4,7 @@
 
 import type { Repository } from './query'
 import type { PartSolid, BuildState } from './types3d'
+import type { NamingRow } from '@/utils/core/displayNames'
 
 export interface FeatureResult {
   [key: string]: unknown
@@ -34,7 +35,7 @@ export interface BuildDeps {
     result: FeatureResult,
     // The document's ordered feature rows, for a display name (a sketch's label
     // or per-kind ordinal) in the precision record a downstream feature reads.
-    featuresById?: Record<string, Record<string, unknown>>,
+    featuresById?: Readonly<Record<string, NamingRow>>,
   ) => void
   // Create a fresh global repository.
   initGlobalRepo: () => Repository

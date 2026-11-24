@@ -12,8 +12,9 @@ import { ENTITY_BY_KIND } from '@/registry/entityRegistry'
 import { CONSTRAINT_BY_KIND } from '@/registry/constraintRegistry'
 
 /** The minimum a naming helper reads off one row. `unknown` so a raw document
- *  record and a typed feature both pass. */
-export interface NamingRow {
+ *  record and a typed feature both pass. A type alias (not an interface) so it
+ *  keeps the implicit string index signature a loose `Dict` accepts. */
+export type NamingRow = {
   id?: unknown
   kind?: unknown
   label?: unknown
