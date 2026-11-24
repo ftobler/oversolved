@@ -5,6 +5,7 @@ import { backendBundle } from '@/adapters/backend'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { useEditorState } from '@/hooks/useEditorState'
 import { reportPick, useBugReportStore, type PickContext } from '@/stores/bugReportStore'
+import { findReferences } from '@/utils/core/reportReferences'
 import type { PartFeature } from '@/types/cad'
 
 const FEATURES: PartFeature[] = [
@@ -125,14 +126,36 @@ describe('BugReportPanel', () => {
 
     render(<BugReportPanel canPick />)
     fireEvent.click(screen.getByLabelText(/Document/))
-    fireEvent.click(screen.getByLabelText(/Edit history/))
     fireEvent.click(screen.getByText('Submit'))
 
     await waitFor(() => expect(send).toHaveBeenCalledTimes(1))
     const report = sentReport(send)
     expect(report).not.toHaveProperty('doc')
+    // The edit history is off by default, so unchecking the document leaves it
+    // off without a second click.
     expect(report).not.toHaveProperty('history')
     expect(report.selectionSets).toHaveLength(1)
+  })
+
+  it('omits the edit history when the user unchecks it again', async () => {
+    const send = vi.spyOn(backendBundle.telemetry, 'send').mockResolvedValue()
+    useBugReportStore.getState().setText({ title: 'No history' })
+    useBugReportStore.getState().setAttachments({ history: true })
+
+    render(<BugReportPanel canPick />)
+    const historyBox = screen.getByLabelText(/Edit history/) as HTMLInputElement
+    expect(historyBox.checked).toBe(true)
+    fireEvent.click(historyBox)
+    fireEvent.click(screen.getByText('Submit'))
+
+    await waitFor(() => expect(send).toHaveBeenCalledTimes(1))
+    expect(sentReport(send)).not.toHaveProperty('history')
+  })
+
+  it('starts with the edit history attachment unticked', () => {
+    render(<BugReportPanel canPick />)
+    expect((screen.getByLabelText(/Edit history/) as HTMLInputElement).checked).toBe(false)
+    expect((screen.getByLabelText(/Document/) as HTMLInputElement).checked).toBe(true)
   })
 
   it('sends the last N history entries with their labels when history is checked', async () => {
@@ -143,7 +166,7 @@ describe('BugReportPanel', () => {
     }))
     usePartEditorStore.setState({ undoStack: undoStack as never })
     useBugReportStore.getState().setText({ title: 'With history' })
-    useBugReportStore.getState().setAttachments({ historyCount: 3 })
+    useBugReportStore.getState().setAttachments({ history: true, historyCount: 3 })
 
     render(<BugReportPanel canPick />)
     fireEvent.click(screen.getByText('Submit'))
@@ -199,7 +222,42 @@ describe('BugReportPanel', () => {
     render(<BugReportPanel canPick />)
     fireEvent.click(screen.getByTitle('Insert reference'))
 
-    expect(useBugReportStore.getState().description).toBe('see here#set1')
+    // The appended token must parse, not merely read right: a `#` glued to the
+    // trailing word is rejected by the token rule, so a space separates them.
+    expect(findReferences(useBugReportStore.getState().description)).toEqual(['set1'])
+  })
+
+  // A name may be free text now, so the `#` button writes the bracketed form
+  // for anything the short token cannot carry.
+  it('inserts the bracketed reference for a free-text name', () => {
+    useBugReportStore.getState().addSet()
+    const id = useBugReportStore.getState().sets[0].id
+    useBugReportStore.getState().renameSet(id, 'set 1')
+    useBugReportStore.getState().setText({ description: 'see here' })
+
+    render(<BugReportPanel canPick />)
+    fireEvent.click(screen.getByTitle('Insert reference'))
+
+    expect(useBugReportStore.getState().description).toBe('see here #[set 1]')
+    expect(findReferences(useBugReportStore.getState().description)).toEqual(['set 1'])
+  })
+
+  it('accepts a free-text set name without a refusal', () => {
+    useBugReportStore.getState().addSet()
+    render(<BugReportPanel canPick />)
+    const name = screen.getByLabelText('Selection set name')
+    fireEvent.focus(name)
+    fireEvent.change(name, { target: { value: 'set 1' } })
+    fireEvent.blur(name)
+
+    expect(screen.queryByText(/Value refused/)).not.toBeInTheDocument()
+    expect(useBugReportStore.getState().sets[0].name).toBe('set 1')
+  })
+
+  it('warns about a free-text token that names no set', () => {
+    useBugReportStore.getState().setText({ description: 'see #[set 1]' })
+    render(<BugReportPanel canPick />)
+    expect(screen.getByText('#[set 1] names no selection set')).toBeInTheDocument()
   })
 
   it('warns about a token that names no set', () => {
