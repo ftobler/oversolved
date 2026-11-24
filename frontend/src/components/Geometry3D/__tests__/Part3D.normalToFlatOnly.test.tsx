@@ -40,7 +40,7 @@ const callbacks: BuildContextMenuCallbacks = {
   onNormalToPlane: noop, onAlignCameraToSketchPlane: noop, onToggleConstraintTiles: noop,
   onSetPartColorPopover: noop, onExportPart: noop, onNewSketchOnPlane: noop,
   onFreezeProjection: noop,
-  onTogglePartVisibility: noop,
+  onTogglePartVisibility: noop, onDeletePart: noop,
 }
 
 // The menu keeps a fixed board now, so the surface commands are always present
@@ -55,13 +55,14 @@ function viewportMenuEnabledLabels(): string[] {
     hoveredFaceNormal: s.hoveredFaceNormal,
     hoveredFaceCenter: s.hoveredFaceCenter,
     selectedNormalTarget: null,
+    surface: 'viewport',
     features: [],
     visibleFeatures: new Set(),
     activeSketchFeatureId: undefined,
     showConstraintTiles: false,
     partLabels: {},
     builtInIds: new Set(),
-    hasDanglingContent: false,
+    hasDanglingContent: () => false,
     projectedTargetIds: [],
     visibleParts: undefined,
   }, callbacks).items.filter(i => !i.disabled).map(i => i.label)

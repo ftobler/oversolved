@@ -58,7 +58,7 @@ export function PartsList() {
                   </button>
                 <button
                   className="part-context-btn"
-                  onClick={(e) => { e.stopPropagation(); onRightClick([e.clientX, e.clientY], `body:${bodyId}`) }}
+                  onClick={(e) => { e.stopPropagation(); onRightClick([e.clientX, e.clientY], `body:${bodyId}`, 'parts') }}
                   title="More options"
                 >
                   <img src={iconDotsIcon} alt="Options" />
