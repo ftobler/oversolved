@@ -29,6 +29,11 @@ import type { FreezeProjectionMode } from '@/utils/yamlMutations/freezeProjectio
 // the one command removes, and the row is the only place either is mentioned.
 const DANGLING_LABEL = 'Remove dangling projections / superfluous constraints'
 
+// Which board the page wants. Set explicitly by the caller instead of derived
+// from targetId, so a future viewport path that also sets a target cannot switch
+// boards by accident.
+export type ContextMenuSurface = 'tree' | 'parts' | 'viewport'
+
 // The query a sketch stores to reference a plane. Built-in planes carry a fixed
 // query id that differs from their feature id ('Front' -> '@builtin_plane_front').
 function planeQuery(featureId: string, builtInIds: Set<string>): string {
@@ -107,6 +112,9 @@ export interface BuildContextMenuInput {
   hoveredFaceCenter: [number, number, number] | null
   // Null unless the selection is exactly one plane or one planar face.
   selectedNormalTarget: NormalTarget | null
+  // The board to build. An open sketch edit always shows the sketch board;
+  // otherwise this picks between the tree row, parts row and viewport boards.
+  surface: ContextMenuSurface
   features: PartFeature[]
   visibleFeatures: Set<string>
   activeSketchFeatureId: string | undefined
@@ -118,9 +126,10 @@ export interface BuildContextMenuInput {
   builtInIds: Set<string>
   // Part visibility as the list reads it: undefined means nothing is hidden.
   visibleParts: Set<string> | undefined
-  // Whether the last solve flagged any dangling projections or superfluous
-  // constraints; gates the cleanup item so an empty command is never offered.
-  hasDanglingContent: boolean
+  // Whether the named sketch's last solve flagged anything the cleanup would
+  // remove. The page answers for the open sketch only, so another sketch's
+  // flags cannot light this item.
+  hasDanglingContent: (sketchId: string) => boolean
   // The selection ids of the projected entities and projection tiles the
   // right-click acts on, resolved by the caller from the picked entity/tile
   // first and then the current selection. Empty greys the freeze pair; the
@@ -130,11 +139,14 @@ export interface BuildContextMenuInput {
 
 export interface BuildContextMenuCallbacks {
   onRebuild: () => void
-  onRemoveDanglingContent: () => void
+  onRemoveDanglingContent: (sketchId: string) => void
   onToggleVisibility: (featureId: string) => void
   onToggleSuppression: (featureId: string, suppressed: boolean) => void
   onExitSketch: () => void
   onDeleteFeature: (featureId: string) => void
+  // Starts the toolbar's add-and-edit flow for a delete_body seeded with this
+  // part, so the menu and the toolbar share one insertion path.
+  onDeletePart: (partId: string) => void
   onRequestRename: (target: RenameTarget) => void
   onAlignToFace: (normal: [number, number, number], center: [number, number, number]) => void
   onNormalToPlane: (featureId: string) => void
@@ -151,39 +163,88 @@ export interface BuildContextMenuOutput {
   items: ContextMenuItem[]
 }
 
-// The part editor has exactly two boards, and which one shows depends only on
-// whether a sketch edit owns the viewport. Each board is a fixed list: every
-// command keeps its slot and an unusable one is greyed rather than dropped, so
-// the menu never shifts or changes height under the pointer. There is no third
-// body board: a `body:` target is the body target of the part board.
+// The part editor has one board per surface, plus the sketch-edit board. Each
+// board is a fixed list: every command keeps its slot and an unusable one is
+// greyed rather than dropped, so the menu never shifts or changes height under
+// the pointer. An open sketch edit owns the whole menu even for a tree row.
 export function buildContextMenu(
   input: BuildContextMenuInput,
   callbacks: BuildContextMenuCallbacks,
 ): BuildContextMenuOutput {
-  return input.activeSketchFeatureId
-    ? buildSketchBoard(input, callbacks)
-    : buildPartBoard(input, callbacks)
+  if (input.activeSketchFeatureId) return buildSketchBoard(input, callbacks)
+  if (input.surface === 'tree') return buildTreeRowBoard(input, callbacks)
+  if (input.surface === 'parts') return buildPartRowBoard(input, callbacks)
+  return buildPartBoard(input, callbacks)
 }
 
-/**
- * The board for everything outside a sketch edit. A tree row, a viewport
- * surface and a body are all reachable from it; the surface keeps New Sketch and
- * Normal to, the body keeps Hide/Color/Export/Rename, and one item can be live
- * for both at once (a hovered face of a body).
- */
-export function buildPartBoard(
+// The items below are the shared slots. Each board composes them in its own
+// order; keeping the item bodies here means a command behaves the same on every
+// board it appears on.
+function newSketchItem(surfaceTarget: SurfaceTarget | null, callbacks: BuildContextMenuCallbacks): ContextMenuItem {
+  return {
+    label: 'New Sketch',
+    icon: featureSketchIcon,
+    disabled: !surfaceTarget,
+    onClick: () => {
+      if (surfaceTarget) callbacks.onNewSketchOnPlane(surfaceTarget.query)
+    },
+  }
+}
+
+function normalToItem(surfaceTarget: SurfaceTarget | null, callbacks: BuildContextMenuCallbacks): ContextMenuItem {
+  return {
+    label: 'Normal to',
+    icon: contextCameraIcon,
+    disabled: !surfaceTarget,
+    onClick: () => {
+      if (!surfaceTarget) return
+      if (surfaceTarget.kind === 'plane') callbacks.onNormalToPlane(surfaceTarget.featureId)
+      else callbacks.onAlignToFace(surfaceTarget.normal, surfaceTarget.center)
+    },
+  }
+}
+
+function rebuildItem(callbacks: BuildContextMenuCallbacks): ContextMenuItem {
+  return { label: 'Rebuild', icon: contextRebuildIcon, onClick: callbacks.onRebuild }
+}
+
+function cleanupItem(
+  sketchId: string | undefined,
   input: BuildContextMenuInput,
   callbacks: BuildContextMenuCallbacks,
-): BuildContextMenuOutput {
+): ContextMenuItem {
+  const dirty = !!sketchId && input.hasDanglingContent(sketchId)
+  return {
+    label: DANGLING_LABEL,
+    icon: contextCleanupIcon,
+    disabled: !dirty,
+    onClick: () => {
+      if (sketchId && dirty) callbacks.onRemoveDanglingContent(sketchId)
+    },
+  }
+}
+
+interface BoardContext {
+  featureId: string | undefined
+  target: PartFeature | undefined
+  surfaceTarget: SurfaceTarget | null
+  part: PartTarget | null
+  featureEye: boolean
+  visibilityIsOn: boolean
+  canToggleVisibility: boolean
+  canManage: boolean
+  rename: RenameTarget | null
+}
+
+// The part board and the tree-row board share one Hide/Show slot: the feature
+// eye wins over a part under the pointer because hiding a feature also hides the
+// parts it made. A `body:` target has no feature at all, so the feature verbs
+// need a real target as well as the authored-id rule.
+function resolveBoardContext(input: BuildContextMenuInput): BoardContext {
   const featureId = input.targetId
   const target = featureId ? input.features.find(f => f.id === featureId) : undefined
   const surfaceTarget = resolveSurfaceTarget(input, target)
   const part = resolvePartTarget(input)
-
-  // The tree row wins the one Hide/Show slot over a part under the pointer:
-  // hiding a feature hides the parts it made, so the row is the wider command.
-  // The row needs an eye (the origin has none) and a built-in does not lose it,
-  // because the tree offers the same eye on a built-in plane.
   const featureEye = target !== undefined && hasFeatureVisibilityToggle(target.kind)
   // A suppressed feature is absent from the drawn set, so the eye reads the
   // stored flag: it is what takes effect again once unsuppressed.
@@ -191,8 +252,6 @@ export function buildPartBoard(
     ? (target.suppressed === true ? target.visible !== false : input.visibleFeatures.has(target.id))
     : !!part?.visible
   const canToggleVisibility = featureEye || part !== null
-  // A `body:` target has no feature at all, so the feature verbs need a real
-  // target as well as the authored-id rule.
   const canManage = target !== undefined
     && canManageFeature(featureId, input.builtInIds, input.activeSketchFeatureId)
 
@@ -210,97 +269,169 @@ export function buildPartBoard(
     : null)
 
   return {
+    featureId, target, surfaceTarget, part, featureEye, visibilityIsOn,
+    canToggleVisibility, canManage, rename,
+  }
+}
+
+function visibilityItem(ctx: BoardContext, callbacks: BuildContextMenuCallbacks): ContextMenuItem {
+  return {
+    label: ctx.visibilityIsOn ? 'Hide' : 'Show',
+    icon: ctx.visibilityIsOn ? contextHideIcon : contextShowIcon,
+    disabled: !ctx.canToggleVisibility,
+    onClick: () => {
+      if (ctx.featureEye && ctx.target) callbacks.onToggleVisibility(ctx.target.id)
+      else if (ctx.part) callbacks.onTogglePartVisibility(ctx.part.partId, !ctx.part.visible)
+    },
+  }
+}
+
+function colorItem(ctx: BoardContext, input: BuildContextMenuInput, callbacks: BuildContextMenuCallbacks): ContextMenuItem {
+  return {
+    label: 'Color',
+    icon: contextColorIcon,
+    disabled: ctx.part === null,
+    onClick: () => {
+      if (ctx.part) callbacks.onSetPartColorPopover({ partId: ctx.part.partId, position: input.pos })
+    },
+  }
+}
+
+function exportItem(ctx: BoardContext, callbacks: BuildContextMenuCallbacks): ContextMenuItem {
+  return {
+    label: 'Export',
+    icon: featureExportIcon,
+    disabled: ctx.part === null,
+    onClick: () => {
+      if (ctx.part) callbacks.onExportPart(ctx.part.partId, ctx.part.currentName)
+    },
+  }
+}
+
+function suppressItem(ctx: BoardContext, callbacks: BuildContextMenuCallbacks): ContextMenuItem {
+  const suppressed = ctx.target?.suppressed === true
+  return {
+    label: suppressed ? 'Unsuppress' : 'Suppress',
+    icon: suppressed ? contextUnsuppressIcon : contextSuppressIcon,
+    disabled: !ctx.canManage,
+    onClick: () => {
+      if (ctx.canManage && ctx.featureId) callbacks.onToggleSuppression(ctx.featureId, !suppressed)
+    },
+  }
+}
+
+function renameItem(ctx: BoardContext, callbacks: BuildContextMenuCallbacks): ContextMenuItem {
+  return {
+    label: 'Rename',
+    icon: iconRenameIcon,
+    disabled: ctx.rename === null,
+    onClick: () => {
+      if (ctx.rename) callbacks.onRequestRename(ctx.rename)
+    },
+  }
+}
+
+function deleteFeatureItem(ctx: BoardContext, callbacks: BuildContextMenuCallbacks): ContextMenuItem {
+  return {
+    label: 'Delete',
+    icon: contextDeleteIcon,
+    className: 'right-click-menu-item--delete',
+    disabled: !ctx.canManage,
+    onClick: () => {
+      if (ctx.canManage && ctx.featureId) callbacks.onDeleteFeature(ctx.featureId)
+    },
+  }
+}
+
+function deletePartItem(ctx: BoardContext, callbacks: BuildContextMenuCallbacks): ContextMenuItem {
+  return {
+    label: 'Delete',
+    icon: contextDeleteIcon,
+    className: 'right-click-menu-item--delete',
+    disabled: ctx.part === null,
+    onClick: () => {
+      if (ctx.part) callbacks.onDeletePart(ctx.part.partId)
+    },
+  }
+}
+
+/**
+ * The viewport board when no sketch edit is open: the surface keeps New Sketch
+ * and Normal to, the part under the pointer keeps Hide/Color/Export/Rename, and
+ * one item can be live for both at once (a hovered face of a body). No cleanup:
+ * that moved to the sketch board, where the sketch it would clean is open.
+ */
+export function buildPartBoard(
+  input: BuildContextMenuInput,
+  callbacks: BuildContextMenuCallbacks,
+): BuildContextMenuOutput {
+  const ctx = resolveBoardContext(input)
+  return {
     items: [
-      {
-        label: 'New Sketch',
-        icon: featureSketchIcon,
-        disabled: !surfaceTarget,
-        onClick: () => {
-          if (surfaceTarget) callbacks.onNewSketchOnPlane(surfaceTarget.query)
-        },
-      },
-      {
-        label: 'Normal to',
-        icon: contextCameraIcon,
-        disabled: !surfaceTarget,
-        onClick: () => {
-          if (!surfaceTarget) return
-          if (surfaceTarget.kind === 'plane') callbacks.onNormalToPlane(surfaceTarget.featureId)
-          else callbacks.onAlignToFace(surfaceTarget.normal, surfaceTarget.center)
-        },
-      },
-      {
-        label: 'Rebuild',
-        icon: contextRebuildIcon,
-        onClick: callbacks.onRebuild,
-      },
-      {
-        label: DANGLING_LABEL,
-        icon: contextCleanupIcon,
-        disabled: !input.hasDanglingContent,
-        onClick: () => {
-          if (input.hasDanglingContent) callbacks.onRemoveDanglingContent()
-        },
-      },
-      {
-        label: visibilityIsOn ? 'Hide' : 'Show',
-        icon: visibilityIsOn ? contextHideIcon : contextShowIcon,
-        disabled: !canToggleVisibility,
-        onClick: () => {
-          if (featureEye) callbacks.onToggleVisibility(target.id)
-          else if (part) callbacks.onTogglePartVisibility(part.partId, !part.visible)
-        },
-      },
-      {
-        label: 'Color',
-        icon: contextColorIcon,
-        disabled: part === null,
-        onClick: () => {
-          if (part) callbacks.onSetPartColorPopover({ partId: part.partId, position: input.pos })
-        },
-      },
-      {
-        label: 'Export',
-        icon: featureExportIcon,
-        disabled: part === null,
-        onClick: () => {
-          if (part) callbacks.onExportPart(part.partId, part.currentName)
-        },
-      },
-      {
-        label: target?.suppressed ? 'Unsuppress' : 'Suppress',
-        icon: target?.suppressed ? contextUnsuppressIcon : contextSuppressIcon,
-        disabled: !canManage,
-        onClick: () => {
-          if (canManage && featureId) callbacks.onToggleSuppression(featureId, !target?.suppressed)
-        },
-      },
-      {
-        label: 'Rename',
-        icon: iconRenameIcon,
-        disabled: rename === null,
-        onClick: () => {
-          if (rename) callbacks.onRequestRename(rename)
-        },
-      },
-      {
-        label: 'Delete',
-        icon: contextDeleteIcon,
-        className: 'right-click-menu-item--delete',
-        disabled: !canManage,
-        onClick: () => {
-          if (canManage && featureId) callbacks.onDeleteFeature(featureId)
-        },
-      },
+      newSketchItem(ctx.surfaceTarget, callbacks),
+      normalToItem(ctx.surfaceTarget, callbacks),
+      rebuildItem(callbacks),
+      visibilityItem(ctx, callbacks),
+      colorItem(ctx, input, callbacks),
+      exportItem(ctx, callbacks),
+      suppressItem(ctx, callbacks),
+      renameItem(ctx, callbacks),
+      deleteFeatureItem(ctx, callbacks),
+    ],
+  }
+}
+
+/**
+ * A feature-tree row: it names a feature, not a body, so there is no Color or
+ * Export and no cleanup. New Sketch and Normal to stay as greyed slots for a
+ * row that is not a plane; the management verbs keep the authored-id gate.
+ */
+export function buildTreeRowBoard(
+  input: BuildContextMenuInput,
+  callbacks: BuildContextMenuCallbacks,
+): BuildContextMenuOutput {
+  const ctx = resolveBoardContext(input)
+  return {
+    items: [
+      newSketchItem(ctx.surfaceTarget, callbacks),
+      normalToItem(ctx.surfaceTarget, callbacks),
+      rebuildItem(callbacks),
+      visibilityItem(ctx, callbacks),
+      suppressItem(ctx, callbacks),
+      renameItem(ctx, callbacks),
+      deleteFeatureItem(ctx, callbacks),
+    ],
+  }
+}
+
+/**
+ * A Parts card row: it names a part, so the surface verbs and Suppress do not
+ * apply. Delete starts the prefilled Delete Part edit card instead of deleting
+ * a feature, while Color, Export and Rename act on the part as a body target.
+ */
+export function buildPartRowBoard(
+  input: BuildContextMenuInput,
+  callbacks: BuildContextMenuCallbacks,
+): BuildContextMenuOutput {
+  const ctx = resolveBoardContext(input)
+  return {
+    items: [
+      rebuildItem(callbacks),
+      visibilityItem(ctx, callbacks),
+      colorItem(ctx, input, callbacks),
+      exportItem(ctx, callbacks),
+      renameItem(ctx, callbacks),
+      deletePartItem(ctx, callbacks),
     ],
   }
 }
 
 /**
  * The board while a sketch edit is open: the session verbs, the freeze pair on
- * a projected pick, and Normal to. It is the whole menu even for a tree row
- * clicked during the edit; the row's own eye and double-click rename stay on
- * the row, and leaving the session is what brings the part board back.
+ * a projected pick, the cleanup for the open sketch, and Normal to. It is the
+ * whole menu even for a tree row clicked during the edit; the row's own eye and
+ * double-click rename stay on the row, and leaving the session is what brings
+ * the part board back.
  */
 export function buildSketchBoard(
   input: BuildContextMenuInput,
@@ -329,16 +460,7 @@ export function buildSketchBoard(
         icon: contextNormalSketchIcon,
         onClick: callbacks.onAlignCameraToSketchPlane,
       },
-      {
-        label: 'Normal to',
-        icon: contextCameraIcon,
-        disabled: !surfaceTarget,
-        onClick: () => {
-          if (!surfaceTarget) return
-          if (surfaceTarget.kind === 'plane') callbacks.onNormalToPlane(surfaceTarget.featureId)
-          else callbacks.onAlignToFace(surfaceTarget.normal, surfaceTarget.center)
-        },
-      },
+      normalToItem(surfaceTarget, callbacks),
       {
         label: sketchVisible ? 'Hide' : 'Show',
         icon: sketchVisible ? contextHideIcon : contextShowIcon,
@@ -367,11 +489,8 @@ export function buildSketchBoard(
           if (canFreeze) callbacks.onFreezeProjection('free', targets)
         },
       },
-      {
-        label: 'Rebuild',
-        icon: contextRebuildIcon,
-        onClick: callbacks.onRebuild,
-      },
+      cleanupItem(sketchId, input, callbacks),
+      rebuildItem(callbacks),
     ],
   }
 }

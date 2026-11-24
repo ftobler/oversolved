@@ -9,7 +9,7 @@ import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import Part from '@/pages/Part'
 import { Wrapper } from '@/__tests__/test-utils'
 import { usePartEditorStore, DEFAULT_PART_EDITOR_DATA } from '@/stores/partEditorStore'
-import { getSketchCallback, useSketchUiStore } from '@/stores/sketchEditorStore'
+import { getSketchCallback, useSketchEditorStore, useSketchUiStore } from '@/stores/sketchEditorStore'
 import { useDevSettingsStore } from '@/stores/devSettingsStore'
 import { executeCommand } from '@/hooks/commandRegistry'
 import { MAX_STEP_IMPORT_BYTES } from '@/persistence/stepImport'
@@ -147,10 +147,10 @@ vi.mock('@/components/layout/PartDocumentPanel', async () => {
       return (
         <div data-testid="sidebar">
           {features.map(f => (
-            <button key={f.id} data-testid={`feature-ctx-${f.id}`} onClick={() => onRightClick([0, 0], f.id)}>{f.id}</button>
+            <button key={f.id} data-testid={`feature-ctx-${f.id}`} onClick={() => onRightClick([0, 0], f.id, 'tree')}>{f.id}</button>
           ))}
           {Object.keys(parts ?? {}).map(id => (
-            <button key={id} data-testid={`body-ctx-${id}`} onClick={() => onRightClick([0, 0], `body:${id}`)}>{id}</button>
+            <button key={id} data-testid={`body-ctx-${id}`} onClick={() => onRightClick([0, 0], `body:${id}`, 'parts')}>{id}</button>
           ))}
           <button data-testid="sidebar-rebuild" onClick={() => onRebuild?.()} />
           <button data-testid="sidebar-rollback" onClick={() => onSetRollbackPosition(2)} />
@@ -469,10 +469,14 @@ describe('Part page actions', () => {
     expect(within(box).getByRole('textbox')).toBeInTheDocument()
   })
 
-  it('offers the cleanup only with flagged content and removes it in one mutation', () => {
+  it('the sketch-board cleanup removes the open sketch flagged content in one mutation', () => {
+    useEditorState.setState({
+      editingFeatureId: 'sketch1',
+      rollbackPosition: F.doc.features!.length,
+    })
     renderPart()
 
-    fireEvent.click(screen.getByTestId('feature-ctx-extrude1'))
+    fireEvent.click(screen.getByTestId('feature-ctx-sketch1'))
     fireEvent.click(menuItem(/Remove dangling/))
 
     expect(h.handleMutation).toHaveBeenCalledWith({
@@ -482,7 +486,34 @@ describe('Part page actions', () => {
     expect(screen.queryByTestId('context-menu')).toBeNull()
   })
 
-  it('offers the cleanup for a constraint the solve dropped and includes its id', () => {
+  it('the sketch-board cleanup leaves another sketch flagged content alone', () => {
+    const sketch2 = F.doc.features![5] as { constraints?: { id: string; kind: string }[] }
+    const originalConstraints = sketch2.constraints
+    const originalSolve = F.solve.sketch2
+    sketch2.constraints = [...(originalConstraints ?? []), { id: 'c_other', kind: 'coincident' }]
+    F.solve.sketch2 = {
+      ...originalSolve,
+      constraints: { c_other: { superfluous: true } },
+    } as unknown as typeof originalSolve
+    useEditorState.setState({
+      editingFeatureId: 'sketch1',
+      rollbackPosition: F.doc.features!.length,
+    })
+    try {
+      renderPart()
+      fireEvent.click(screen.getByTestId('feature-ctx-sketch1'))
+      fireEvent.click(menuItem(/Remove dangling/))
+      expect(h.handleMutation).toHaveBeenCalledWith({
+        type: 'remove_dangling_content',
+        features: { sketch1: { projections: [], constraints: ['c1'] } },
+      })
+    } finally {
+      sketch2.constraints = originalConstraints
+      F.solve.sketch2 = originalSolve
+    }
+  })
+
+  it('the sketch-board cleanup includes a constraint the open solve dropped', () => {
     const sketch1 = F.doc.features![2] as { constraints?: { id: string; kind: string }[] }
     const originalConstraints = sketch1.constraints
     const originalSolve = F.solve.sketch1
@@ -491,9 +522,13 @@ describe('Part page actions', () => {
       ...originalSolve,
       dropped_constraints: [{ id: 'c_dead', kind: 'coincident', reason: 'stale reference' }],
     } as unknown as typeof originalSolve
+    useEditorState.setState({
+      editingFeatureId: 'sketch1',
+      rollbackPosition: F.doc.features!.length,
+    })
     try {
       renderPart()
-      fireEvent.click(screen.getByTestId('feature-ctx-extrude1'))
+      fireEvent.click(screen.getByTestId('feature-ctx-sketch1'))
       fireEvent.click(menuItem(/Remove dangling/))
       expect(h.handleMutation).toHaveBeenCalledWith({
         type: 'remove_dangling_content',
@@ -676,6 +711,30 @@ describe('Part page actions', () => {
     fireEvent.click(within(box).getByRole('button', { name: 'Rename' }))
 
     expect(h.handleMutation).toHaveBeenCalledWith({ type: 'rename_part', bodyId: 'body-1', name: 'Base Part' })
+  })
+
+  it('the parts-row Delete opens a prefilled Delete Part edit card instead of committing', () => {
+    renderPart()
+
+    fireEvent.click(screen.getByTestId('body-ctx-body-1'))
+    fireEvent.click(menuItem('Delete'))
+
+    // The same add-and-edit path the toolbar uses, seeded with this part.
+    const add = h.handleMutation.mock.calls
+      .map(([m]) => m as { type?: string })
+      .find(m => m.type === 'add_delete_body') as
+      | { type: string; featureId: string; bodies: string[]; insertAt: number }
+      | undefined
+    expect(add).toBeDefined()
+    expect(add!.bodies).toEqual(['@body-1'])
+    expect(add!.featureId).toBeTruthy()
+    expect(add).not.toHaveProperty('label')
+    expect(h.handleMutation).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'delete_feature' }))
+    expect(useEditorState.getState().editingFeatureId).toBe(add!.featureId)
+    expect(useSketchEditorStore.getState().activePickField).toEqual({
+      featureId: add!.featureId, field: 'bodies', multi: true, names: 'body',
+    })
+    expect(screen.queryByTestId('context-menu')).toBeNull()
   })
 
   it('a viewport right-click over a body face hides that body', () => {

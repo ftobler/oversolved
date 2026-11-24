@@ -17,13 +17,14 @@ function defaultInput(overrides?: Partial<BuildContextMenuInput>): BuildContextM
     hoveredFaceNormal: null,
     hoveredFaceCenter: null,
     selectedNormalTarget: null,
+    surface: 'viewport',
     features: [],
     visibleFeatures: new Set(),
     activeSketchFeatureId: undefined,
     showConstraintTiles: true,
     partLabels: {},
     builtInIds: new Set(),
-    hasDanglingContent: false,
+    hasDanglingContent: () => false,
     projectedTargetIds: [],
     visibleParts: undefined,
     ...overrides,
@@ -38,6 +39,7 @@ function defaultCallbacks(): BuildContextMenuCallbacks {
     onToggleSuppression: () => {},
     onExitSketch: () => {},
     onDeleteFeature: () => {},
+    onDeletePart: () => {},
     onRequestRename: () => {},
     onAlignToFace: () => {},
     onNormalToPlane: () => {},
@@ -61,15 +63,33 @@ function enabledLabels(items: ContextMenuItem[]) {
 
 const DANGLING = 'Remove dangling projections / superfluous constraints'
 
-const PART_BOARD = [
+const VIEWPORT_BOARD = [
   'New Sketch',
   'Normal to',
   'Rebuild',
-  DANGLING,
   'Show',
   'Color',
   'Export',
   'Suppress',
+  'Rename',
+  'Delete',
+]
+
+const TREE_BOARD = [
+  'New Sketch',
+  'Normal to',
+  'Rebuild',
+  'Show',
+  'Suppress',
+  'Rename',
+  'Delete',
+]
+
+const PARTS_BOARD = [
+  'Rebuild',
+  'Hide',
+  'Color',
+  'Export',
   'Rename',
   'Delete',
 ]
@@ -82,6 +102,7 @@ const SKETCH_BOARD = [
   'Hide Constraints',
   'Convert to fixed',
   'Break link (keep free)',
+  DANGLING,
   'Rebuild',
 ]
 
@@ -91,10 +112,59 @@ const planeAndSketch = [
 ]
 
 describe('buildContextMenu board selection', () => {
-  it('keeps the full part-board order for an empty viewport, with only Rebuild live', () => {
+  it('keeps the full viewport-board order for an empty viewport, with only Rebuild live', () => {
     const result = buildContextMenu(defaultInput(), defaultCallbacks())
-    expect(result.items.map(i => i.label)).toEqual(PART_BOARD)
+    expect(result.items.map(i => i.label)).toEqual(VIEWPORT_BOARD)
     expect(enabledLabels(result.items)).toEqual(['Rebuild'])
+    expect(findLabel(result.items, DANGLING)).toBeUndefined()
+  })
+
+  it('uses the explicit tree surface for a feature row, without Color, Export or cleanup', () => {
+    const result = buildContextMenu(
+      defaultInput({
+        surface: 'tree',
+        targetId: 'extrude1',
+        features: [makeFeature({ id: 'extrude1', kind: 'extrude' })],
+      }),
+      defaultCallbacks(),
+    )
+    expect(result.items.map(i => i.label)).toEqual(TREE_BOARD)
+    expect(findLabel(result.items, 'Color')).toBeUndefined()
+    expect(findLabel(result.items, 'Export')).toBeUndefined()
+    expect(findLabel(result.items, DANGLING)).toBeUndefined()
+  })
+
+  it('keeps New Sketch and Normal to as greyed slots on an extrude tree row', () => {
+    const features = [makeFeature({ id: 'extrude1', kind: 'extrude' })]
+    const extrude = buildContextMenu(
+      defaultInput({ surface: 'tree', targetId: 'extrude1', features }),
+      defaultCallbacks(),
+    )
+    expect(findLabel(extrude.items, 'New Sketch')!.disabled).toBe(true)
+    expect(findLabel(extrude.items, 'Normal to')!.disabled).toBe(true)
+
+    const plane = buildContextMenu(
+      defaultInput({
+        surface: 'tree',
+        targetId: 'plane1',
+        features: [makeFeature({ id: 'plane1', kind: 'plane' })],
+      }),
+      defaultCallbacks(),
+    )
+    expect(findLabel(plane.items, 'New Sketch')!.disabled).toBeFalsy()
+    expect(findLabel(plane.items, 'Normal to')!.disabled).toBeFalsy()
+  })
+
+  it('uses the explicit parts surface for a Parts card row', () => {
+    const result = buildContextMenu(
+      defaultInput({ surface: 'parts', targetId: 'body:b1', partLabels: { b1: 'Part 1' } }),
+      defaultCallbacks(),
+    )
+    expect(result.items.map(i => i.label)).toEqual(PARTS_BOARD)
+    expect(enabledLabels(result.items)).toEqual(PARTS_BOARD)
+    expect(findLabel(result.items, 'New Sketch')).toBeUndefined()
+    expect(findLabel(result.items, 'Suppress')).toBeUndefined()
+    expect(findLabel(result.items, DANGLING)).toBeUndefined()
   })
 
   it('keeps the full sketch-board order for a viewport right-click during sketch edit', () => {
@@ -107,7 +177,12 @@ describe('buildContextMenu board selection', () => {
 
   it('shows the sketch board for a tree row of another feature during sketch edit', () => {
     const result = buildContextMenu(
-      defaultInput({ targetId: 'plane1', features: planeAndSketch, activeSketchFeatureId: 'sketch1' }),
+      defaultInput({
+        surface: 'tree',
+        targetId: 'plane1',
+        features: planeAndSketch,
+        activeSketchFeatureId: 'sketch1',
+      }),
       defaultCallbacks(),
     )
     expect(result.items.map(i => i.label)).toEqual(SKETCH_BOARD)
@@ -125,41 +200,36 @@ describe('buildContextMenu board selection', () => {
   // A fixed board is the whole point: a disable must never change the menu's
   // height or slot order, across every input shape the page can build.
   it('keeps a constant length for every board input', () => {
-    const fixtures: BuildContextMenuInput[] = [
-      defaultInput(),
-      defaultInput({ targetId: 'extrude1', features: [makeFeature({ id: 'extrude1', kind: 'extrude' })] }),
-      defaultInput({ targetId: 'body:b1', partLabels: { b1: 'Body 1' } }),
-      defaultInput({ targetPartId: 'b1', partLabels: { b1: 'Body 1' } }),
-      defaultInput({
+    const fixtures: Array<[BuildContextMenuInput, number]> = [
+      [defaultInput(), VIEWPORT_BOARD.length],
+      [defaultInput({ targetId: 'extrude1', features: [makeFeature({ id: 'extrude1', kind: 'extrude' })] }), VIEWPORT_BOARD.length],
+      [defaultInput({ surface: 'tree', targetId: 'extrude1', features: [makeFeature({ id: 'extrude1', kind: 'extrude' })] }), TREE_BOARD.length],
+      [defaultInput({ surface: 'parts', targetId: 'body:b1', partLabels: { b1: 'Body 1' } }), PARTS_BOARD.length],
+      [defaultInput({ targetId: 'body:b1', partLabels: { b1: 'Body 1' } }), VIEWPORT_BOARD.length],
+      [defaultInput({ targetPartId: 'b1', partLabels: { b1: 'Body 1' } }), VIEWPORT_BOARD.length],
+      [defaultInput({
         targetPartId: 'b1',
         partLabels: { b1: 'Body 1' },
         hoveredSelectionId: '?faceQ',
         hoveredFaceNormal: [0, 0, 1],
         hoveredFaceCenter: [0, 0, 5],
-      }),
-      defaultInput({ hoveredSelectionId: '@builtin_plane_top', features: planeAndSketch }),
-      defaultInput({ selectedNormalTarget: { kind: 'plane', featureId: 'plane1' }, features: planeAndSketch }),
-      defaultInput({ hasDanglingContent: true }),
-      defaultInput({ activeSketchFeatureId: 'sketch1' }),
-      defaultInput({ activeSketchFeatureId: 'sketch1', features: planeAndSketch, showConstraintTiles: false }),
-      defaultInput({ activeSketchFeatureId: 'sketch1', features: planeAndSketch, projectedTargetIds: ['entity:sketch1:e1'] }),
-      defaultInput({ targetId: 'plane1', features: planeAndSketch, activeSketchFeatureId: 'sketch1' }),
+      }), VIEWPORT_BOARD.length],
+      [defaultInput({ hoveredSelectionId: '@builtin_plane_top', features: planeAndSketch }), VIEWPORT_BOARD.length],
+      [defaultInput({ selectedNormalTarget: { kind: 'plane', featureId: 'plane1' }, features: planeAndSketch }), VIEWPORT_BOARD.length],
+      [defaultInput({ hasDanglingContent: () => true }), VIEWPORT_BOARD.length],
+      [defaultInput({ activeSketchFeatureId: 'sketch1' }), SKETCH_BOARD.length],
+      [defaultInput({ activeSketchFeatureId: 'sketch1', features: planeAndSketch, showConstraintTiles: false }), SKETCH_BOARD.length],
+      [defaultInput({ activeSketchFeatureId: 'sketch1', features: planeAndSketch, projectedTargetIds: ['entity:sketch1:e1'] }), SKETCH_BOARD.length],
+      [defaultInput({ surface: 'tree', targetId: 'plane1', features: planeAndSketch, activeSketchFeatureId: 'sketch1' }), SKETCH_BOARD.length],
     ]
-    for (const fixture of fixtures) {
+    for (const [fixture, length] of fixtures) {
       const { items } = buildContextMenu(fixture, defaultCallbacks())
-      expect(items).toHaveLength(fixture.activeSketchFeatureId ? SKETCH_BOARD.length : PART_BOARD.length)
+      expect(items).toHaveLength(length)
     }
   })
 })
 
 describe('part board commands', () => {
-  it('offers the dangling-content cleanup only when the last solve flagged it', () => {
-    const dirty = buildContextMenu(defaultInput({ hasDanglingContent: true }), defaultCallbacks())
-    expect(findLabel(dirty.items, DANGLING)!.disabled).toBeFalsy()
-    const clean = buildContextMenu(defaultInput({ hasDanglingContent: false }), defaultCallbacks())
-    expect(findLabel(clean.items, DANGLING)!.disabled).toBe(true)
-  })
-
   it('enables Rebuild, Hide, Suppress, Rename and Delete for a non-built-in sketch', () => {
     const features = [makeFeature({ id: 'sketch1', kind: 'sketch' })]
     const result = buildContextMenu(
@@ -216,7 +286,7 @@ describe('part board commands', () => {
       defaultCallbacks(),
     )
     expect(result.items.map(i => i.label)).toEqual([
-      'New Sketch', 'Normal to', 'Rebuild', DANGLING, 'Hide', 'Color', 'Export', 'Suppress', 'Rename', 'Delete',
+      'New Sketch', 'Normal to', 'Rebuild', 'Hide', 'Color', 'Export', 'Suppress', 'Rename', 'Delete',
     ])
     expect(enabledLabels(result.items)).toEqual(['Rebuild', 'Hide', 'Color', 'Export', 'Rename'])
     expect(findLabel(result.items, 'New Sketch')!.disabled).toBe(true)
@@ -946,14 +1016,92 @@ describe('sketch board commands', () => {
     ])
   })
 
+  it('puts the cleanup after the freeze pair and before Rebuild', () => {
+    const result = buildContextMenu(
+      defaultInput({ features: planeAndSketch, activeSketchFeatureId: 'sketch1' }),
+      defaultCallbacks(),
+    )
+    const labels = result.items.map(i => i.label)
+    expect(labels.indexOf(DANGLING)).toBe(labels.indexOf('Break link (keep free)') + 1)
+    expect(labels.indexOf('Rebuild')).toBe(labels.indexOf(DANGLING) + 1)
+  })
+
+  it('greys the cleanup when the open sketch has nothing flagged, even if another sketch does', () => {
+    const seen: string[] = []
+    const callbacks = defaultCallbacks()
+    callbacks.onRemoveDanglingContent = id => { seen.push(id) }
+    const result = buildContextMenu(
+      defaultInput({
+        features: planeAndSketch,
+        activeSketchFeatureId: 'sketch1',
+        hasDanglingContent: id => id === 'sketch2',
+      }),
+      callbacks,
+    )
+    const item = findLabel(result.items, DANGLING)!
+    expect(item.disabled).toBe(true)
+    item.onClick()
+    expect(seen).toEqual([])
+  })
+
+  it('runs the cleanup for the open sketch only', () => {
+    const seen: string[] = []
+    const callbacks = defaultCallbacks()
+    callbacks.onRemoveDanglingContent = id => { seen.push(id) }
+    const result = buildContextMenu(
+      defaultInput({
+        features: planeAndSketch,
+        activeSketchFeatureId: 'sketch1',
+        hasDanglingContent: () => true,
+      }),
+      callbacks,
+    )
+    const item = findLabel(result.items, DANGLING)!
+    expect(item.disabled).toBeFalsy()
+    item.onClick()
+    expect(seen).toEqual(['sketch1'])
+  })
+
   it('drops the part-board slots inside sketch edit', () => {
     const result = buildContextMenu(
       defaultInput({ features: planeAndSketch, activeSketchFeatureId: 'sketch1' }),
       defaultCallbacks(),
     )
-    for (const label of ['New Sketch', DANGLING, 'Suppress', 'Rename', 'Delete']) {
+    for (const label of ['New Sketch', 'Suppress', 'Rename', 'Delete']) {
       expect(findLabel(result.items, label)).toBeUndefined()
     }
+  })
+})
+
+describe('parts row commands', () => {
+  it('starts a prefilled Delete Part edit card from Delete', () => {
+    const seen: string[] = []
+    const callbacks = defaultCallbacks()
+    callbacks.onDeletePart = id => { seen.push(id) }
+    const result = buildContextMenu(
+      defaultInput({ surface: 'parts', targetId: 'body:b1', partLabels: { b1: 'Part 1' } }),
+      callbacks,
+    )
+    const del = findLabel(result.items, 'Delete')!
+    expect(del.disabled).toBeFalsy()
+    del.onClick()
+    expect(seen).toEqual(['b1'])
+  })
+
+  it('aims Color, Export and Rename at the part on a parts row', () => {
+    const seen: string[] = []
+    const callbacks = defaultCallbacks()
+    callbacks.onSetPartColorPopover = opts => { if (opts) seen.push(`color:${opts.partId}`) }
+    callbacks.onExportPart = id => { seen.push(`export:${id}`) }
+    callbacks.onRequestRename = t => { seen.push(`rename:${t.id}`) }
+    const result = buildContextMenu(
+      defaultInput({ surface: 'parts', targetId: 'body:b1', partLabels: { b1: 'Part 1' }, pos: [3, 4] }),
+      callbacks,
+    )
+    findLabel(result.items, 'Color')!.onClick()
+    findLabel(result.items, 'Export')!.onClick()
+    findLabel(result.items, 'Rename')!.onClick()
+    expect(seen).toEqual(['color:b1', 'export:b1', 'rename:b1'])
   })
 })
 
@@ -976,7 +1124,7 @@ describe('board icons', () => {
     ['hidden suppressed feature', defaultInput({ targetId: 'sketch1', features: suppressedSketch, visibleFeatures: new Set() })],
     ['visible body', defaultInput({ targetId: 'body:b1', partLabels: { b1: 'Body 1' } })],
     ['hidden body', defaultInput({ targetId: 'body:b1', partLabels: { b1: 'Body 1' }, visibleParts: new Set() })],
-    ['dangling content', defaultInput({ hasDanglingContent: true, targetPartId: 'b1', partLabels: { b1: 'Body 1' } })],
+    ['parts row', defaultInput({ surface: 'parts', targetId: 'body:b1', partLabels: { b1: 'Body 1' } })],
     ['empty viewport', defaultInput()],
   ]
 
@@ -1012,6 +1160,12 @@ describe('board icons', () => {
       visibleFeatures: new Set(['sketch1']),
       activeSketchFeatureId: 'sketch1',
       projectedTargetIds: ['entity:sketch1:e1'],
+    })],
+    ['dangling content', defaultInput({
+      features: planeAndSketch,
+      visibleFeatures: new Set(['sketch1']),
+      activeSketchFeatureId: 'sketch1',
+      hasDanglingContent: () => true,
     })],
   ]
 

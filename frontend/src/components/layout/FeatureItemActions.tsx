@@ -5,6 +5,7 @@ import iconEyeOffIcon from '@/assets/icons/icon-eye-off.svg'
 import okIcon from '@/assets/icons/dialog-ok.svg'
 import cancelIcon from '@/assets/icons/dialog-cancel.svg'
 import { EDIT_LABELS } from '@/components/layout/featureItemKinds'
+import type { ContextMenuSurface } from '@/pages/buildContextMenu'
 
 interface FeatureItemActionsProps {
   featureKind: string | undefined
@@ -20,7 +21,7 @@ interface FeatureItemActionsProps {
   onEditCommit: () => void
   onEditCancel: () => void
   onToggleVisibility: (id: string) => void
-  onRightClick: (pos: [number, number], id: string) => void
+  onRightClick: (pos: [number, number], id: string, surface?: ContextMenuSurface) => void
 }
 
 // The row's action buttons. While a feature is edited the edit button becomes
@@ -101,7 +102,7 @@ export function FeatureItemActions({
       {!isBuiltIn && !isOrigin && (
         <button
           className="feature-context-btn"
-          onClick={(e) => { e.stopPropagation(); onRightClick([e.clientX, e.clientY], featureId) }}
+          onClick={(e) => { e.stopPropagation(); onRightClick([e.clientX, e.clientY], featureId, 'tree') }}
           title="More options"
         >
           <img src={iconDotsIcon} alt="Options" />

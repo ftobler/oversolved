@@ -71,7 +71,7 @@ import ViewOptionsButton from '@/components/Viewport/ViewOptionsButton'
 import { showGroupStates, showGroupToggleMutations, type ShowGroup } from '@/components/Viewport/viewOptionsShow'
 
 import { buildContextMenu } from './buildContextMenu'
-import type { BuildContextMenuInput, BuildContextMenuCallbacks, RenameTarget } from './buildContextMenu'
+import type { BuildContextMenuInput, BuildContextMenuCallbacks, ContextMenuSurface, RenameTarget } from './buildContextMenu'
 import { resolveSelectionNormalTarget } from './selectionNormalTarget'
 import { faceFrameFromSolve } from '@/viewport/faceFrameFromSolve'
 import RenameDialog from '@/components/dialogs/RenameDialog'
@@ -405,40 +405,39 @@ export default function Part() {
     setContextMenu(null)
   }, [requestSolve])
 
-  // Whether the last solve flagged anything the cleanup command would remove.
-  // Drives the context-menu item so an empty cleanup gesture is never offered.
-  const hasDanglingContent = useMemo(() => {
-    for (const data of Object.values(solveResults)) {
-      if (data.projection_errors?.length) return true
-      if (data.dropped_constraints?.length) return true
-      if (data.constraints && Object.values(data.constraints).some(c => c.superfluous)) return true
-    }
+  // Whether one sketch's last solve flagged anything the cleanup would remove.
+  // The sketch board asks about the sketch it has open, so a flag on another
+  // sketch cannot light this item.
+  const hasDanglingContent = useCallback((sketchId: string) => {
+    const data = solveResults[sketchId]
+    if (!data) return false
+    if (data.projection_errors?.length) return true
+    if (data.dropped_constraints?.length) return true
+    if (data.constraints && Object.values(data.constraints).some(c => c.superfluous)) return true
     return false
   }, [solveResults])
 
   // The one write-back that is undoable by construction: it is a plain
   // handleMutation, so undo restores the removed entities and the re-solve does
-  // not re-delete them (the generic solve path is pure). No-op when the last
-  // solve flagged nothing, so it never pushes a dead undo entry.
-  const handleRemoveDanglingContent = useCallback(() => {
+  // not re-delete them (the generic solve path is pure). Scoped to the open
+  // sketch: its per-feature plan is the mutation shape the handler already
+  // takes. No-op when that sketch flagged nothing, so no dead undo entry lands.
+  const handleRemoveDanglingContent = useCallback((sketchId: string) => {
     if (!docRef.current) return
-    const perFeature: Record<string, { projections: string[]; constraints: string[] }> = {}
-    for (const [featureId, data] of Object.entries(solveResults)) {
-      const projections = data.projection_errors ?? []
-      // The cleanup's `constraints` list is every constraint id to remove: the
-      // solve's redundant rows and the ones it had to ignore (a cross-sketch
-      // ref, an unreadable operand). Both are dead weight, both are undoable.
-      const constraints = [
-        ...Object.entries(data.constraints ?? {})
-          .filter(([, c]) => c.superfluous)
-          .map(([cid]) => cid),
-        ...(data.dropped_constraints ?? []).map(d => d.id),
-      ]
-      if (projections.length > 0 || constraints.length > 0) {
-        perFeature[featureId] = { projections, constraints }
-      }
-    }
-    if (Object.keys(perFeature).length === 0) return
+    const data = solveResults[sketchId]
+    if (!data) return
+    const projections = data.projection_errors ?? []
+    // The cleanup's `constraints` list is every constraint id to remove: the
+    // solve's redundant rows and the ones it had to ignore (a cross-sketch
+    // ref, an unreadable operand). Both are dead weight, both are undoable.
+    const constraints = [
+      ...Object.entries(data.constraints ?? {})
+        .filter(([, c]) => c.superfluous)
+        .map(([cid]) => cid),
+      ...(data.dropped_constraints ?? []).map(d => d.id),
+    ]
+    if (projections.length === 0 && constraints.length === 0) return
+    const perFeature = { [sketchId]: { projections, constraints } }
     // The plan derives from the last solve; the doc may have changed since.
     // Skip the mutation (and its undo entry) when nothing it targets exists.
     if (!hasDanglingContentInDoc(docRef.current, perFeature)) return
@@ -1533,7 +1532,12 @@ export default function Part() {
     enterEditSketch(featureId)
   }, [features, enterEditSketch])
 
-  const handleRightClick = useCallback((pos: [number, number], targetId?: string, pickedSelectionId?: string) => {
+  const handleRightClick = useCallback((
+    pos: [number, number],
+    targetId?: string,
+    surface: ContextMenuSurface = 'viewport',
+    pickedSelectionId?: string,
+  ) => {
     const store = useSketchEditorStore.getState()
     // The freeze items act on the picked sketch entity or constraint tile, then
     // on the current selection for a bare viewport right-click. A feature-tree
@@ -1576,6 +1580,7 @@ export default function Part() {
       selectedNormalTarget: targetId
         ? null
         : resolveSelectionNormalTarget(store.normalSelection, store.selectedPicks, features, BUILT_IN_IDS, (query, pickKey) => faceFrameFromSolve(bodies, query, pickKey)),
+      surface,
       features,
       visibleFeatures: visibleFeaturesWithEdit,
       activeSketchFeatureId: activeSketchFeatureId ?? undefined,
@@ -1594,6 +1599,13 @@ export default function Part() {
       onToggleSuppression: toggleSuppression,
       onExitSketch: handleExitSketch,
       onDeleteFeature: handleDeleteFeature,
+      // The parts-row Delete opens the toolbar's add-and-edit flow for a
+      // delete_body seeded with this part, rather than committing on the spot
+      // as the Delete key does.
+      onDeletePart: (partId) => {
+        handleAddFeature('delete_body', { bodies: [`@${partId}`] })
+        setContextMenu(null)
+      },
       onRequestRename: setRenameTarget,
       onAlignToFace: (normal, center) => viewportRef.current?.alignCameraToFace(normal, center),
       onNormalToPlane: handleNormalToPlane,
@@ -1620,7 +1632,7 @@ export default function Part() {
     const { items } = buildContextMenu(input, callbacks)
     setContextMenu({ position: pos, items })
   }, [handleRebuild, handleRemoveDanglingContent, toggleVisibility, toggleSuppression, handleExitSketch, handleDeleteFeature,
-    handleAlignCameraToSketchPlane, handleNormalToPlane, handleNewSketchOnPlane,
+    handleAddFeature, handleAlignCameraToSketchPlane, handleNormalToPlane, handleNewSketchOnPlane,
     features, visibleFeaturesWithEdit, activeSketchFeatureId, partLabels, hasDanglingContent, bodies,
     effectiveVisibleParts, viewportRef, handleSetPartColorPopover, handleMutation])
 

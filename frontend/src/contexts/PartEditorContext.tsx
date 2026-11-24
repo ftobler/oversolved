@@ -1,6 +1,6 @@
 import { createContext, useContext } from 'react'
 import type { Mutation } from '@/types/cad'
-import type { RenameTarget } from '@/pages/buildContextMenu'
+import type { ContextMenuSurface, RenameTarget } from '@/pages/buildContextMenu'
 
 export interface PartEditorCallbacks {
   onToggleSelect: (id: string) => void
@@ -12,7 +12,7 @@ export interface PartEditorCallbacks {
   onEditCommit: () => void
   onEditCancel: () => void
   onToggleVisibility: (featureId: string) => void
-  onRightClick: (pos: [number, number], targetId?: string) => void
+  onRightClick: (pos: [number, number], targetId?: string, surface?: ContextMenuSurface) => void
   onRename?: (featureId: string, label: string) => void
   // The same dialog opener the tree menu uses: one RenameDialog, one confirm
   // path. Absent in headless callers, which is why the card hides its button.

@@ -247,7 +247,7 @@ export async function partDocumentPanelMockModule() {
             <div key={partId} data-testid={`body-${partId}`}>
               <button
                 data-testid={`context-btn-${partId}`}
-                onClick={(e: React.MouseEvent) => onRightClick([e.clientX, e.clientY], `body:${partId}`)}
+                onClick={(e: React.MouseEvent) => onRightClick([e.clientX, e.clientY], `body:${partId}`, 'parts')}
               >
                 Context
               </button>

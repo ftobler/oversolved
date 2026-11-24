@@ -6,6 +6,7 @@ import LoadingOverlay from '@/components/dialogs/LoadingOverlay'
 import { PanelsToggle } from '@/components/layout/PanelsToggle'
 import { ErrorBanner } from '@/components/shared/ErrorBanner'
 import { DEFAULT_EXTRUDE_DISTANCE } from '@/utils/yamlMutations'
+import type { ContextMenuSurface } from './buildContextMenu'
 
 import featureExtrudeIcon from '@/assets/icons/feature-extrude.svg'
 import featureRevolveIcon from '@/assets/icons/feature-revolve.svg'
@@ -63,7 +64,7 @@ interface PartEditorPanelProps {
   // import greyed out even when the page's mode still reads sketch.
   canImportDxf: boolean
   viewportRef: React.RefObject<ViewportHandle | null>
-  handleRightClick: (pos: [number, number], targetId?: string, pickedSelectionId?: string) => void
+  handleRightClick: (pos: [number, number], targetId?: string, surface?: ContextMenuSurface, pickedSelectionId?: string) => void
   // Bottom-left in-viewport overlay (the measurement readout).
   viewportReadout?: ReactNode
   // The viewer options button, stacked above the orientation cube.
@@ -152,7 +153,7 @@ export default function PartEditorPanel({
             <Viewport
               ref={viewportRef}
               onRightClick={(pos) => handleRightClick(pos)}
-              onSelectionContextMenu={(selectionId, pos) => handleRightClick(pos, undefined, selectionId)}
+              onSelectionContextMenu={(selectionId, pos) => handleRightClick(pos, undefined, 'viewport', selectionId)}
               readout={viewportReadout}
               viewOptions={viewportViewOptions}
             />
