@@ -6,7 +6,7 @@ import { applyReorderPickField } from '@/utils/yamlMutations/featureAdmin'
 import { applyAddFillet, applyAddChamfer, applySetFilletField, applySetChamferField } from '@/utils/yamlMutations/featureDefs'
 import { applyAddBoolean, applySetBooleanField } from '@/utils/yamlMutations/featureDefs'
 import { applySetLinearPatternField } from '@/utils/yamlMutations/featureDefs'
-import { randomId, warn, setIdScope, setIdSource } from '@/utils/yamlMutations/helpers'
+import { randomId, warn, refMatchesEntity, setIdScope, setIdSource } from '@/utils/yamlMutations/helpers'
 import { featureAt } from '@/testing/featureAccess'
 
 const pattern0 = (doc: PartDoc) => featureAt(doc, 0, 'linear_pattern').linear_pattern
@@ -624,6 +624,14 @@ describe('randomId', () => {
       setIdSource(null)
       setIdScope(previous)
     }
+  })
+})
+
+describe('refMatchesEntity', () => {
+  it('does not let a shorter id claim a longer id with a vertex suffix', () => {
+    const id = 'c1AAAAAAAAAAAAAA'
+    expect(refMatchesEntity(`$${id}end`, id)).toBe(true)
+    expect(refMatchesEntity(`$${id}end`, 'c1')).toBe(false)
   })
 })
 

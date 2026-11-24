@@ -3,7 +3,7 @@
 // another sketch's member and a duplicate or lone point are refused, deleting
 // a member shrinks the group instead of cascading, the mirror and pattern copy
 // one group per copy, and fillet_corners refuses a grouped side.
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, afterEach } from 'vitest'
 import type { FilletCorner, PartConstraint, PartDoc, SketchData } from '@/types/cad'
 import { createDocSession, type DocSession, type EditorFacts } from '@/session/DocSession'
 import type { DirtyFacts } from '@/session/dirty'
@@ -15,6 +15,7 @@ import {
   applyMirrorEntities,
   applyPatternEntities,
   planFilletCorners,
+  setIdSource,
 } from '@/utils/yamlMutations'
 import { sketchAt } from '@/testing/featureAccess'
 import { addConstraintProblem } from '@/utils/constraintProblems'
@@ -40,6 +41,16 @@ function groupDoc(extra: { constraints?: PartConstraint[] } = {}): PartDoc {
 }
 
 const sketch = (doc: PartDoc) => sketchAt(doc)
+
+// A copied point ref names a copy exactly: its whole id plus a vertex key.
+// Prefix matching is wrong here because the fixture's own ids (c1, p1, ax) can
+// prefix a minted copy id and would claim the ref with the wrong entity.
+function expectCopiedPointRefs(doc: PartDoc, refs: readonly string[]): void {
+  const sources = new Set(['l1', 'l2', 'c1', 'p1', 'ax'])
+  const copyIds = (sketch(doc).entities ?? []).map(e => e.id).filter(id => !sources.has(id))
+  const pointRefs = copyIds.flatMap(id => [`$${id}start`, `$${id}end`])
+  for (const ref of refs) expect(pointRefs, `ref ${ref} does not name a copy point`).toContain(ref)
+}
 
 function engineFor(doc: PartDoc): { session: DocSession; cell: { current: PartDoc | null } } {
   const cell: { current: PartDoc | null } = { current: doc }
@@ -198,6 +209,8 @@ describe('group deletion', () => {
 })
 
 describe('group copy rules', () => {
+  afterEach(() => setIdSource(null))
+
   it('mirror copies one group over the copies when every member is a source', () => {
     const doc = groupDoc({
       constraints: [{ id: 'g1', kind: 'group', refs: ['$l1', '$l2', '$c1'] }],
@@ -230,15 +243,34 @@ describe('group copy rules', () => {
     const groups = (sketch(doc).constraints ?? []).filter(c => c.kind === 'group')
     expect(groups).toHaveLength(2)
     const copy = groups.find(c => c.id !== 'g1')!
-    const copyIds = (sketch(doc).entities ?? [])
-      .map(e => e.id)
-      .filter(id => id !== 'l1' && id !== 'l2')
     expect(copy.refs).toHaveLength(2)
-    for (const ref of copy.refs as string[]) {
-      const entity = copyIds.find(id => ref.startsWith(`$${id}`))
-      expect(entity, `ref ${ref} does not name a copy`).toBeDefined()
-      expect(ref.slice(entity!.length + 1)).toMatch(/^(start|end)$/)
-    }
+    expectCopiedPointRefs(doc, copy.refs as string[])
+  })
+
+  it('maps a copied point when the copy id starts with a fixture id', () => {
+    // Pin the mint so the first copy id shares the `c1` prefix of a fixture
+    // entity: the old first-prefix lookup then claims the ref with `c1`.
+    let mint = 0
+    setIdSource(bytes => {
+      if (bytes !== 12) return 'abcdef'
+      return ++mint === 1 ? 'c1AAAAAAAAAAAAAA' : 'q2AAAAAAAAAAAAAA'
+    })
+    const doc = groupDoc({
+      constraints: [{ id: 'g1', kind: 'group', refs: ['$l1end', '$l2start'] }],
+    })
+    applyMirrorEntities(doc, 'sk', ['l1', 'l2'], 'ax')
+    const groups = (sketch(doc).constraints ?? []).filter(c => c.kind === 'group')
+    const copy = groups.find(c => c.id !== 'g1')!
+    expect(copy.refs).toHaveLength(2)
+    expectCopiedPointRefs(doc, copy.refs as string[])
+    const ref = (copy.refs as string[])[0]
+    expect(ref).toBe('$c1AAAAAAAAAAAAAAend')
+    // The pinned id turns the flake into a certainty: a first-prefix match on
+    // the fixture ids claims the ref with `c1` and leaves no vertex key.
+    const withOriginals = (sketch(doc).entities ?? []).map(e => e.id).filter(id => id !== 'l1' && id !== 'l2')
+    const claimed = withOriginals.find(id => ref.startsWith(`$${id}`))!
+    expect(claimed).toBe('c1')
+    expect(ref.slice(claimed.length + 1)).not.toMatch(/^(start|end)$/)
   })
 
   it('pattern copies point members with their transformed keys', () => {
