@@ -7,7 +7,6 @@
 
 import { describe, it, expect } from 'vitest'
 import { weakConstraintNoun, weakConstraintWarning } from '@/utils/constraintProblems'
-import { constraintTileLabel } from '@/registry/constraintRegistry'
 import { featureFailure } from '@/utils/core/featureFailure'
 import {
   blocksExport,
@@ -102,10 +101,13 @@ describe('a weak sketch is a warning row, not a failure', () => {
 })
 
 describe('the weak marking on a constraint', () => {
-  it('suffixes a symbol tile label', () => {
-    expect(constraintTileLabel('symbol_h', { weak: true })).toBe('Horizontal (holds only at an extreme)')
-    // A conflict still reads as the conflict: it is the harder verdict.
-    expect(constraintTileLabel('symbol_h', { weak: true, culprit: true })).toBe('Horizontal (conflicting)')
+  it('names the dimension the same way as the sketch warning', () => {
+    expect(weakConstraintWarning(weakConstraintNoun('point_distance_x', 2), 0.045)).toBe(sentence)
+    // A symbol tile with no authored record falls back to its own name, so a
+    // redundant/conflicting suffix still reads inside the sentence.
+    expect(weakConstraintWarning('Horizontal (redundant)', 0.045)).toContain(
+      'Horizontal (redundant) holds the profile only at the arc',
+    )
   })
 })
 

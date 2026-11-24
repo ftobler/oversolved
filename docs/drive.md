@@ -651,7 +651,18 @@ banner on stdout, so a client config must use the direct node invocation.
   `Underconstrained: N degree(s) of freedom.` plus up to five free entity ids,
   and its `featureDeltas` row carries the same `dof`. Neither makes a run or a
   measure `ok` false, and both are sketch warning rows an export tolerates (see
-  below). `fixed` makes a sketch read fully constrained but carries no design
+  below). A fully constrained sketch can also be a warning row when the solve
+  found a weak (second-order) constraint: an axis dimension holding a point at a
+  circle's or arc's extreme, where its row is stationary, so the sketch can be
+  visibly tilted while every row reads satisfied. That row keeps status
+  `fully_constrained`, its `message` names the dimension by kind and value and
+  states the rotation it allows (`x distance 2 holds the profile only at the
+  arc's extreme, so the profile can rotate by up to 0.045 deg. ...`), and it
+  carries `weak: [{ constraintId, moveEstimate }]` with the raw ids and the
+  rotation in degrees. A body built from that sketch reports the merge-ceiling
+  warning with `; see the warning on sketch <id>`, so the ceiling row is not read
+  as the cause. It is a warning in the tree and over MCP, never a failed run or
+  export. `fixed` makes a sketch read fully constrained but carries no design
   intent: dimension against projected geometry (`add_projected_entity`; a face
   projection follows later edits, `construction: true` (at creation or via
   `toggle_construction`) keeps the whole wire out of the profile while it stays
@@ -675,9 +686,10 @@ banner on stdout, so a client config must use the direct node invocation.
   `export` is the one reply whose `ok` is stricter than a run's: the file is
   the answer, so any feature in `features` (failed, partial or warned) makes it
   `ok: false` even though the bytes are still written; the carve-out is a
-  sketch warning row (underconstrained, or fully constrained with an ignored
-  constraint), which leaves `ok` true because the file is sound; a note does
-  not change that verdict. An assembly export
+  sketch warning row (underconstrained, fully constrained with an ignored
+  constraint, or fully constrained with a weak constraint), which leaves `ok`
+  true because the file is sound; a note does not change that verdict. An
+  assembly export
   carries `solve`, `mates`, `parts`, `instances` and `summary` like a measure,
   and is `ok: false` when the solve did not run or a mate or bound part reported
   a problem: the file then holds seed or best-effort poses, and the reply says

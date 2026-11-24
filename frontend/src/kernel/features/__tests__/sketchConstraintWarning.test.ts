@@ -6,6 +6,9 @@
 // solve runs the status pass). Runs against the real node wasm; skips when the
 // gitignored pkg-node build is absent (run `just wasm`).
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import {
   prepareDragContext,
   resetSketchSolver,
@@ -19,6 +22,7 @@ import {
 } from '@/utils/yamlMutations/sketchSugar'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { initGlobalRepo } from '../../query'
+import { partSpecFromText } from '@/utils/partExport'
 import type { PartDoc, SketchFeature } from '@/types/cad'
 
 const solveBytes = loadSolver()
@@ -107,6 +111,35 @@ describe.skipIf(solveBytes === null)('sketch constraint warning (real solver)', 
     expect(out.status).toBe('fully_constrained')
     expect(out.dof).toBe(0)
     expect(out.solver_warning).toBeUndefined()
+  })
+
+  it('marks the weak constraint record and keeps its angle in the solve result', () => {
+    // The report document's sketch: fully constrained, one axis distance held at
+    // the inner arc's extreme. The solve result is what the store's constraint
+    // list and the dimension label paint from, so the mark must be on the
+    // authored constraint record, not only in the warning text.
+    const recipe = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), '../../../../regressions/arc-extreme-x-dimension/recipe.yaml'),
+      'utf8',
+    )
+    const doc = partSpecFromText(recipe) as unknown as PartDoc
+    const feature = (doc.features ?? []).find(f => f.id === 'sk1') as unknown as SketchFeature
+
+    const out = solve(feature)
+    expect(out.status).toBe('fully_constrained')
+    expect(out.solver_warning).toContain('x distance 2 holds the profile only at the arc')
+    expect(out.weak_constraints).toEqual([
+      { constraintId: 'c_point_distance_x_OJPy7uYJ', moveEstimate: expect.any(Number) },
+    ])
+    const marked = out.constraints?.['c_point_distance_x_OJPy7uYJ']
+    expect(marked?.weak).toBe(true)
+    expect(marked?.weak_angle).toBeGreaterThan(0)
+    expect(marked?.weak_angle).toBeLessThan(1)
+    // No other constraint carries the mark.
+    for (const [cid, c] of Object.entries(out.constraints ?? {})) {
+      if (cid === 'c_point_distance_x_OJPy7uYJ') continue
+      expect(c.weak, cid).toBeUndefined()
+    }
   })
 
   it('anchors and dimensions a centre rectangle from its one-step sugar', () => {

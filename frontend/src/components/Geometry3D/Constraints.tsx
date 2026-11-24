@@ -173,6 +173,10 @@ interface SymbolTile {
 export function ConstraintOverlays({ constraints, sketch, extent, featureId, planeTransform, droppedConstraints, authoredConstraints, onSelectionContextMenu, geometryStale = false }: ConstraintOverlaysProps) {
   const showConstraintTiles = useSketchUiStore(s => s.showConstraintTiles)
   const dimOffset = extent * 0.1
+  // The authored rows name a constraint in the user's words ("x distance 2"),
+  // which is what a weak tile's sentence needs; the solved render block only
+  // knows its glyph.
+  const authoredById = new Map((authoredConstraints ?? []).map(c => [c.id, c]))
 
   const symbolElements: React.ReactNode[] = []
   const dimElements: React.ReactNode[] = []
@@ -231,14 +235,14 @@ export function ConstraintOverlays({ constraints, sketch, extent, featureId, pla
       // render, so the counts cannot miscount an entity id containing `:`.
       // A weak tile's title is the full sentence rather than a name suffix: the
       // tile is the only thing hovering that constraint can reach, and the
-      // sentence is the one place the user is told what to change.
+      // sentence is the one place the user is told what to change. It names the
+      // dimension the way the sketch warning does; a row with no authored
+      // record falls back to the tile name (which keeps any redundant or
+      // conflicting suffix).
       const tileName = constraintTileLabel(r.kind, c, r.entities?.length ?? 0, r.points?.length ?? 0)
-      const title = c.weak
-        ? weakConstraintWarning(
-            constraintTileLabel(r.kind, {}, r.entities?.length ?? 0, r.points?.length ?? 0),
-            c.weak_angle ?? 0,
-          )
-        : tileName
+      const authored = authoredById.get(cid)
+      const weakNoun = authored ? weakConstraintNoun(authored.kind, authored.value) : tileName
+      const title = c.weak ? weakConstraintWarning(weakNoun, c.weak_angle ?? 0) : tileName
       atGroups.get(atKey)!.icons.push({ url, title, key: cid, highlightIds, superfluous: c.superfluous, culprit: c.culprit, weak: c.weak })
 
     } else {

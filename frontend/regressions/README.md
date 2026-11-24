@@ -53,6 +53,11 @@ runner is `src/regressions/run.ts`; the loader/validator is
 - `measures`: the oracle's measure names. `bodies` is required; the rest are
   checked only when present. `centroid` and `bbox` may be `null` for a document
   with no body.
+- `warnings`: optional readable checks, one per feature id, each a substring the
+  feature's solve warning (or its exception, for a failed row) must contain. It
+  pins the MECHANISM a bug case exists for: `features` says what verdict and
+  `measures` what geometry, while a warning row says why. A typo'd id fails the
+  case loudly.
 - `topology`: `strict` enforces `faces`/`edges`; `report` compares them and
   warns without failing the case.
 - `snapshot`: `true` requires `snapshot.json`; the file is refused without it.

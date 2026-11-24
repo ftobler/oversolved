@@ -242,12 +242,18 @@ pub fn solve_sketch(input: &Input) -> Output {
     // the number a caller recomputes from `params_solved` is exactly this one.
     // An overconstrained solve (including one whose seed already held invalid
     // geometry) has no precision to promise: NaN, never the finish's last
-    // reading.
+    // reading. The same measurement feeds the weak check below: it must not
+    // depend on whether the finish ran or was restored.
+    let shipped_misses = problem.contract_misses(&params_solved);
     finish = if finish.has_measured_miss() && status != Status::Overconstrained {
-        finish.with_misses(problem.contract_misses(&params_solved))
+        finish.with_misses(shipped_misses)
     } else {
         Finish::unsatisfied()
     };
+
+    // One evaluation of the constraint rows serves the weak report's row map and
+    // the per-constraint verdict walk below; both read the same solved params.
+    let layout = row_layout(&problem, &params_solved);
 
     // Weak (second-order) constraints: only a fully constrained cold solve can
     // ship one as `dof 0`, and only it reads the report (a free direction is
@@ -256,11 +262,11 @@ pub fn solve_sketch(input: &Input) -> Output {
     let weak_constraints = if status == Status::FullyConstrained && result.jacobian_finite {
         weak_constraints(
             &problem,
-            &params_solved,
             &jac,
             &spectrum,
+            &layout,
             finish.weak.as_ref(),
-            finish.linear_miss,
+            shipped_misses.1,
         )
     } else {
         Vec::new()
@@ -274,18 +280,12 @@ pub fn solve_sketch(input: &Input) -> Output {
     // ratio. `skip_status_pass` does not gate them: it skips the per-ENTITY
     // pass, which is a different cost class.
     let (mut constraint_flags, constraint_miss) = if status == Status::Overconstrained {
-        let mut miss = constraint_miss(
-            &problem,
-            &params_solved,
-            &jac,
-            problem.scale(),
-            input.constraints.len(),
-        );
+        let mut miss = constraint_miss(&jac, problem.scale(), input.constraints.len(), &layout);
         flag_invalid_geometry(&problem, &invalid, &mut miss);
         (vec![0u8; input.constraints.len()], miss)
     } else {
         (
-            redundancy_flags(&problem, &params_solved, &jac, input.constraints.len()),
+            redundancy_flags(&jac, input.constraints.len(), &layout),
             vec![0f64; input.constraints.len()],
         )
     };
@@ -640,28 +640,53 @@ fn dominant(mut rows: Vec<(usize, f64)>) -> Vec<(usize, f64)> {
     rows
 }
 
-/// The wire index (`Input::constraints` position) of the surviving constraint
-/// that owns each Jacobian row, or `None` for the pin rows that follow them.
+/// The surviving constraints in residual-row order: the wire index, the first
+/// Jacobian row and the row count each owns, plus every constraint row's
+/// residual in that order.
 ///
-/// The redundancy walk and the miss already re-evaluate each constraint's rows
-/// in order; this is the same walk, kept separate because the weak report needs
-/// the row -> constraint direction rather than a per-constraint aggregate.
-fn constraint_row_wires(problem: &Problem, x: &[f64], n_rows: usize) -> Vec<Option<usize>> {
+/// The Jacobian stacks constraints, then pins, in exactly this order, so one
+/// evaluation of the constraint rows serves the weak report's row -> constraint
+/// map, the redundancy walk and the per-constraint miss. Rows are counted from
+/// the builders themselves; a broken residual/Jacobian mirror is still caught by
+/// each caller's own bounds checks.
+struct RowLayout {
+    /// `(wire index, first row, row count)`, one per surviving constraint.
+    constraints: Vec<(usize, usize, usize)>,
+    /// The residual of every constraint row, in Jacobian order.
+    residuals: Vec<f64>,
+}
+
+fn row_layout(problem: &Problem, x: &[f64]) -> RowLayout {
     let wire = problem.constraint_wire_indices();
-    let mut owners = Vec::with_capacity(n_rows);
+    let mut constraints = Vec::with_capacity(problem.constraints().len());
+    let mut residuals = Vec::new();
     let mut rows: Vec<f64> = Vec::new();
     for (ci, c) in problem.constraints().iter().enumerate() {
         rows.clear();
         problem.residual_one(c, x, &mut rows);
-        let owner = wire.get(ci).copied();
-        for _ in 0..rows.len() {
-            if owners.len() >= n_rows {
-                return owners;
-            }
-            owners.push(owner);
+        constraints.push((
+            wire.get(ci).copied().unwrap_or(ci),
+            residuals.len(),
+            rows.len(),
+        ));
+        residuals.extend_from_slice(&rows);
+    }
+    RowLayout {
+        constraints,
+        residuals,
+    }
+}
+
+/// The wire index (`Input::constraints` position) of the surviving constraint
+/// that owns each Jacobian row, or `None` for the pin rows that follow them.
+fn constraint_row_wires(layout: &RowLayout, n_rows: usize) -> Vec<Option<usize>> {
+    let mut owners = vec![None; n_rows];
+    for &(wire, start, count) in &layout.constraints {
+        let end = (start + count).min(n_rows);
+        for owner in owners.iter_mut().take(end).skip(start) {
+            *owner = Some(wire);
         }
     }
-    owners.resize(n_rows, None);
     owners
 }
 
@@ -674,30 +699,33 @@ fn constraint_row_wires(problem: &Problem, x: &[f64], n_rows: usize) -> Vec<Opti
 ///    refuses because the direction is near-free.
 /// 2. The solved Jacobian's smallest singular value. A direction the rows only
 ///    hold to second order sits there, and the position uncertainty along it is
-///    about `linear_miss / sigma_min`. Over `WEAK_SURFACE_IDENTITY`, or over
+///    about `linear_miss / sigma_min`, where `linear_miss` is the miss measured
+///    on the SHIPPED params by the caller (`Problem::contract_misses`), never
+///    the finish's own reading: a finish that ran, was restored or never ran
+///    must not change what this test sees. Over `WEAK_SURFACE_IDENTITY`, or over
 ///    `WEAK_SURFACE_PARALLEL` once read as an angle across the sketch scale, the
-///    direction is a visible offset whichever way the finish got there. This
-///    test does not read the finish at all, so a later change to its cap cannot
-///    retire the diagnostic.
+///    direction is a visible offset whichever way the finish got there. A
+///    non-finite miss is no measurement, so the test does not fire.
 ///
-/// Both tests implicate rows; a direction that nearly satisfies every row
+/// Both tests implicate rows, and a direction that nearly satisfies every row
 /// implicates the whole moving branch (each coincidence, tangency and length on
-/// it shares the first-order response), so the report narrows to the rows the
-/// user can act on: the ones carrying an authored dimension value. A weak
-/// coincidence or tangency cannot be "the wrong dimension"; a weak dimension
-/// can, which is what the host's sentence asks the user to change. When no
-/// implicated row is a dimension, the single largest one is named instead.
-/// A constraint found by both tests keeps the larger estimate; the report is
-/// ordered largest first.
+/// it shares the first-order response). The report therefore keeps only the
+/// axis-distance rows: that is the one dimension family whose row is stationary
+/// at a geometric extreme (a point at a circle's top, bottom or side), which is
+/// the double root this diagnostic exists for, and it is the row the host's
+/// sentence tells the user to change. A weak coincidence or tangency is not "the
+/// wrong constraint", and a length or radius row is not stationary this way, so
+/// reporting them would be noise. A constraint found by both tests keeps the
+/// larger estimate; the report is ordered largest first.
 fn weak_constraints(
     problem: &Problem,
-    x: &[f64],
     jac: &DMatrix<f64>,
     spectrum: &Spectrum,
+    layout: &RowLayout,
     finish_weak: Option<&WeakDirection>,
     linear_miss: f64,
 ) -> Vec<WeakConstraint> {
-    let owners = constraint_row_wires(problem, x, jac.nrows());
+    let owners = constraint_row_wires(layout, jac.nrows());
     let mut found: Vec<(usize, f64)> = Vec::new();
     let mut blame = |rows: &[usize], degrees: f64| {
         for &row in rows {
@@ -722,19 +750,6 @@ fn weak_constraints(
     ) {
         blame(&rows, estimate);
     }
-    // The authored rows that carry a value: the dimensions a user can change.
-    let dimension_wires: HashSet<usize> = problem
-        .constraints()
-        .iter()
-        .zip(problem.constraint_wire_indices())
-        .filter(|(c, _)| c.value.is_some())
-        .map(|(_, &wire)| wire)
-        .collect();
-    // The axis distances first: they are the one dimension family whose row is
-    // stationary at a geometric extreme (a point at the top, bottom or side of a
-    // circle), which is the double root this diagnostic exists for. Every other
-    // implicated row moves with the weak direction because the whole branch
-    // does, not because it caused it.
     let axis_wires: HashSet<usize> = problem
         .constraints()
         .iter()
@@ -748,28 +763,10 @@ fn weak_constraints(
         })
         .map(|(_, &wire)| wire)
         .collect();
-    let axis: Vec<(usize, f64)> = found
-        .iter()
-        .copied()
-        .filter(|&(wire, _)| axis_wires.contains(&wire))
+    let mut kept: Vec<(usize, f64)> = found
+        .into_iter()
+        .filter(|(wire, _)| axis_wires.contains(wire))
         .collect();
-    let dimensions: Vec<(usize, f64)> = found
-        .iter()
-        .copied()
-        .filter(|&(wire, _)| dimension_wires.contains(&wire))
-        .collect();
-    let mut kept = if !axis.is_empty() {
-        axis
-    } else if !dimensions.is_empty() {
-        dimensions
-    } else {
-        found
-            .iter()
-            .copied()
-            .max_by(|a, b| a.1.total_cmp(&b.1))
-            .into_iter()
-            .collect()
-    };
     kept.sort_by(|a, b| b.1.total_cmp(&a.1));
     kept.into_iter()
         .filter(|&(_, degrees)| degrees.is_finite() && degrees > 0.0)
@@ -786,7 +783,8 @@ fn weak_constraints(
 /// The uncertainty is `linear_miss / sigma_min` in parameter units; read over
 /// the sketch scale it is the rotation the weak direction allows, so that is
 /// the estimate. The rows implicated are the ones whose first-order gain along
-/// the direction is at least half the largest.
+/// the direction is at least half the largest. A non-finite miss is no
+/// measurement and never fires the test.
 fn sigma_blame(
     jac: &DMatrix<f64>,
     sigma_min: f64,
@@ -794,14 +792,10 @@ fn sigma_blame(
     linear_miss: f64,
     scale: f64,
 ) -> Option<(Vec<usize>, f64)> {
-    if sigma_min <= 0.0 || direction.len() != jac.ncols() {
+    if sigma_min <= 0.0 || direction.len() != jac.ncols() || !linear_miss.is_finite() {
         return None;
     }
-    let uncertainty = if linear_miss.is_finite() {
-        linear_miss / sigma_min
-    } else {
-        f64::INFINITY
-    };
+    let uncertainty = linear_miss / sigma_min;
     // The angular clause needs a scale to divide by; a zero-sized sketch has no
     // rotation to speak of, so the world clause is the only one there.
     let wide = uncertainty > WEAK_SURFACE_IDENTITY
@@ -964,35 +958,30 @@ fn flag_invalid_geometry(problem: &Problem, invalid: &[usize], miss: &mut [f64])
 /// by construction, so the walk stops accumulating there. One pass, no SVD:
 /// O(m n^2) worst case, the alternative's 5.9 s for 200 lines is the stated
 /// reason.
-fn redundancy_flags(problem: &Problem, x: &[f64], jac: &DMatrix<f64>, n_wire: usize) -> Vec<u8> {
+fn redundancy_flags(jac: &DMatrix<f64>, n_wire: usize, layout: &RowLayout) -> Vec<u8> {
     let mut flags = vec![0u8; n_wire];
     let n = jac.ncols();
     if n == 0 {
         return flags;
     }
-    let wire = problem.constraint_wire_indices();
     // Orthonormal basis of the span so far, one flat row per direction.
     let mut basis: Vec<Vec<f64>> = Vec::new();
-    let mut rows: Vec<f64> = Vec::new();
-    let mut row0 = 0usize;
-    for (ci, c) in problem.constraints().iter().enumerate() {
-        rows.clear();
-        problem.residual_one(c, x, &mut rows);
+    for &(wire, start, count) in &layout.constraints {
         let mut adds_rank = false;
-        for (r, _) in rows.iter().enumerate() {
+        for r in 0..count {
             // The residual and Jacobian builders mirror row counts by contract;
             // a broken mirror must not trap the Worker, so a short Jacobian
             // stops the WHOLE walk and keeps the flags decided so far. If only
-            // this row were skipped, `row0` would still advance past the end
-            // and every later constraint would read a missing row as "adds no
-            // rank", misflagging the rest of the set as redundant.
-            if row0 + r >= jac.nrows() {
+            // this row were skipped, the later constraints would still read a
+            // missing row as "adds no rank", misflagging the rest of the set as
+            // redundant.
+            if start + r >= jac.nrows() {
                 return flags;
             }
             if basis.len() == n {
                 break;
             }
-            let mut v: Vec<f64> = jac.row(row0 + r).iter().copied().collect();
+            let mut v: Vec<f64> = jac.row(start + r).iter().copied().collect();
             let before = norm(&v);
             for _ in 0..2 {
                 for b in &basis {
@@ -1013,10 +1002,9 @@ fn redundancy_flags(problem: &Problem, x: &[f64], jac: &DMatrix<f64>, n_wire: us
                 adds_rank = true;
             }
         }
-        if !rows.is_empty() && !adds_rank {
-            flags[wire[ci]] = CONSTRAINT_FLAG_REDUNDANT;
+        if count > 0 && !adds_rank {
+            flags[wire] = CONSTRAINT_FLAG_REDUNDANT;
         }
-        row0 += rows.len();
     }
     flags
 }
@@ -1033,33 +1021,22 @@ fn redundancy_flags(problem: &Problem, x: &[f64], jac: &DMatrix<f64>, n_wire: us
 /// to pick the culprits of an unsatisfied solve (top contributors covering 90%
 /// of the total miss), so it needs exactly this: how far each constraint is
 /// from being satisfiable in the units of the sketch.
-fn constraint_miss(
-    problem: &Problem,
-    x: &[f64],
-    jac: &DMatrix<f64>,
-    scale: f64,
-    n_wire: usize,
-) -> Vec<f64> {
+fn constraint_miss(jac: &DMatrix<f64>, scale: f64, n_wire: usize, layout: &RowLayout) -> Vec<f64> {
     let mut miss = vec![0f64; n_wire];
     let denom = if scale > 0.0 { scale } else { 1.0 };
-    let wire = problem.constraint_wire_indices();
-    let mut rows: Vec<f64> = Vec::new();
-    let mut row0 = 0usize;
-    for (ci, c) in problem.constraints().iter().enumerate() {
-        rows.clear();
-        problem.residual_one(c, x, &mut rows);
+    for &(wire, start, count) in &layout.constraints {
         let mut worst = 0f64;
-        for (r, &res) in rows.iter().enumerate() {
-            if row0 + r >= jac.nrows() {
+        for r in 0..count {
+            if start + r >= jac.nrows() {
                 break;
             }
-            let jn = jac.row(row0 + r).norm();
+            let jn = jac.row(start + r).norm();
             if jn > 0.0 {
-                worst = worst.max(res.abs() / jn);
+                let residual = layout.residuals.get(start + r).copied().unwrap_or(0.0);
+                worst = worst.max(residual.abs() / jn);
             }
         }
-        miss[wire[ci]] = worst / denom;
-        row0 += rows.len();
+        miss[wire] = worst / denom;
     }
     miss
 }

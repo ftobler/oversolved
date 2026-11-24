@@ -745,7 +745,6 @@ export function underconstrainedWarning(dof: number, freeIds: readonly string[])
   return `${head} Free: ${shown.join(', ')}${rest > 0 ? ` and ${rest} more` : ''}.`
 }
 
-
 /** Wire kind code -> the document's kind name, for a dropped constraint whose
  *  authored id no longer names a readable def. */
 const CONSTRAINT_KIND_NAME: Readonly<Record<number, string>> = Object.fromEntries(
@@ -849,14 +848,15 @@ export function droppedConstraintRecords(
   input: FlatInput,
   layout: EntityLayout[],
   constraintIds: ReadonlyArray<string | null>,
-  authoredKindById: ReadonlyMap<string, string>,
+  authoredById: ReadonlyMap<string, { kind: string }>,
 ): DroppedConstraint[] {
   const dropped: DroppedConstraint[] = []
   for (let i = 0; i < out.constraintFlags.length; i++) {
     if ((out.constraintFlags[i] & CONSTRAINT_FLAG.dropped) === 0) continue
     const cid = constraintIds[i]
     if (cid === null || cid === undefined) continue
-    const kind = authoredKindById.get(cid) ?? CONSTRAINT_KIND_NAME[input.constraints[i]?.kind ?? -1] ?? 'constraint'
+    const kind = authoredById.get(cid)?.kind
+      ?? CONSTRAINT_KIND_NAME[input.constraints[i]?.kind ?? -1] ?? 'constraint'
     dropped.push({ id: cid, kind, reason: droppedConstraintReason(input, layout, i) })
   }
   return dropped
@@ -1080,7 +1080,6 @@ export function solveSketch(
   const warnings: string[] = status === 'underconstrained'
     ? [underconstrainedWarning(out.diagnostics.dof, freeIds)]
     : []
-  const authoredKindById = new Map<string, string>((pf.constraints ?? []).map(c => [c.id, c.kind]))
   const authoredById = new Map((pf.constraints ?? []).map(c => [c.id, c]))
   // The weak (second-order) constraints: the solve says the sketch is fully
   // constrained and still names the rows that only hold at an extreme. The
@@ -1100,7 +1099,7 @@ export function solveSketch(
   // "which authored constraints does the solve not use".
   const droppedList: DroppedConstraint[] = [
     ...droppedConstraints,
-    ...droppedConstraintRecords(out, input, layout, constraintIds, authoredKindById),
+    ...droppedConstraintRecords(out, input, layout, constraintIds, authoredById),
   ]
   warnings.push(...droppedList.map(d => ignoredConstraintWarning(d.id, d.kind, d.reason)))
   // An unresolved projection used to be silent over MCP (it survives as a pinned

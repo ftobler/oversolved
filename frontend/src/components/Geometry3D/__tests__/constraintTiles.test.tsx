@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, fireEvent } from '@testing-library/react'
 import { useSketchEditorStore, useSketchUiStore } from '@/stores/sketchEditorStore'
-import { COLOR_ERROR, COLOR_ERROR_DEEP } from '@/components/Geometry3D/constants'
+import { COLOR_CONSTRAINT_WEAK, COLOR_ERROR, COLOR_ERROR_DEEP } from '@/components/Geometry3D/constants'
 import type { Sketch, Constraints } from '@/types/cad'
 
 vi.mock('@react-three/fiber', () => ({
@@ -66,7 +66,11 @@ const mockConstraints: Constraints = {
   c2: { render: { kind: 'symbol_vertical', at: [5, 0] }, residual: 0 } as Constraints[string],
 }
 
-function renderOverlays(constraints: Constraints = mockConstraints, geometryStale = false) {
+function renderOverlays(
+  constraints: Constraints = mockConstraints,
+  geometryStale = false,
+  authoredConstraints: PartConstraint[] = [],
+) {
   return render(
     <ConstraintOverlays
       constraints={constraints}
@@ -75,6 +79,7 @@ function renderOverlays(constraints: Constraints = mockConstraints, geometryStal
       featureId="feat1"
       planeTransform={{ rotation: [1, 0, 0, 0, 1, 0, 0, 0, 1], origin: [0, 0, 0] }}
       geometryStale={geometryStale}
+      authoredConstraints={authoredConstraints}
     />
   )
 }
@@ -178,6 +183,31 @@ describe('ConstraintTile see-through background', () => {
     const { container } = renderOverlays()
     fireEvent.mouseEnter(container.querySelector('img')!.parentElement!)
     expect(tileStyle(container).background).not.toBe('transparent')
+  })
+
+  it('a weak tile is marked and its title is the solve sentence', () => {
+    // The symbol-tile branch is the badge for a weak constraint that rendered
+    // as a glyph; its hover text is the sentence, named the way the sketch
+    // warning names it.
+    useEditorState.setState({
+    normalSelection: new Set(),
+  })
+    const constraints: Constraints = {
+      c1: {
+        render: { kind: 'symbol_horizontal', at: [5, 0] },
+        residual: 0, weak: true, weak_angle: 0.045,
+      } as Constraints[string],
+    }
+    const authored: PartConstraint[] = [
+      { id: 'c1', kind: 'point_distance_x', a: '$line1start', b: '$line1end', value: 2 } as PartConstraint,
+    ]
+    const { container } = renderOverlays(constraints, false, authored)
+    const style = tileStyle(container)
+    expect(style.outline).toContain(COLOR_CONSTRAINT_WEAK)
+    expect(container.querySelector('img')!.parentElement!.getAttribute('title'))
+      .toContain('x distance 2 holds the profile only at the arc')
+    expect(container.querySelector('img')!.parentElement!.getAttribute('title'))
+      .toContain('0.045 deg')
   })
 })
 

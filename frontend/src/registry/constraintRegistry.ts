@@ -598,7 +598,7 @@ const RENDER_KIND_TO_LABEL: Readonly<Record<string, string>> = {
 
 export function constraintTileLabel(
   renderKind: string,
-  verdict: { superfluous?: boolean; culprit?: boolean; weak?: boolean } = {},
+  verdict: { superfluous?: boolean; culprit?: boolean } = {},
   count?: number,
   pointCount = 0,
 ): string {
@@ -615,7 +615,6 @@ export function constraintTileLabel(
   }
   if (verdict.culprit) return `${name} (conflicting)`
   if (verdict.superfluous) return `${name} (redundant)`
-  if (verdict.weak) return `${name} (holds only at an extreme)`
   return name
 }
 

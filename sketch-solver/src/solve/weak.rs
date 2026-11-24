@@ -30,7 +30,6 @@ const REPORT_TILT: f64 = 7.686e-4;
 /// Every quantity is the report's: legs 7, cap 1, outer radius 3, inner radius
 /// 2 (forced by the cap), cap1/cap2 normal to their legs, the arcs concentric
 /// and tangent to the legs at the shared angles.
-#[allow(clippy::too_many_arguments)]
 fn push_unit(
     entities: &mut Vec<Entity>,
     params: &mut Vec<f64>,
@@ -63,7 +62,6 @@ fn push_unit(
     let cap2_start = l2_end;
     let cap2_end = efn_end;
 
-    let offset = params.len();
     for (kind, block) in [
         (
             Kind::Line,
@@ -99,7 +97,6 @@ fn push_unit(
         entities.push(ent(kind, params.len()));
         params.extend(block);
     }
-    let _ = offset;
     let (l1, l2, arc_a_id, leg4, arc_b_id, efn, cap1, cap2) = (
         base,
         base + 1,
@@ -420,11 +417,12 @@ fn the_singular_value_test_names_the_dimension_without_the_finish() {
     let n = inp.params_initial.len();
     let jac = problem.jacobian(&out.params_solved, n);
     let spectrum = Spectrum::of(&jac, n, true);
+    let layout = row_layout(&problem, &out.params_solved);
     let sigma = weak_constraints(
         &problem,
-        &out.params_solved,
         &jac,
         &spectrum,
+        &layout,
         None,
         out.diagnostics.linear_miss,
     );
@@ -441,5 +439,50 @@ fn the_singular_value_test_names_the_dimension_without_the_finish() {
     assert!(
         estimate >= 0.5 * seed && estimate <= 2.0 * seed,
         "sigma estimate {estimate} deg is not within 2x of the {seed} deg seed tilt"
+    );
+}
+
+/// The finish half on its own: a hand-built refused step names its row and
+/// carries its estimate even when the singular-value test cannot fire. This is
+/// the branch's own regression guard, so deleting the finish contribution
+/// cannot pass the suite on the sigma test alone.
+#[test]
+fn the_finish_branch_names_its_blamed_row_without_the_sigma_test() {
+    let (inp, x_dim) = report_sketch_seeded();
+    let out = solve_sketch(&inp);
+    let problem = Problem::new(&inp);
+    let n = inp.params_initial.len();
+    let jac = problem.jacobian(&out.params_solved, n);
+    let spectrum = Spectrum::of(&jac, n, true);
+    let layout = row_layout(&problem, &out.params_solved);
+    let owners = constraint_row_wires(&layout, jac.nrows());
+    let row = owners
+        .iter()
+        .position(|owner| *owner == Some(x_dim))
+        .expect("the x dimension owns a row in the solved Jacobian");
+    // A zero measured miss is not wide: the sigma test cannot fire, so whatever
+    // the report names below came from the finish half alone.
+    assert!(
+        sigma_blame(
+            &jac,
+            spectrum.weakest_sv,
+            &spectrum.weakest_dir,
+            0.0,
+            problem.scale(),
+        )
+        .is_none(),
+        "the sigma test fired on a zero miss"
+    );
+    let refused = WeakDirection {
+        estimate: 0.05,
+        rows: vec![row],
+    };
+    let weak = weak_constraints(&problem, &jac, &spectrum, &layout, Some(&refused), 0.0);
+    assert_eq!(
+        weak,
+        vec![WeakConstraint {
+            constraint_index: x_dim as u32,
+            move_estimate: 0.05,
+        }]
     );
 }

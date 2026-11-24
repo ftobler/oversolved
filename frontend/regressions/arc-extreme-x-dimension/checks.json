@@ -22,5 +22,9 @@
     "bodies": 1,
     "volume": 27.928904424438503
   },
+  "warnings": {
+    "sk1": "x distance 2 holds the profile only at the arc",
+    "xUH6HOpLrnzoUULH0yU7HhLL": "see the warning on sketch sk1"
+  },
   "snapshot": false
 }

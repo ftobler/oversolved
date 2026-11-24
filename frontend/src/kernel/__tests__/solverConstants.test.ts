@@ -147,6 +147,17 @@ describe('solverConstants', () => {
     expect(OCC_ANGULAR).toBeGreaterThan(100 * floor)
   })
 
+  // The weak-constraint test in the solver reads the same two kernel rungs this
+  // side declares (`solve::weak_constraints`: the position uncertainty against
+  // surface identity, and its angular reading against axis parallel). The Rust
+  // twins carry the WEAK_ prefix rather than TOL_ on purpose: that namespace is
+  // the frontend ladder's, and the geom-core mirror count above stays exact.
+  it('the weak-constraint rungs mirror their Rust twins', () => {
+    const rust = rustConstants(RUST_TOLERANCE, /pub const (WEAK_SURFACE_[A-Z_]+): f64 = ([0-9.e+-]+);/g)
+    expect(rust.get('WEAK_SURFACE_IDENTITY')).toBe(TOL_SURFACE_IDENTITY)
+    expect(rust.get('WEAK_SURFACE_PARALLEL')).toBe(TOL_SURFACE_PARALLEL)
+  })
+
   // Asserting `!rust.has('OCC_CONFUSION')` would test the regex, not the code:
   // the mirror parser only ever matches `TOL_*`. What actually needs pinning is
   // the TS side of that contract -- every TOL_ constant declared here is either
