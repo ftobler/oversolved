@@ -1335,7 +1335,9 @@
    creator, a feature's sketch, an assembly part's mates) with a background
    tint only. It is quieter than .selected on purpose: no outline and no text
    colour change, so the tint alone marks the relation (user, 2026-11-23). The
-   companion below keeps a row that is both reading as selected. */
+   pointer's hover look replaces the tint while the row is hovered, as it does
+   in the assembly's cards; the companion below keeps a row that is both
+   reading as selected. */
 .feature-item.related {
   background: #122028;
 }
