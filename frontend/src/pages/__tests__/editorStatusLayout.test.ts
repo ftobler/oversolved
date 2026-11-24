@@ -9,6 +9,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 const PART_CSS = readFileSync(join(__dirname, '../Part.css'), 'utf8')
+const GLASS_CSS = readFileSync(join(__dirname, '../../components/layout/Glass.css'), 'utf8')
 
 // The declarations of the first rule whose selector is exactly `selector`.
 function rulePart(selector: string): string {
@@ -39,6 +40,26 @@ describe('status card in the right column', () => {
     const part = rulePart('.feature-status-panel')
     expect(part).toMatch(/display:\s*flex/)
     expect(part).not.toMatch(/position:/)
+  })
+})
+
+describe('status card icon size', () => {
+  it('sizes the header icons and the status mark from one shared token', () => {
+    // The card's header lives in Glass.css, the mark's card in Part.css; neither
+    // may restate the size or the wrap card would drift from the editor above.
+    expect(GLASS_CSS).toMatch(/:root\s*\{[^}]*--icon-size:\s*20px/)
+    expect(GLASS_CSS).toMatch(/\.feature-icon\s*\{[^}]*width:\s*var\(--icon-size\)/)
+    expect(GLASS_CSS).toMatch(/\.feature-icon\s*\{[^}]*height:\s*var\(--icon-size\)/)
+    expect(GLASS_CSS).toMatch(/\.feature-rename-btn img,[\s\S]*?\{[^}]*width:\s*var\(--icon-size\)/)
+    const icon = rulePart('.feature-status-icon')
+    expect(icon).toMatch(/width:\s*var\(--icon-size\)/)
+    expect(icon).toMatch(/height:\s*var\(--icon-size\)/)
+    expect(icon).not.toMatch(/margin-top/)
+  })
+
+  it('centres the mark on the first line of a wrapped message', () => {
+    expect(rulePart('.feature-status-panel')).toMatch(/gap:\s*8px/)
+    expect(rulePart('.feature-status-panel .status-message')).toMatch(/line-height:\s*var\(--icon-size\)/)
   })
 })
 

@@ -30,7 +30,7 @@ describe('edit card header buttons', () => {
     expect(verdicts).toContain('.feature-rename-btn')
     expect(verdicts).toMatch(/width:\s*28px/)
     expect(verdicts).toMatch(/height:\s*28px/)
-    expect(GLASS_CSS).toMatch(/\.feature-rename-btn img,[\s\S]*?\{[^}]*width:\s*20px/)
+    expect(GLASS_CSS).toMatch(/\.feature-rename-btn img,[\s\S]*?\{[^}]*width:\s*var\(--icon-size\)/)
   })
 
   it('reads Rename as a neutral action, not a third verdict', () => {

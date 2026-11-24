@@ -235,7 +235,8 @@
 .feature-status-panel {
   display: flex;
   align-items: flex-start;
-  gap: 6px;
+  /* The header's icon-to-title gap, so the mark reads as this card's icon. */
+  gap: 8px;
   padding: 6px 8px;
   /* A sibling card, not part of the form; its text reads left. */
   text-align: left;
@@ -244,17 +245,21 @@
   flex-shrink: 0;
 }
 
+/* The mark shares the card header's icon size. No top nudge: the message's
+   first line box is the same height, so the two centres meet on that line even
+   when the message wraps below it. */
 .feature-status-icon {
-  width: 14px;
-  height: 14px;
+  width: var(--icon-size);
+  height: var(--icon-size);
   flex-shrink: 0;
-  margin-top: 1px;
 }
 
 /* The mark fills the card beside the icon instead of being sized by its text. */
 .feature-status-panel .status-message {
   flex: 1 1 auto;
   padding: 0;
+  /* Scope the line box to the card; field refusals keep their compact lines. */
+  line-height: var(--icon-size);
 }
 
 /* Frost shows through the open editor's fields; they keep their own dark tint

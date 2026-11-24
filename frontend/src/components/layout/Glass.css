@@ -16,6 +16,9 @@
   --glass-editing-bg: rgba(184, 59, 136, 0.22);
   --glass-editing-hover-bg: rgba(184, 59, 136, 0.32);
   --glass-field-bg: rgba(26, 15, 26, 0.7);
+  /* Shared by card-title icons, verdict buttons and the status card's mark, so
+     a mark under an editor reads at the same size as the icon above it. */
+  --icon-size: 20px;
 }
 
 .glass-panel {
@@ -59,8 +62,8 @@
 .feature-cancel-btn img,
 .feature-rename-btn img,
 .feature-neutral-btn img {
-  width: 20px;
-  height: 20px;
+  width: var(--icon-size);
+  height: var(--icon-size);
   filter: invert(0.8);
   display: block;
 }
@@ -129,8 +132,8 @@
    pages/Part.css. Layout that is specific to the card (the 80px label column in
    a row, the stacked variants) stays in Part.css. */
 .feature-icon {
-  width: 20px;
-  height: 20px;
+  width: var(--icon-size);
+  height: var(--icon-size);
   flex-shrink: 0;
   filter: invert(0.8);
 }

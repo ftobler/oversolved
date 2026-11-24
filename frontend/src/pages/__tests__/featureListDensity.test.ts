@@ -81,9 +81,10 @@ describe('feature list density', () => {
   it('keeps the action buttons and icons legible on a denser row', () => {
     const buttons = /\.feature-edit-btn,[\s\S]*?\.part-context-btn\s*\{([^}]*)\}/.exec(PART_CSS)![1]
     expect(buttons).toMatch(/height:\s*28px/)
-    // The icon size is a shared primitive now (dialogs use it too).
-    expect(GLASS_CSS).toMatch(/\.feature-icon\s*\{[^}]*width:\s*20px/)
-    expect(GLASS_CSS).toMatch(/\.feature-icon\s*\{[^}]*height:\s*20px/)
+    // The icon size is a shared token now (dialogs and the status card use it too).
+    expect(GLASS_CSS).toMatch(/:root\s*\{[^}]*--icon-size:\s*20px/)
+    expect(GLASS_CSS).toMatch(/\.feature-icon\s*\{[^}]*width:\s*var\(--icon-size\)/)
+    expect(GLASS_CSS).toMatch(/\.feature-icon\s*\{[^}]*height:\s*var\(--icon-size\)/)
   })
 })
 
