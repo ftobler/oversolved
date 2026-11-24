@@ -158,4 +158,33 @@ describe('the sketch precision bridge', () => {
     expect(sketchPrecision(repo, '')).toBeNull()
     expect(precisionOfSolve({ body_id: 'b' } as Record<string, unknown>, 'sk1')).toBeNull()
   })
+
+  it('carries the weak flag from the solve through the repo record', () => {
+    // The flag is what lets an extrude's ceiling warning point at the sketch's
+    // own weak warning instead of reading as the cause itself.
+    expect(precisionOfSolve({
+      angular_miss: 1.05e-8, linear_miss: 7.4e-8,
+      weak_constraints: [{ constraintId: 'c1', moveEstimate: 0.045 }],
+    }, 'sk1')).toEqual({ ...p(1.05e-8, OCC_CONFUSION, 'sk1'), weak: true })
+    const repo = initGlobalRepo()
+    postRegister(repo, 'sk1', { id: 'sk1', kind: 'sketch' }, {
+      status: 'fully_constrained',
+      angular_miss: 1.05e-8,
+      linear_miss: 7.4e-8,
+      weak_constraints: [{ constraintId: 'c1', moveEstimate: 0.045 }],
+    })
+    expect(sketchPrecision(repo, 'sk1')?.weak).toBe(true)
+    // A weak-free solve reads exactly as before (no `weak` key).
+    expect(precisionOfSolve({ angular_miss: 3e-11, linear_miss: 2e-7 }, 'sk1')).toEqual({
+      ...p(3e-11, 2e-7, 'sk1'),
+    })
+  })
+
+  it('keeps the weak flag with the sketch that dominates the max', () => {
+    expect(maxPrecision(p(1e-9, 1e-9, 'sk1'), { ...p(3e-9, 1e-9, 'sk2'), weak: true }))
+      .toEqual({ ...p(3e-9, 1e-9, 'sk2'), weak: true })
+    // The weaker-but-not-dominating record's flag does not travel.
+    expect(maxPrecision({ ...p(3e-9, 1e-9, 'sk1'), weak: true }, p(1e-9, 1e-9, 'sk2')))
+      .toEqual({ ...p(3e-9, 1e-9, 'sk1'), weak: true })
+  })
 })

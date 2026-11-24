@@ -7,7 +7,7 @@ import { expressionRefusal, positive } from '@/utils/core/valueRules'
 import { dimensionValueRule } from '@/utils/core/dimensionValueRules'
 import { isConstraintKindName } from '@/wasm-kernel/codec'
 import { COLOR_CONSTRAINT, COLOR_CONSTRAINT_DIM } from '@/utils/geometry/sketchHelpers'
-import { COLOR_SELECTED, COLOR_ERROR_DEEP, LABEL_Z_OFFSET } from '@/components/Geometry3D/constants'
+import { COLOR_SELECTED, COLOR_ERROR_DEEP, COLOR_CONSTRAINT_WEAK, LABEL_Z_OFFSET } from '@/components/Geometry3D/constants'
 import { useDimensionLabelIdRegistration } from '@/picking/useDimensionLabelIdRegistration'
 import { useDimDispatchRegistration } from './useDimDispatchRegistration'
 import type { PlaneTransform } from '@/types/cad'
@@ -37,6 +37,11 @@ export interface DimInteraction {
   /** The solve blamed this constraint for an unsatisfied sketch's miss: its
    *  label takes the deeper error red, on top of the all-red sketch. */
   culprit?: boolean
+  /** The solve found this constraint holds its direction only at an extreme: a
+   *  satisfied sketch that can still be tilted. The label takes the weak blue
+   *  and `weakTitle` is the sentence to show on hover. */
+  weak?: boolean
+  weakTitle?: string
 }
 
 export function useDimInteraction(
@@ -134,8 +139,12 @@ export function useDimInteraction(
     : hovered ? '#ffffff'
     : interaction?.culprit ? COLOR_ERROR_DEEP
     : interaction?.redundant ? COLOR_CONSTRAINT_DIM
+    : interaction?.weak ? COLOR_CONSTRAINT_WEAK
     : COLOR_CONSTRAINT
-  return { hovered, selected, color, onOver, onOut, onClick, onDoubleClick, resetDragMoved, isDragged }
+  // The weak sentence is the only hover text the dimension label can carry, so
+  // it is passed through here rather than re-derived per component.
+  const title = interaction?.weak ? interaction.weakTitle : undefined
+  return { hovered, selected, color, title, onOver, onOut, onClick, onDoubleClick, resetDragMoved, isDragged }
 }
 
 /**

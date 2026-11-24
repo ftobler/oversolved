@@ -93,11 +93,15 @@ export const CONSTRAINT_FLAG = {
   dropped: 1 << 1,
 } as const
 
-// Rev 9 of the wire layout. A `Group` row's third ref now names the member
-// point (role `b`) or the whole arc/ellipse angle (role `arc`) the group's
-// rotation is measured from, so one coordinate pair holds its distance instead
-// of its two coordinates. The record layout is unchanged, which is exactly why
-// the magic has to move: a rev 8 solver would hold every group as a pure
+// Rev 10 of the wire layout. The output gains a `weak` block: the satisfied
+// constraints whose row holds a direction only to second order (an axis
+// distance at a circle's extreme), each with the rotation it allows in degrees.
+// An older reader would read the new count's bytes as the first diagnostic, so
+// the magic moves. Rev 9 made a `Group` row's third ref name the member point
+// (role `b`) or the whole arc/ellipse angle (role `arc`) the group's rotation is
+// measured from, so one coordinate pair holds its distance instead of its two
+// coordinates. The record layout was unchanged there, which is exactly why the
+// magic had to move: a rev 8 solver would hold every group as a pure
 // translation and report one free DOF that does not exist. Rev 8 (`SKR8`)
 // appended the contract's realised precision to the output diagnostics
 // (`angularMiss`, `linearMiss`, NaN for an unsatisfied solve), so an older
@@ -118,8 +122,8 @@ export const CONSTRAINT_FLAG = {
 // on any layout or verdict-semantics change. Invalidating stale cached payloads
 // is acceptable and safe post-wave-1: bundle-cache reads degrade to cold
 // rebuilds.
-const MAGIC_IN = 0x39474b53  // "SKG9", little-endian on the wire
-const MAGIC_OUT = 0x39524b53  // "SKR9"
+const MAGIC_IN = 0x41474b53  // "SKGA", little-endian on the wire
+const MAGIC_OUT = 0x41524b53  // "SKRA"
 
 export interface FlatEntity {
   kind: number
@@ -143,6 +147,14 @@ export interface FlatConstraint {
   // Orientation selector for directional dimensions (+1/-1). Picks which side /
   // handedness the signed measure must match while value stays non-negative.
   sign?: number
+}
+
+/** One weak-constraint entry on the output wire: the constraint's wire index
+ *  (map it back through the lowered constraint ids) and how far the sketch can
+ *  rotate along that direction, in degrees. */
+export interface WeakConstraintReport {
+  index: number
+  moveEstimate: number
 }
 
 export interface FlatInput {
@@ -181,6 +193,11 @@ export interface SolverOutput {
    *  set bit means the solve moved that entity by at least half the storage
    *  quantum. Empty on the drag fast path. */
   entityMoved: number[]
+  /** The satisfied constraints that hold a direction only to second order (an
+   *  axis distance at a circle's extreme), by wire index into the constraint
+   *  array that was encoded. Empty on a clean sketch and on the drag path; see
+   *  `WeakConstraint` in sketch-solver/src/lib.rs. */
+  weakConstraints: WeakConstraintReport[]
   diagnostics: {
     residualNorm: number
     rank: number
@@ -317,6 +334,7 @@ export function decodeOutput(buf: Uint8Array): SolverOutput {
   const vfLen = r.u32()
   const nConstraintStatus = r.u32()
   const nMoved = r.u32()
+  const nWeak = r.u32()
   const overallStatus = r.u8()
 
   const paramsSolved: number[] = []
@@ -333,6 +351,10 @@ export function decodeOutput(buf: Uint8Array): SolverOutput {
   for (let i = 0; i < nConstraintStatus; i++) constraintMiss.push(r.f64())
   const entityMoved: number[] = []
   for (let i = 0; i < nMoved; i++) entityMoved.push(r.u8())
+  const weakConstraints: WeakConstraintReport[] = []
+  for (let i = 0; i < nWeak; i++) {
+    weakConstraints.push({ index: r.u32(), moveEstimate: r.f64() })
+  }
 
   const residualNorm = r.f64()
   const rank = r.u32()
@@ -349,6 +371,7 @@ export function decodeOutput(buf: Uint8Array): SolverOutput {
     constraintFlags,
     constraintMiss,
     entityMoved,
+    weakConstraints,
     diagnostics: { residualNorm, rank, dof, iters, ms, angularMiss, linearMiss },
   }
 }

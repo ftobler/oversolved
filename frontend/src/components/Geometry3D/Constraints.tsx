@@ -4,13 +4,13 @@ import type { Sketch, Constraints, Entity, PlaneTransform, PartConstraint, Dropp
 import { useSketchEditorStore, useSketchUiStore } from '@/stores/sketchEditorStore'
 import { getEntityBounds, ICON_SIZE, ICON_COLS, getIconUrl } from '@/utils/geometry/sketchHelpers'
 import { renderDimension } from '@/components/Geometry3D/dimensions/renderDimension'
-import { COLOR_SELECTED, COLOR_ERROR_DEEP, LABEL_Z_OFFSET, highlightState } from '@/components/Geometry3D/constants'
+import { COLOR_SELECTED, COLOR_ERROR_DEEP, COLOR_CONSTRAINT_WEAK, LABEL_Z_OFFSET, highlightState } from '@/components/Geometry3D/constants'
 import { findEntitiesAtPoint } from '@/utils/geometry/drawGeometry'
 import { constraintTileLabel, CONSTRAINT_BY_KIND } from '@/registry/constraintRegistry'
 import { computeConstraintRender } from '@/utils/geometry/geometryMapping'
-import { ignoredConstraintWarning } from '@/utils/constraintProblems'
+import { ignoredConstraintWarning, weakConstraintNoun, weakConstraintWarning } from '@/utils/constraintProblems'
 
-function ConstraintTile({ url, title, id, featureId, highlightIds, superfluous, culprit, onContextMenu }: { url: string; title: string; id: string; featureId: string; highlightIds: string[]; superfluous?: boolean; culprit?: boolean; onContextMenu?: (pos: [number, number]) => void }) {
+function ConstraintTile({ url, title, id, featureId, highlightIds, superfluous, culprit, weak, onContextMenu }: { url: string; title: string; id: string; featureId: string; highlightIds: string[]; superfluous?: boolean; culprit?: boolean; weak?: boolean; onContextMenu?: (pos: [number, number]) => void }) {
   const [hovered, setHovered] = useState(false)
   const wasHoveredRef = useRef(false)
   const cId = `constraint:${featureId}:${id}`
@@ -41,12 +41,18 @@ function ConstraintTile({ url, title, id, featureId, highlightIds, superfluous, 
   // paints red on an unsatisfied solve, and the blamed constraints must stand
   // out inside it. A redundant tile keeps the existing non-driver treatment
   // (dimmed, amber outline), which is also the "measurement, not a driver"
-  // reading the user asked for.
+  // reading the user asked for. A weak tile takes a cool blue of its own: it
+  // is satisfied, unlike the culprit, and a real problem, unlike the redundant
+  // measurement.
   const fgStyle = (hovered || selected) ? 'invert(1.0)'
     : culprit ? 'invert(0.35) sepia(1) saturate(6) hue-rotate(-45deg)'
     : superfluous ? 'invert(0.5) sepia(1) saturate(3) hue-rotate(0deg)'
+    : weak ? 'invert(0.45) sepia(1) saturate(5) hue-rotate(160deg)'
     : 'invert(0.7)'
-  const outline = culprit ? COLOR_ERROR_DEEP : superfluous ? '#b37400' : undefined
+  const outline = culprit ? COLOR_ERROR_DEEP
+    : superfluous ? '#b37400'
+    : weak ? COLOR_CONSTRAINT_WEAK
+    : undefined
   return (
     <div
       key={id}
@@ -161,6 +167,7 @@ interface SymbolTile {
   highlightIds: string[]
   superfluous?: boolean
   culprit?: boolean
+  weak?: boolean
 }
 
 export function ConstraintOverlays({ constraints, sketch, extent, featureId, planeTransform, droppedConstraints, authoredConstraints, onSelectionContextMenu, geometryStale = false }: ConstraintOverlaysProps) {
@@ -222,16 +229,33 @@ export function ConstraintOverlays({ constraints, sketch, extent, featureId, pla
       }
       // A group's whole members and point members are already split by the
       // render, so the counts cannot miscount an entity id containing `:`.
-      const title = constraintTileLabel(r.kind, c, r.entities?.length ?? 0, r.points?.length ?? 0)
-      atGroups.get(atKey)!.icons.push({ url, title, key: cid, highlightIds, superfluous: c.superfluous, culprit: c.culprit })
+      // A weak tile's title is the full sentence rather than a name suffix: the
+      // tile is the only thing hovering that constraint can reach, and the
+      // sentence is the one place the user is told what to change.
+      const tileName = constraintTileLabel(r.kind, c, r.entities?.length ?? 0, r.points?.length ?? 0)
+      const title = c.weak
+        ? weakConstraintWarning(
+            constraintTileLabel(r.kind, {}, r.entities?.length ?? 0, r.points?.length ?? 0),
+            c.weak_angle ?? 0,
+          )
+        : tileName
+      atGroups.get(atKey)!.icons.push({ url, title, key: cid, highlightIds, superfluous: c.superfluous, culprit: c.culprit, weak: c.weak })
 
     } else {
       // The solve verdicts ride the interaction block so the dimension label
-      // can paint itself: culprit deep red, redundant dimmed amber.
+      // can paint itself: culprit deep red, redundant dimmed amber, weak blue
+      // with the sentence as its tooltip.
       const el = renderDimension(cid, r, dimOffset, {
         featureId, entityId: eid,
         ...(c.superfluous ? { redundant: true } : {}),
         ...(c.culprit ? { culprit: true } : {}),
+        ...(c.weak ? {
+          weak: true,
+          weakTitle: weakConstraintWarning(
+            weakConstraintNoun(r.dimKind as string | undefined, typeof r.value === 'number' ? r.value : undefined),
+            c.weak_angle ?? 0,
+          ),
+        } : {}),
       }, planeTransform)
       if (el) dimElements.push(el)
     }
@@ -244,8 +268,8 @@ export function ConstraintOverlays({ constraints, sketch, extent, featureId, pla
     symbolElements.push(
       <Html key={`icons-${atKey}`} position={[at[0], at[1], LABEL_Z_OFFSET]} style={{ pointerEvents: 'none' }}>
         <div style={{ marginLeft: 20, marginTop: -8, display: 'grid', gridTemplateColumns: `repeat(${cols}, ${ICON_SIZE}px)`, width: cols * ICON_SIZE + (cols - 1) * 2, gap: 2 }}>
-          {icons.map(({ url, title, key, highlightIds, superfluous, culprit }) => (
-            <ConstraintTile key={key} url={url} title={title} id={key} featureId={featureId} highlightIds={highlightIds} superfluous={superfluous} culprit={culprit} onContextMenu={onSelectionContextMenu ? pos => onSelectionContextMenu(`constraint:${featureId}:${key}`, pos) : undefined} />
+          {icons.map(({ url, title, key, highlightIds, superfluous, culprit, weak }) => (
+            <ConstraintTile key={key} url={url} title={title} id={key} featureId={featureId} highlightIds={highlightIds} superfluous={superfluous} culprit={culprit} weak={weak} onContextMenu={onSelectionContextMenu ? pos => onSelectionContextMenu(`constraint:${featureId}:${key}`, pos) : undefined} />
           ))}
         </div>
       </Html>

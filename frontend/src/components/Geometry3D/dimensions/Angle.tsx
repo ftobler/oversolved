@@ -53,7 +53,7 @@ export function AngleDimension({ cid, dim, interaction, planeTransform }: {
   // applier reads it against this label's stored pos and stores theta again.
   const displayedValue = isSupplement ? 180 - dim.value : dim.value
 
-  const { color, onOver, onOut, onClick, onDoubleClick, resetDragMoved, isDragged } =
+  const { color, title, onOver, onOut, onClick, onDoubleClick, resetDragMoved, isDragged } =
     useDimInteraction(cid, displayedValue, interaction, false, onFlip, undefined, 'angle')
 
   // Arc endpoint ray directions (radians) for arrowhead tangents.
@@ -107,6 +107,7 @@ export function AngleDimension({ cid, dim, interaction, planeTransform }: {
       <DimensionLabel
         cid={cid} enabled={!!interaction}
         x={labelX} y={labelY} label={label} color={color}
+        title={title}
         isDragged={isDragged}
       />
     </group>

@@ -29,7 +29,7 @@ const LABEL_HALO = '0 0 2px #111, 0 0 2px #111'
  * could only under-cover a long label and would disagree with the box.
  */
 export function DimensionLabel({
-  cid, x, y, label, color, enabled = true, isDragged, angleDeg, onTextElement,
+  cid, x, y, label, color, enabled = true, isDragged, angleDeg, title, onTextElement,
 }: {
   cid: string
   x: number
@@ -40,6 +40,9 @@ export function DimensionLabel({
   isDragged: boolean
   // CSS `rotate()` degrees for the glyph block; unset keeps it horizontal.
   angleDeg?: number
+  // Hover text for a solve verdict that has a sentence of its own (a weak
+  // constraint), beside the usual colour marking.
+  title?: string
   // Publishes the glyph block itself, whether or not it is pickable, so a
   // linear dimension can size the gap in its line from the rendered text and
   // keep the rotation current. Must be identity-stable: a changing callback
@@ -66,6 +69,7 @@ export function DimensionLabel({
     <Html position={[x, y, LABEL_Z_OFFSET]} center style={{ pointerEvents: 'none' }}>
       <div
         ref={attachText}
+        title={title}
         // No background: the label sits under the cursor while dragging, and
         // an opaque box hid the vertex the user was aiming at. A thin halo in
         // the canvas color keeps the digits legible where they cross a line.
