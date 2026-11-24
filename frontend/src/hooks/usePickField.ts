@@ -10,7 +10,11 @@ import {
   type WantKeyOf,
 } from '@/utils/query/pickIntake'
 import { fieldRefusal, type StatusMark } from '@/utils/core/statusMark'
-import type { SchemaData } from '@/components/editors/widgets/fieldTypes'
+
+/** The form values a pick rule may read: field names to values. The hook only
+ *  needs to hand this bag on, so it owns the shape instead of importing the
+ *  editor widget's schema type across the logic/component boundary. */
+type PickFormData = { [key: string]: unknown }
 
 /**
  * Layer-2 pick-field consumer. A pick chip is a consumer of normal selection,
@@ -77,11 +81,11 @@ export function usePickField(
     multi?: boolean
     onUnpick?: (selectionId: string) => void
     features?: readonly PartFeature[]
-    validatePick?: (selectionId: string, features?: readonly PartFeature[], data?: SchemaData) => string | null
+    validatePick?: (selectionId: string, features?: readonly PartFeature[], data?: PickFormData) => string | null
     // The form's current values. A rule that reads its sibling chips gets a
     // batch view of this field's key, so a lasso cannot split one mixed gesture
     // into two same-family picks.
-    data?: SchemaData
+    data?: PickFormData
     // The values the field holds, in chip order. Remove actions are indices into
     // this list; a field without it never plans a removal.
     held?: readonly string[]
