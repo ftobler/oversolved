@@ -312,6 +312,7 @@ export default function Part() {
     commitEditSession,
     cancelEditSession,
     registerUndoTeardown,
+    registerInSessionUndo,
   } = usePartDoc(uuid, {
     onFirstSolve: handleFirstSolve,
     workspace: workspaceId,
@@ -491,6 +492,35 @@ export default function Part() {
     clearPlaneSelection,
   })
 
+  // The page-owned chrome every history move invalidates. The UI store's reset
+  // closes the value dialog, and the popover goes because an undo or redo
+  // already committed a changed preview as its own entry (usePartDoc's
+  // commitOpenWorkBeforeHistory); a popover left open would only be able to
+  // commit or revert against a world that no longer exists.
+  const resetSketchChrome = useCallback(() => {
+    useSketchUiStore.getState().resetTransientState()
+    setContextMenu(null)
+    setPartColorPopover(null)
+  }, [setPartColorPopover])
+
+  // `clearBrepProjectionState` stays explicit ahead of the store resets: unlike
+  // the plain wipe it fires the R3F-side gesture-abort callback, and an undone
+  // doc has no place for a pending dimension gesture's projections anyway --
+  // dropped without a compensating delete, the doc being already replaced by
+  // the undo's own restore.
+  //
+  // The transient half of a move that stays inside the open sketch: the chrome
+  // above plus the sketch editor's own sweep. The store keeps the open feature,
+  // its armed tool and an armed pick field, because the user is still drawing
+  // in the same sketch. A mid-drag undo leaves DragPlane mounted here (the
+  // sketch does not unmount); its window pointerup reads the store live and
+  // finds the drag the sweep nulled, so the stale gesture cannot commit.
+  const resetInSessionEditorState = useCallback(() => {
+    useSketchEditorStore.getState().clearBrepProjectionState()
+    useSketchEditorStore.getState().resetSessionTransients()
+    resetSketchChrome()
+  }, [resetSketchChrome])
+
   // Undo/redo hand the app a document no open session knows anything about, so
   // every piece of transient editor state is dropped before the doc swaps. This
   // is composed here rather than in usePartDoc because half of it (forced
@@ -499,7 +529,6 @@ export default function Part() {
     const editing = editorState.getState().editingFeatureId
     const wasSketchEdit = features.some(f => f.id === editing && f.kind === 'sketch')
     resetEditState()
-    const sketchStore = useSketchEditorStore.getState()
     // Unconditional on purpose, even for an undo that could not have invalidated
     // anything. Deciding per entry would mean re-resolving every selected query
     // against the restored doc on every undo, and a selection that survives one
@@ -520,31 +549,21 @@ export default function Part() {
     // listener -- so without the wipe the residue either commits onto the
     // restored doc's stale ids or gets stuck non-null forever. Mirrors the
     // assembly editor's identical mid-drag-undo guard.
-    //
-    // clearBrepProjectionState stays explicit ahead of the reset: unlike the
-    // plain wipe it fires the R3F-side gesture-abort callback, and an undone
-    // doc has no place for a pending dimension gesture's projections anyway --
-    // dropped without a compensating delete, the doc being already replaced by
-    // the undo's own restore.
-    sketchStore.clearBrepProjectionState()
-    sketchStore.resetTransientState()
-    // The UI store's canonical wipe: the value dialog and the store-owned
-    // context menu are transient editor chrome like the selection above.
-    useSketchUiStore.getState().resetTransientState()
-    setContextMenu(null)
-    // The popover closes: an undo or redo already committed a changed preview
-    // as its own entry (usePartDoc's commitOpenWorkBeforeHistory), and a
-    // popover left open would only be able to commit or revert against a world
-    // that no longer exists.
-    setPartColorPopover(null)
+    useSketchEditorStore.getState().clearBrepProjectionState()
+    useSketchEditorStore.getState().resetTransientState()
+    resetSketchChrome()
     // The sketch toolbar has nothing left to act on once the sketch edit is gone.
     if (wasSketchEdit) setMode('feature')
-  }, [features, resetEditState, setPartColorPopover])
+  }, [features, resetEditState, resetSketchChrome])
 
   useEffect(() => {
     registerUndoTeardown(tearDownEditorState)
-    return () => registerUndoTeardown(null)
-  }, [registerUndoTeardown, tearDownEditorState])
+    registerInSessionUndo(resetInSessionEditorState)
+    return () => {
+      registerUndoTeardown(null)
+      registerInSessionUndo(null)
+    }
+  }, [registerUndoTeardown, registerInSessionUndo, tearDownEditorState, resetInSessionEditorState])
 
   // The whole rule (consumed sketches hidden, the open editor's own geometry
   // forced back on screen, the planes drawn while a plane field is armed, and a

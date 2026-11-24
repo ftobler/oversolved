@@ -20,6 +20,7 @@ import { MAX_UNDO_DEPTH } from '@/config/undoConfig'
 import { createFakeSolveScheduler } from '@/session/__tests__/fakeSolveScheduler'
 import {
   generateSequence,
+  generateSessionSequence,
   runFuzzSequence,
   type FuzzStep,
   type FuzzSolver,
@@ -96,6 +97,40 @@ describe('the seeded fuzz ratchet (fake scheduler)', () => {
     expect(second.landedSteps).toBe(first.landedSteps)
     expect(second.undoMoves).toBe(first.undoMoves)
     expect(second.redoMoves).toBe(first.redoMoves)
+  })
+})
+
+// The session stream runs beside the flat one, not inside it: merging the new
+// steps into generateSequence would re-roll every pinned regression seed above.
+// Here the same mutation/undo/redo mix is wrapped in unsuppressed sketch
+// sessions, which is the shape the session floor exists for.
+describe('the seeded session fuzz (fake scheduler)', () => {
+  it.each(seeds(FAKE_SEEDS))('session seed %i replays without a violation', async (seed) => {
+    const result = await runFuzzSequence(generateSessionSequence(seed, FAKE_STEPS), fakeSolver())
+    reportFailureDocs(seed, result)
+    expect(result.violations).toEqual([])
+  })
+
+  it('opens sessions, moves inside them, hits the floor and cancels some', async () => {
+    let opened = 0
+    let moves = 0
+    let blocked = 0
+    let cancels = 0
+    for (const seed of seeds(FAKE_SEEDS)) {
+      const result = await runFuzzSequence(generateSessionSequence(seed, FAKE_STEPS), fakeSolver())
+      expect(result.violations, `seed ${seed}`).toEqual([])
+      opened += result.sessionsOpened
+      moves += result.inSessionMoves
+      blocked += result.floorBlocked
+      cancels += result.sessionCancels
+    }
+    // Each counter is a rule the generator must keep reaching, not just a
+    // session it happened to open: a session that never moves, never hits its
+    // floor or never cancels would leave part of the contract unpinned.
+    expect(opened).toBeGreaterThan(0)
+    expect(moves).toBeGreaterThan(0)
+    expect(blocked).toBeGreaterThan(0)
+    expect(cancels).toBeGreaterThan(0)
   })
 })
 

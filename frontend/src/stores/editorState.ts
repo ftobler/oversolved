@@ -147,6 +147,15 @@ export interface EditorState extends SketchEditorState, PartEditorFsm, ViewportD
   // list, and the open editor the move consumed comes down. One unit, so an
   // undo can never leave a stale editing id over a restored doc.
   restoreHistory: (doc: PartDoc) => void
+  // The in-session twin: the move stayed inside the open sketch, so the editor
+  // keeps its feature and pick boundary and only the bar is re-derived, just
+  // past the edited feature as enterEditFeature parks it.
+  restoreHistoryInSession: (doc: PartDoc) => void
+  // The transient sweep an in-session move needs: everything the restored doc
+  // may have invalidated (selection, hover, gesture, drag, projection
+  // bookkeeping) goes, while the open sketch, its armed tool and an armed pick
+  // field stay.
+  resetSessionTransients: () => void
   // The unmount reset: drops every field this store owns that describes the
   // previous document, leaving the sketch-transient reset to resetTransientState.
   resetEditorState: () => void
@@ -1435,6 +1444,43 @@ export const editorState = createStore<EditorState>((set, get) => ({
       rollbackPosition: clampRollback(doc),
       pickBoundary: null,
       editingFeatureId: null,
+    })
+  },
+
+  restoreHistoryInSession: (doc) => {
+    // The move stayed inside the open sketch: the editor, its pick boundary and
+    // the armed tool keep describing the doc the user is still editing, and
+    // only the bar is re-derived. It sits just past the edited feature, the
+    // same rule enterEditFeature uses, so the solve rebuilds the sketch's whole
+    // prefix and not past it.
+    const editingFeatureId = get().editingFeatureId
+    const index = editingFeatureId === null
+      ? -1
+      : (doc.features ?? []).findIndex(feature => feature.id === editingFeatureId)
+    set({ rollbackPosition: index >= 0 ? index + 1 : clampRollback(doc) })
+  },
+
+  resetSessionTransients: () => {
+    get().clearDragState()
+    get().clearSelectionAndHover()
+    set({
+      // The gesture belongs to the pre-undo doc, so its points and picks go.
+      // Neither arming survives as a gesture: the tool keeps being the tool and
+      // a pick field keeps being the field, because both describe the open
+      // session, not the document content the move replaced. Dropping the pick
+      // field would read to the page as an abandoned pick and cancel the very
+      // session the move was told to keep.
+      drawPoints: [],
+      drawHover: null,
+      drawSnapRefs: [],
+      dimensionPicks: [],
+      dimensionCursorWorld: null,
+      pendingBrepProjectionIds: [],
+      // Derived from the document, whose entities the move may have replaced.
+      entityKindMap: {},
+      constructionEntityKeys: new Set(),
+      faceProjectionMemberKeys: new Set(),
+      filletCornerMap: {},
     })
   },
 

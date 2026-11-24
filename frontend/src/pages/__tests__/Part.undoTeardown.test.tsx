@@ -6,6 +6,7 @@ import { executeCommand } from '@/hooks/commandRegistry'
 import { useSketchEditorStore, useSketchUiStore } from '@/stores/sketchEditorStore'
 
 import { Wrapper, partDocStoreMock } from '@/__tests__/test-utils'
+import { usePartEditorStore } from '@/stores/partEditorStore'
 import { useEditorState } from '@/hooks/useEditorState'
 
 // Undo swaps in a document the open editor session knows nothing about. These
@@ -95,13 +96,13 @@ describe('Part - undo tears down transient editor state', () => {
     expect(useSketchUiStore.getState().pendingDialog).toBeNull()
   })
 
-  it('leaves sketch mode when the undo closes the sketch edit behind it', async () => {
+  it('an undo at the sketch session floor is dead, and leaving the sketch lets undo reach past it', async () => {
     partDocStoreMock({ content: SKETCH_DOC })
     renderPart()
     await screen.findByTitle('Feature mode')
 
-    // Put one real entry on the stack first, so the undo below has something to
-    // pop and actually reaches the teardown.
+    // Put one real entry on the stack first: the sketch session opens with it
+    // below its floor, so the undo below cannot reach it from inside.
     fireEvent.click(screen.getByTitle('Feature mode'))
     await act(async () => { fireEvent.click(screen.getByTitle('Add Extrude (E)')) })
     await act(async () => { fireEvent.click(document.querySelector('.feature-item.editing .feature-ok-btn')!) })
@@ -113,10 +114,18 @@ describe('Part - undo tears down transient editor state', () => {
 
     await act(async () => { executeCommand('undo') })
 
-    // The sketch toolbar has no sketch left to act on, so the panel falls back
-    // to the feature tab.
-    expect(screen.getByTitle('Feature mode').className).toContain('active')
+    // Nothing of this sketch is left to undo, so the keystroke is dead: the
+    // sketch stays open in Sketch mode rather than exiting to undo the extrude.
+    expect(screen.getByTitle('Sketch mode').className).toContain('active')
+    expect(useEditorState.getState().editingFeatureId).toBe('sk1')
+    expect(usePartEditorStore.getState().undoStack).toHaveLength(1)
+
+    // Leaving the sketch ends the session, and the same undo then reaches the
+    // pre-sketch entry it was never allowed to touch from inside.
+    await act(async () => { fireEvent.click(document.querySelector('.feature-item.editing .feature-ok-btn')!) })
     expect(useEditorState.getState().editingFeatureId).toBeNull()
+    await act(async () => { executeCommand('undo') })
+    await waitFor(() => expect(usePartEditorStore.getState().undoStack).toHaveLength(0))
   })
 
   // Deliberate, not incidental: the selection is dropped even when the undone

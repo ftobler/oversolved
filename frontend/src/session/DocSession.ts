@@ -168,12 +168,19 @@ export interface SessionInspection {
 }
 
 // The events L1 emits. `historyRestored` is an undo/redo move and carries the
-// entry the adapter needs for its editor writes; `transactionsDropped` is the
-// editor teardown a move (or a blocked move that just resolved open work)
-// performs; `changed` is every other observable state change, so a
-// useSyncExternalStore adapter can re-render.
+// entry the adapter needs for its editor writes; `inSession` says the move
+// stayed inside an open unsuppressed session (the editor keeps its feature, and
+// the adapter only sweeps the transients the restored doc invalidated).
+// `transactionsDropped` is the editor teardown a move (or a blocked move that
+// just resolved open work) performs; `changed` is every other observable state
+// change, so a useSyncExternalStore adapter can re-render.
 export type SessionEvent =
-  | { type: 'historyRestored'; direction: 'undo' | 'redo'; entry: HistoryEntry<PartDoc, Mutation> }
+  | {
+    type: 'historyRestored'
+    direction: 'undo' | 'redo'
+    entry: HistoryEntry<PartDoc, Mutation>
+    inSession: boolean
+  }
   | { type: 'transactionsDropped' }
   | { type: 'changed' }
 
@@ -399,6 +406,15 @@ interface EditTransaction extends TransactionBase {
   suppressed: boolean
   styleTouched: boolean
   dirty: DirtyPin
+  // The undo depth at session begin, taken after any preview resolution pushed
+  // its own entry. Entries below the floor belong to the document before the
+  // session, so an in-session undo stops there. A capped push trims the bottom
+  // of the stack, and the floor follows the trim down.
+  floor: number
+  // The redo depth at session begin: entries the pre-session timeline left
+  // behind, which an in-session redo must never reach. The first push inside
+  // the session clears the redo branch, so it drops to zero there.
+  foreignRedo: number
 }
 
 // The brep pick/commit pair. `armed` applies the next mutation without an
@@ -505,7 +521,7 @@ export class DocSession {
   // push through here too; the shared undo-contract suite drives it directly
   // with fixture docs.
   pushUndo(label: string, doc: PartDoc, meta?: Mutation): void {
-    this.history.push(label, doc, meta)
+    this.pushHistory(label, doc, meta, false)
     this.emit({ type: 'changed' })
   }
 
@@ -933,9 +949,41 @@ export class DocSession {
 
   // ─── Undo / redo ───
 
+  // Every push goes through here so the open session's floor and foreign-redo
+  // markers stay true. A push clears the redo branch, so any redo entry left
+  // afterwards is one the session's own undos produced; and a capped push that
+  // trims the oldest entry moves the floor down with it, or the first
+  // in-session undo would look blocked (or reach past the session).
+  private pushHistory(label: string, doc: PartDoc, meta: Mutation | undefined, snapshot: boolean): void {
+    const trimmed = snapshot
+      ? this.history.pushSnapshot(label, doc, meta)
+      : this.history.push(label, doc, meta)
+    const edit = this.findTransaction('edit')
+    if (!edit) return
+    edit.foreignRedo = 0
+    if (trimmed > 0) edit.floor = Math.max(0, edit.floor - trimmed)
+  }
+
   private move(direction: 'undo' | 'redo'): boolean {
     const committed = this.commitOpenWorkBeforeHistory()
     const current = this.deps.doc.get()
+    // An unsuppressed edit session (a sketch) owns its own per-action entries,
+    // so a move whose target is above the session floor stays inside it.
+    const edit = this.findTransaction('edit')
+    const inSession = edit !== null && !edit.suppressed
+    if (edit && inSession) {
+      const available = direction === 'undo'
+        ? this.history.undoLength() > edit.floor
+        : this.history.redoLength() > edit.foreignRedo
+      if (!available || !current) {
+        // At the floor (or with only a foreign redo branch left) the keystroke
+        // is dead: the session stays open, nothing is emitted and no editor is
+        // torn down. A brep projection banked just above the floor is the only
+        // work the attempt resolved, and it keeps its own entry.
+        return false
+      }
+      return this.moveInSession(direction, current)
+    }
     const stackLength = direction === 'undo' ? this.history.undoLength() : this.history.redoLength()
     if (stackLength === 0 || !current) {
       // The one exception to a dead keystroke: a caller that just resolved open
@@ -959,7 +1007,24 @@ export class DocSession {
     // A history move installs a whole doc no mutation chain produced, so the
     // journal's recorded suffix no longer leads to the live doc: restart it.
     this.deps.journal?.onDocReset()
-    this.emit({ type: 'historyRestored', direction, entry })
+    this.emit({ type: 'historyRestored', direction, entry, inSession: false })
+    this.emit({ type: 'changed' })
+    this.restoreAwareSolve(entry.doc)
+    return true
+  }
+
+  // The in-session move: the same doc swap and re-solve, without the teardown
+  // and without consuming the parked pre-session snapshot. The stacks below the
+  // floor never move, so a later cancel still rewinds to the doc it promised.
+  private moveInSession(direction: 'undo' | 'redo', current: PartDoc): boolean {
+    const entry = direction === 'undo'
+      ? this.history.undo(current, { preserveSnapshot: true })
+      : this.history.redo(current, { preserveSnapshot: true })
+    if (!entry) return false
+    this.dirtyOverride = true
+    this.deps.doc.set(entry.doc)
+    this.deps.journal?.onDocReset()
+    this.emit({ type: 'historyRestored', direction, entry, inSession: true })
     this.emit({ type: 'changed' })
     this.restoreAwareSolve(entry.doc)
     return true
@@ -1051,6 +1116,10 @@ export class DocSession {
       suppressed: opts.suppressed ?? false,
       styleTouched: false,
       dirty: this.pinDirty(),
+      // Taken after the preview above resolved: its entry is pre-session work,
+      // so the floor sits above it and an in-session undo never reverts it.
+      floor: this.history.undoLength(),
+      foreignRedo: this.history.redoLength(),
     }
     this.openTransaction(txn)
     // The pre-session restore point; cancel restores it and commit drops it.
@@ -1081,7 +1150,7 @@ export class DocSession {
       // `txn.baseline` is already an independent throwaway clone, so the
       // snapshot push skips the redundant re-clone.
       const label = previewMutationFor(txn.baseline, current) ?? handedMutation ?? PREVIEW_COMMIT_FALLBACK
-      this.history.pushSnapshot(describeMutation(label), txn.baseline, label)
+      this.pushHistory(describeMutation(label), txn.baseline, label, true)
     }
     this.removeTransaction(txn)
     this.emit({ type: 'changed' })
@@ -1103,7 +1172,7 @@ export class DocSession {
       // commits before its exit cleanup clears it), so the label names it.
       const featureId = this.deps.editorFacts().editingFeatureId ?? ''
       const mutation: Mutation = { type: 'edit_session', featureId }
-      this.history.pushSnapshot(describeMutation(mutation), txn.baseline, mutation)
+      this.pushHistory(describeMutation(mutation), txn.baseline, mutation, true)
     } else if (txn.suppressed) {
       // A suppressed session that netted to zero pushes no entry, but each of
       // its mutations set the dirty flag on the way through. The committed doc
@@ -1140,7 +1209,7 @@ export class DocSession {
   private bankBrepProjection(txn: BrepTransaction): boolean {
     if (!txn.doc) return false
     const mutation: Mutation = { type: 'preview_commit', description: 'add projected edge' }
-    this.history.push(describeMutation(mutation), txn.doc, mutation)
+    this.pushHistory(describeMutation(mutation), txn.doc, mutation, false)
     this.removeTransaction(txn)
     this.emit({ type: 'changed' })
     return true
@@ -1222,10 +1291,10 @@ export class DocSession {
       // mid-gesture) from being mistaken for the commit.
       const withheldDoc = brep.doc
       this.removeTransaction(brep)
-      this.history.push(describeMutation(mutation), withheldDoc, mutation)
+      this.pushHistory(describeMutation(mutation), withheldDoc, mutation, false)
       return
     }
-    this.history.push(describeMutation(mutation), preDoc, mutation)
+    this.pushHistory(describeMutation(mutation), preDoc, mutation, false)
     // A non-dimension mutation landing mid-gesture (a "steal", e.g. a rename or
     // a delete) clears the withhold: the steal's entry owns the projection from
     // here, so it can never be orphaned.

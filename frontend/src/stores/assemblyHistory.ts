@@ -1,4 +1,4 @@
-import { History, type HistoryEntry, type HistoryMark } from '@/session/History'
+import { History, type HistoryEntry, type HistoryMark, type HistoryMoveOptions } from '@/session/History'
 import { MAX_UNDO_DEPTH } from '@/config/undoConfig'
 import type { AssemblyDoc } from '@/types/cad'
 import type { AssemblyUndoLabel } from '@/utils/core/assemblyUndoLabels'
@@ -37,24 +37,26 @@ class MirroredAssemblyHistory extends History<AssemblyDoc> {
     super({ cloneDoc: structuredClone, cap: MAX_UNDO_DEPTH })
   }
 
-  override push(label: AssemblyUndoLabel, doc: AssemblyDoc): void {
-    super.push(label, doc)
+  override push(label: AssemblyUndoLabel, doc: AssemblyDoc): number {
+    const trimmed = super.push(label, doc)
     publish()
+    return trimmed
   }
 
-  override pushSnapshot(label: AssemblyUndoLabel, doc: AssemblyDoc): void {
-    super.pushSnapshot(label, doc)
+  override pushSnapshot(label: AssemblyUndoLabel, doc: AssemblyDoc): number {
+    const trimmed = super.pushSnapshot(label, doc)
     publish()
+    return trimmed
   }
 
-  override undo(current: AssemblyDoc): HistoryEntry<AssemblyDoc> | null {
-    const entry = super.undo(current)
+  override undo(current: AssemblyDoc, options: HistoryMoveOptions = {}): HistoryEntry<AssemblyDoc> | null {
+    const entry = super.undo(current, options)
     if (entry) publish()
     return entry
   }
 
-  override redo(current: AssemblyDoc): HistoryEntry<AssemblyDoc> | null {
-    const entry = super.redo(current)
+  override redo(current: AssemblyDoc, options: HistoryMoveOptions = {}): HistoryEntry<AssemblyDoc> | null {
+    const entry = super.redo(current, options)
     if (entry) publish()
     return entry
   }

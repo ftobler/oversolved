@@ -98,6 +98,112 @@ describe('restoreHistory', () => {
   })
 })
 
+describe('restoreHistoryInSession', () => {
+  it('keeps the edited feature and its pick boundary, and parks the bar just past it', () => {
+    const store = editorState.getState()
+    store.setRollbackPosition(9)
+    store.setEditingFeatureId('sk1')
+    store.setPickBoundary(4)
+
+    const doc: PartDoc = {
+      version: 1,
+      kind: 'part',
+      features: [
+        { id: 'origin', kind: 'origin' },
+        { id: 'sk1', kind: 'sketch' },
+        { id: 'plane1', kind: 'plane' },
+      ],
+    }
+    editorState.getState().restoreHistoryInSession(doc)
+
+    const after = editorState.getState()
+    expect(after.editingFeatureId).toBe('sk1')
+    expect(after.pickBoundary).toBe(4)
+    // The edited feature sits at index 1, so the bar is 2, not the doc's end.
+    expect(after.rollbackPosition).toBe(2)
+  })
+
+  it('falls back to the clamped end when the edited feature is not in the restored doc', () => {
+    const store = editorState.getState()
+    store.setEditingFeatureId('gone')
+
+    editorState.getState().restoreHistoryInSession(makeDoc(2))
+
+    expect(editorState.getState().rollbackPosition).toBe(2)
+    expect(editorState.getState().editingFeatureId).toBe('gone')
+  })
+})
+
+describe('resetSessionTransients', () => {
+  it('keeps the open sketch, the armed tool and its mode entry', () => {
+    const store = editorState.getState()
+    store.setActiveFeatureId('sk1')
+    // Raw writes, not setActiveTool: this node suite never registers the tool
+    // registry, and the lifecycle hook would fail loud on an unknown tool.
+    editorState.setState({ activeTool: 'line', modeStack: ['tool:line'] })
+    store.setNormalSelection(new Set(['entity:sk1:l1']))
+    store.addDrawPoint([1, 2])
+
+    store.resetSessionTransients()
+
+    const after = editorState.getState()
+    expect(after.activeFeatureId).toBe('sk1')
+    expect(after.activeTool).toBe('line')
+    expect(after.modeStack).toEqual(['tool:line'])
+  })
+
+  it('drops the in-progress gesture, selection, hover and drag', () => {
+    const store = editorState.getState()
+    store.setActiveFeatureId('sk1')
+    editorState.setState({ activeTool: 'dimension', modeStack: ['tool:dimension'] })
+    store.setNormalSelection(new Set(['entity:sk1:l1']))
+    store.setHoveredSelectionId('entity:sk1:l1')
+    store.setHoveredVertex('vertex:sk1:l1:start', [0, 0], 'vertex')
+    store.setDrag({ type: 'vertex', vertexId: 'entity:sk1:l1', featureId: 'sk1', entityId: 'l1' } as never)
+    store.setIsPointerDown(true)
+    store.addDrawPoint([1, 2])
+    store.setDrawHover([3, 4])
+    store.setDimensionCursorWorld([5, 6])
+    editorState.setState({ dimensionPicks: [{ target: 'entity:sk1:l1', pickIndex: 0 }] as never })
+
+    store.resetSessionTransients()
+
+    const after = editorState.getState()
+    expect(after.drawPoints).toEqual([])
+    expect(after.drawHover).toBeNull()
+    expect(after.dimensionPicks).toEqual([])
+    expect(after.dimensionCursorWorld).toBeNull()
+    expect(after.normalSelection.size).toBe(0)
+    expect(after.selectedPicks.size).toBe(0)
+    expect(after.hoveredSelectionId).toBeNull()
+    expect(after.hoveredVertexId).toBeNull()
+    expect(after.drag).toBeNull()
+    expect(after.dragPending).toBeNull()
+    expect(after.isPointerDown).toBe(false)
+    expect(after.modeStack).toEqual(['tool:dimension'])
+  })
+
+  it('drops the gesture but keeps an armed pick field and its mode entry', () => {
+    const store = editorState.getState()
+    // DEFAULT_EDITOR_STATE carries only the part-side fields, so a tool a
+    // previous test armed would otherwise still be standing here.
+    editorState.setState({ activeTool: null, modeStack: [] })
+    store.setActiveFeatureId('sk1')
+    store.setActivePickField({ featureId: 'sk1', field: 'plane' } as never)
+
+    expect(editorState.getState().modeStack).toEqual(['pick'])
+    store.resetSessionTransients()
+
+    const after = editorState.getState()
+    // The field is the session's input, not document content: dropping it would
+    // read to the page as an abandoned pick and cancel the open sketch.
+    expect(after.activePickField).toEqual({ featureId: 'sk1', field: 'plane' })
+    expect(after.activeTool).toBeNull()
+    expect(after.modeStack).toEqual(['pick'])
+    expect(after.activeFeatureId).toBe('sk1')
+  })
+})
+
 describe('resetTransientState', () => {
   it('drops the document-derived entity kinds along with the transient editor state', () => {
     // The matrix harness and the sketch store setup used to add entityKindMap

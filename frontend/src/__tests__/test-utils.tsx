@@ -196,6 +196,7 @@ export async function partDocMockModule(overrides: Record<string, unknown> = {})
       beginBrepProjection: vi.fn(),
       cancelBrepProjection: vi.fn(),
       registerUndoTeardown: vi.fn(),
+      registerInSessionUndo: vi.fn(),
       featureTimings: {},
       validation: null,
       pickStateReady: false,

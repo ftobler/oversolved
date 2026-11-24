@@ -621,6 +621,7 @@ describe('undo and redo', () => {
     expect(events).toEqual([{
       type: 'historyRestored',
       direction: 'undo',
+      inSession: false,
       entry: { label: 'rename extrude-1 to b', doc: afterFirst, meta: rename('b') },
     }])
     // H11: the restored doc is re-solved, with no edit suppression.
@@ -632,6 +633,7 @@ describe('undo and redo', () => {
     expect(events[1]).toEqual({
       type: 'historyRestored',
       direction: 'redo',
+      inSession: false,
       entry: { label: 'rename extrude-1 to b', doc: afterSecond, meta: rename('b') },
     })
   })

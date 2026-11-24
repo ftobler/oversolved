@@ -69,9 +69,17 @@ export function runSessionTranscript(
       editorFacts.editingFeatureId = null
       editorFacts.pickBoundary = null
     } else if (event.type === 'historyRestored') {
-      editorFacts.editingFeatureId = null
-      editorFacts.pickBoundary = null
-      editorFacts.rollbackPosition = clampRollbackPosition(event.entry.doc)
+      // The adapter's two restore paths (usePartDoc's subscribe): a move that
+      // left no session behind brings the editor down and clamps the bar; an
+      // in-session move keeps the editor and parks the bar just past it.
+      if (!event.inSession) {
+        editorFacts.editingFeatureId = null
+        editorFacts.pickBoundary = null
+        editorFacts.rollbackPosition = clampRollbackPosition(event.entry.doc)
+      } else {
+        const index = event.entry.doc.features?.findIndex(f => f.id === editorFacts.editingFeatureId) ?? -1
+        editorFacts.rollbackPosition = index >= 0 ? index + 1 : clampRollbackPosition(event.entry.doc)
+      }
       dirtyFacts.dirty = true
     }
   })

@@ -23,6 +23,11 @@ export type FuzzStep =
   | { kind: 'mutation'; type: Mutation['type'] }
   | { kind: 'undo' }
   | { kind: 'redo' }
+  // An unsuppressed sketch session. Production enters one per sketch edit, so
+  // its per-action entries and its floor are the real user-facing undo shape.
+  | { kind: 'sessionOpen'; featureId: string }
+  | { kind: 'sessionCommit' }
+  | { kind: 'sessionCancel' }
 
 // The draw order is the registry's declaration order. Nothing freezes that
 // order, so reordering the registry re-rolls every seed and a pinned regression
@@ -70,6 +75,48 @@ export function initialFuzzDoc(): PartDoc {
   const doc = makeDoc(...features)
   if (partStyle) doc.part_style = partStyle
   return doc
+}
+
+// The sketch a session opens on: a real id from the union doc, so the editor
+// facts the session reads name a feature the steps can act on.
+const SESSION_FEATURE_ID = initialFuzzDoc().features?.find(feature => feature.kind === 'sketch')?.id ?? 'sk1'
+
+// The session stream. Kept apart from generateSequence on purpose: that
+// stream's draw order is what the pinned regression seeds replay, so extending
+// the vocabulary inside it would silently re-roll the ratchet. This one wraps
+// runs of the same steps in an unsuppressed session, which is the shape the
+// floor rule exists for: an undo inside it may not cross the session's own
+// first entry, and a cancel must put the doc and the stacks back.
+export function generateSessionSequence(seed: number, length: number): FuzzStep[] {
+  const rnd = makePrng(seed)
+  const steps: FuzzStep[] = []
+  const drawStep = (): FuzzStep => {
+    const roll = rnd()
+    if (roll < 0.2) return { kind: 'undo' }
+    if (roll < 0.35) return { kind: 'redo' }
+    const index = Math.floor(rnd() * MUTATION_TYPES.length)
+    return { kind: 'mutation', type: MUTATION_TYPES[index] }
+  }
+  while (steps.length < length) {
+    const room = length - steps.length
+    const roll = rnd()
+    // A session needs open, at least one action, and close. The actions are
+    // drawn from the same undo/redo/mutation mix as the flat stream.
+    if (roll < 0.25 && room >= 3) {
+      const actions = 1 + Math.floor(rnd() * Math.min(3, room - 2))
+      steps.push({ kind: 'sessionOpen', featureId: SESSION_FEATURE_ID })
+      for (let i = 0; i < actions; i++) steps.push(drawStep())
+      steps.push(rnd() < 0.65 ? { kind: 'sessionCommit' } : { kind: 'sessionCancel' })
+    } else if (roll < 0.4) {
+      steps.push({ kind: 'undo' })
+    } else if (roll < 0.55) {
+      steps.push({ kind: 'redo' })
+    } else {
+      const index = Math.floor(rnd() * MUTATION_TYPES.length)
+      steps.push({ kind: 'mutation', type: MUTATION_TYPES[index] })
+    }
+  }
+  return steps
 }
 
 // The document contract in one place: the fields every consumer (persistence,
@@ -187,6 +234,14 @@ export interface FuzzRunResult {
   landedSteps: number
   undoMoves: number
   redoMoves: number
+  // Session coverage: how many unsuppressed sessions the run opened, how many
+  // history moves it made without leaving one, how many keystrokes the session
+  // floor made dead, and how many sessions a cancel ended. A session sweep
+  // asserts these so a generator that stopped emitting sessions cannot pass.
+  sessionsOpened: number
+  inSessionMoves: number
+  floorBlocked: number
+  sessionCancels: number
   // The deepest the undo stack ever got, and how many pushes landed on a full
   // stack and therefore dropped the oldest entry. A cap test asserts both so
   // that removing pushCapped's slice fails here, not just in the per-step
@@ -243,8 +298,29 @@ export async function runFuzzSequence(
   let landedSteps = 0
   let undoMoves = 0
   let redoMoves = 0
+  let sessionsOpened = 0
+  let inSessionMoves = 0
+  let floorBlocked = 0
+  let sessionCancels = 0
   let maxUndoDepth = 0
   let droppedEntries = 0
+
+  // What a cancel has to put back: the doc and both stacks as they stood when
+  // the session opened. Entry docs are cloned so a later write-back cannot make
+  // the comparison lie.
+  interface SessionBaseline {
+    doc: PartDoc
+    undo: { label: string; doc: PartDoc }[]
+    redo: { label: string; doc: PartDoc }[]
+  }
+  const stackNodes = (): { undo: SessionBaseline['undo']; redo: SessionBaseline['redo'] } => {
+    const history = session.historyEntries()
+    return {
+      undo: history.undo.map(entry => ({ label: entry.label, doc: structuredClone(entry.doc) })),
+      redo: history.redo.map(entry => ({ label: entry.label, doc: structuredClone(entry.doc) })),
+    }
+  }
+  let sessionBaseline: SessionBaseline | null = null
 
   const settle = async (): Promise<void> => {
     await solver.settle()
@@ -253,7 +329,64 @@ export async function runFuzzSequence(
 
   for (let stepIndex = 0; stepIndex < steps.length; stepIndex++) {
     const step = steps[stepIndex]
-    if (step.kind === 'mutation') {
+    if (step.kind === 'sessionOpen') {
+      if (sessionBaseline !== null) push(stepIndex, 'sessionOpen while a session is already open')
+      const doc = cell.current
+      if (doc === null) push(stepIndex, 'sessionOpen with no document')
+      const baseline = stackNodes()
+      sessionBaseline = { doc: structuredClone(doc as PartDoc), undo: baseline.undo, redo: baseline.redo }
+      session.begin('edit', { suppressed: false })
+      // Production enters the session first and stamps the edited feature
+      // afterwards (useEditFeature's enterEditFeature).
+      facts.editingFeatureId = step.featureId
+      const index = doc?.features?.findIndex(feature => feature.id === step.featureId) ?? -1
+      if (index >= 0) facts.rollbackPosition = index + 1
+      sessionsOpened++
+    } else if (step.kind === 'sessionCommit') {
+      if (sessionBaseline === null) {
+        push(stepIndex, 'sessionCommit with no open session')
+      } else {
+        const id = session.transactions().find(txn => txn.kind === 'edit')?.id
+        if (id === undefined) push(stepIndex, 'sessionCommit found no edit transaction')
+        else session.commit(id)
+        mirrorDirty()
+        sessionBaseline = null
+        facts.editingFeatureId = null
+        facts.rollbackPosition = cell.current?.rollback ?? null
+      }
+    } else if (step.kind === 'sessionCancel') {
+      if (sessionBaseline === null) {
+        push(stepIndex, 'sessionCancel with no open session')
+      } else {
+        const id = session.transactions().find(txn => txn.kind === 'edit')?.id
+        if (id === undefined) push(stepIndex, 'sessionCancel found no edit transaction')
+        else session.cancel(id)
+        mirrorDirty()
+        const baseline = sessionBaseline
+        sessionBaseline = null
+        facts.editingFeatureId = null
+        facts.rollbackPosition = cell.current?.rollback ?? null
+        // The cancel's contract: the doc and both stacks are exactly the pair a
+        // rewind leaves behind, no stray entry from the discarded work.
+        if (!isDeepStrictEqual(cell.current, baseline.doc)) {
+          push(stepIndex, 'sessionCancel did not rewind to the pre-session document')
+        }
+        const restored = stackNodes()
+        if (!isDeepStrictEqual(restored.undo, baseline.undo) || !isDeepStrictEqual(restored.redo, baseline.redo)) {
+          push(stepIndex, 'sessionCancel did not restore the pre-session stacks')
+        }
+        // The discarded work is gone. A redo entry's counterpart doc is the doc
+        // the undo left behind, and the redo-all at the end replays the stack
+        // from its top (the oldest undone entry) down to the bottom (the newest
+        // one), so the bottom is where the timeline ended. With no redo branch
+        // left, the session baseline is the doc after the newest entry.
+        const historyNow = session.historyEntries()
+        timelineTop = structuredClone(historyNow.redo.length > 0
+          ? historyNow.redo[0].doc
+          : (cell.current as PartDoc))
+        sessionCancels++
+      }
+    } else if (step.kind === 'mutation') {
       const mutation = MUTATION_EXAMPLES[step.type].mutation
       if (mutation.type === 'set_rollback' && options.presyncRollback !== false) {
         // The caller-side pre-sync Part.tsx performs before dispatching.
@@ -283,10 +416,22 @@ export async function runFuzzSequence(
         timelineTop = structuredClone(cell.current as PartDoc)
       }
     } else if (step.kind === 'undo') {
-      if (session.undo()) undoMoves++
+      const inSession = session.transactions().some(txn => txn.kind === 'edit')
+      if (session.undo()) {
+        undoMoves++
+        if (inSession) inSessionMoves++
+      } else if (inSession) {
+        floorBlocked++
+      }
       mirrorDirty()
     } else {
-      if (session.redo()) redoMoves++
+      const inSession = session.transactions().some(txn => txn.kind === 'edit')
+      if (session.redo()) {
+        redoMoves++
+        if (inSession) inSessionMoves++
+      } else if (inSession) {
+        floorBlocked++
+      }
       mirrorDirty()
     }
     await settle()
@@ -310,6 +455,16 @@ export async function runFuzzSequence(
     if (history.undo.length > maxUndoDepth) maxUndoDepth = history.undo.length
     if (history.undo.length > MAX_UNDO_DEPTH) push(stepIndex, `undo stack ${history.undo.length} exceeds the cap`)
     if (history.redo.length > MAX_UNDO_DEPTH) push(stepIndex, `redo stack ${history.redo.length} exceeds the cap`)
+  }
+
+  // A caller-built sequence can end inside a session (the generator never
+  // does). Close it the way the editor does before the history round trip is
+  // judged, or the in-session floor would stop the undo-all short of the floor.
+  if (sessionBaseline !== null) {
+    const id = session.transactions().find(txn => txn.kind === 'edit')?.id
+    if (id !== undefined) session.commit(id)
+    mirrorDirty()
+    facts.editingFeatureId = null
   }
 
   // Undo-all reaches the floor of the undo stack: the doc of its oldest
@@ -345,6 +500,10 @@ export async function runFuzzSequence(
     landedSteps,
     undoMoves,
     redoMoves,
+    sessionsOpened,
+    inSessionMoves,
+    floorBlocked,
+    sessionCancels,
     maxUndoDepth,
     droppedEntries,
     undoAllReachedStart,

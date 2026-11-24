@@ -122,6 +122,15 @@ describe('Part - Cancel on a just-added feature reverts the add', () => {
     await waitFor(() => expect(userFeatures().filter(f => f.kind === 'sketch')).toHaveLength(1))
     await waitFor(() => expect(usePartEditorStore.getState().undoStack).toHaveLength(2))
 
+    // The add-and-enter sketch's own entry is below its session floor, so the
+    // undo from inside the new sketch is dead: it never removes the sketch the
+    // user is standing in. Leaving the sketch first is what makes it reachable.
+    await act(async () => { executeCommand('undo') })
+    expect(userFeatures().filter(f => f.kind === 'sketch')).toHaveLength(1)
+    expect(usePartEditorStore.getState().undoStack).toHaveLength(2)
+
+    await act(async () => { fireEvent.click(document.querySelector('.feature-item.editing .feature-ok-btn')!) })
+    await waitFor(() => expect(useEditorState.getState().editingFeatureId).toBeNull())
     await act(async () => { executeCommand('undo') })
     await waitFor(() => expect(userFeatures().filter(f => f.kind === 'sketch')).toHaveLength(0))
     expect(userFeatures().filter(f => f.kind === 'extrude')).toHaveLength(1)

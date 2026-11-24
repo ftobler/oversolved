@@ -147,6 +147,16 @@ describe('nested edit session guard (direct FeatureTree Edit button)', () => {
     expect(within(fil1Item).queryByTitle('OK')).toBeNull()
     expect(radiusOf('fil1')).toBe(9)
 
+    // The fillet's committed aggregate is below the sketch session's floor, so
+    // the undo is dead inside the sketch: nothing of the sketch has happened
+    // yet, and the sketch stays open (the session floor rule).
+    await act(async () => { executeCommand('undo') })
+    expect(useEditorState.getState().editingFeatureId).toBe('sk1')
+    expect(radiusOf('fil1')).toBe(9)
+
+    // Leaving the sketch ends the session; the same undo then reverts exactly
+    // the fillet's aggregate, so the close pushed no phantom entry of its own.
+    await act(async () => { fireEvent.click(document.querySelector('.feature-item.editing .feature-ok-btn')!) })
     await act(async () => { executeCommand('undo') })
     await waitFor(() => expect(radiusOf('fil1')).toBe(1))
   })
