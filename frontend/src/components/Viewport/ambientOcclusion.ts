@@ -6,8 +6,14 @@ import * as THREE from 'three'
 export const AO_OCCLUDER_LAYER = 10
 
 // Tuning. The radius is a fixed fraction of the visible body extent so it is
-// unit- and zoom-stable (mm and inch copies of the same part agree).
-export const AO_RADIUS_FRACTION = 0.03
+// unit- and zoom-stable (mm and inch copies of the same part agree). Set by eye
+// (user, 2026-11-23) to widen the hairline crease shading; expected to be tweaked.
+export const AO_RADIUS_FRACTION = 0.15
+
+// There is no strength slider: AO is an on/off view, so the shader's mix factor
+// is one constant for every body. It stays at the old default; the user judged
+// the look at 1.5, so raise this if the wider radius reads too weak.
+export const AO_STRENGTH = 1
 
 // One white texel stands in whenever the AO stage does not publish a result
 // (option off, capturing, sectioned, or before the first AO frame). The body
@@ -21,13 +27,13 @@ export const aoFallbackTexture = (() => {
 })()
 
 // The only channel between the AO stage and the body materials: the denoised
-// occlusion texture, its full-resolution size and the strength slider. Every
-// body material references these same objects, so moving the camera or
-// changing strength recompiles nothing.
+// occlusion texture, its full-resolution size and the fixed strength. Every
+// body material references these same objects, so moving the camera recompiles
+// nothing.
 export const aoUniforms = {
   tAO: { value: aoFallbackTexture as THREE.Texture },
   uResolution: { value: new THREE.Vector2(1, 1) },
-  uAoStrength: { value: 1 },
+  uAoStrength: { value: AO_STRENGTH },
 }
 
 // Module-level capturing flag used by the thumbnail path.

@@ -28,7 +28,7 @@ import {
 import { useSectionStore } from '@/stores/sectionStore'
 import { useNotifySafe } from '@/contexts/ToastContext'
 import type { CurvatureKind } from '@/adapters/preferences'
-import { MAX_AO_STRENGTH, MAX_ZEBRA_STRIPES, MIN_AO_STRENGTH, MIN_ZEBRA_STRIPES } from '@/adapters/preferences'
+import { MAX_ZEBRA_STRIPES, MIN_ZEBRA_STRIPES } from '@/adapters/preferences'
 import { brightnessToSlider, sliderToBrightness } from '@/components/Viewport/brightnessScale'
 import type { ShowGroup, ShowGroupState } from '@/components/Viewport/viewOptionsShow'
 import { SHOW_GROUPS } from '@/components/Viewport/viewOptionsShow'
@@ -108,7 +108,6 @@ export default function ViewOptionsButton({ show, onToggleShow, allowAmbientOccl
   const curvatureRange = useViewOptionsStore(s => s.curvature_range)
   const curvatureAutoRange = useViewOptionsStore(s => s.curvatureAutoRange)
   const ambientOcclusion = useViewOptionsStore(s => s.ambient_occlusion)
-  const aoStrength = useViewOptionsStore(s => s.ao_strength)
   const collisionDebug = useViewOptionsStore(s => s.collisionDebug)
   const orbitAroundCursor = useViewOptionsStore(s => s.orbit_around_cursor)
   const sectionEnabled = useSectionStore(s => s.enabled)
@@ -126,7 +125,6 @@ export default function ViewOptionsButton({ show, onToggleShow, allowAmbientOccl
   const setCurvatureKind = useViewOptionsStore(s => s.setCurvatureKind)
   const setCurvatureRange = useViewOptionsStore(s => s.setCurvatureRange)
   const setAmbientOcclusion = useViewOptionsStore(s => s.setAmbientOcclusion)
-  const setAoStrength = useViewOptionsStore(s => s.setAoStrength)
   const setCollisionDebug = useViewOptionsStore(s => s.setCollisionDebug)
   const setOrbitAroundCursor = useViewOptionsStore(s => s.setOrbitAroundCursor)
   const setSectionEnabled = useSectionStore(s => s.setEnabled)
@@ -415,25 +413,6 @@ export default function ViewOptionsButton({ show, onToggleShow, allowAmbientOccl
           {!allowAmbientOcclusion && (
             <div className="view-options-note" role="status">
               Ambient occlusion is a part-editor view for now.
-            </div>
-          )}
-          {ambientOcclusion && allowAmbientOcclusion && (
-            <div className="view-options-slider-row">
-              <div className="view-options-slider-head">
-                <span className="view-options-label">Strength</span>
-                <span className="view-options-value">{aoStrength.toFixed(2)}</span>
-              </div>
-              <input
-                type="range"
-                className="view-options-slider"
-                aria-label="Strength"
-                min={MIN_AO_STRENGTH}
-                max={MAX_AO_STRENGTH}
-                step={0.05}
-                value={aoStrength}
-                onChange={e => setAoStrength(Number(e.target.value))}
-                data-view-row
-              />
             </div>
           )}
 

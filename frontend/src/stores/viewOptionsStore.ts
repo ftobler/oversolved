@@ -18,8 +18,6 @@ import { create } from 'zustand'
 import { backendBundle } from '@/adapters/backend'
 import {
   DEFAULT_VIEW_PREFERENCES,
-  MAX_AO_STRENGTH,
-  MIN_AO_STRENGTH,
   normalizeViewPreferences,
   snapBrightness,
   type CurvatureKind,
@@ -48,7 +46,6 @@ export interface ViewOptionsState extends ViewPreferences {
   setCurvatureRange: (range: [number, number] | null) => void
   setCurvatureAutoRange: (range: [number, number] | null) => void
   setAmbientOcclusion: (on: boolean) => void
-  setAoStrength: (value: number) => void
   setCollisionDebug: (on: boolean) => void
   setOrbitAroundCursor: (on: boolean) => void
 }
@@ -66,7 +63,6 @@ export function toViewPreferences(state: ViewPreferences): ViewPreferences {
     curvature_range: state.curvature_range,
     orbit_around_cursor: state.orbit_around_cursor,
     ambient_occlusion: state.ambient_occlusion,
-    ao_strength: state.ao_strength,
   }
 }
 
@@ -196,14 +192,6 @@ export const useViewOptionsStore = create<ViewOptionsState>((set, get) => {
       // AO needs shading and cannot coexist with an analysis material.
       const next = on && get().shading && !get().zebra && !get().curvature
       set({ ambient_occlusion: next })
-      persist(get)
-    },
-
-    setAoStrength: (value) => {
-      const next = Number.isFinite(value)
-        ? Math.min(MAX_AO_STRENGTH, Math.max(MIN_AO_STRENGTH, value))
-        : DEFAULT_VIEW_PREFERENCES.ao_strength
-      set({ ao_strength: next })
       persist(get)
     },
 

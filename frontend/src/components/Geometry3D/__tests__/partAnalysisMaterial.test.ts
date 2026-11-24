@@ -23,7 +23,7 @@ import {
   type PartAnalysisParams,
   type PartAnalysisPatch,
 } from '@/components/Geometry3D/partAnalysisMaterial'
-import { aoUniforms } from '@/components/Viewport/ambientOcclusion'
+import { AO_STRENGTH, aoUniforms } from '@/components/Viewport/ambientOcclusion'
 
 function applyPatch(patch: ReturnType<typeof makeZebraPatch>) {
   const shader = {
@@ -371,24 +371,15 @@ describe('ambient occlusion patch', () => {
     expect(threaded?.customProgramCacheKey()).toBe('thread')
   })
 
-  it('moves the strength through the shared uniform without recompiling', () => {
+  it('holds the constant strength in the shared uniform when AO turns on', () => {
     const material = new THREE.MeshPhysicalMaterial()
     const ref = { current: material as THREE.Material | null }
-    const { rerender } = renderHook(({ p }) => usePartAnalysisMaterial(ref, p), {
-      initialProps: { p: { ...plainParams, ao: true, aoStrength: 0.4 } as PartAnalysisParams },
+    renderHook(({ p }) => usePartAnalysisMaterial(ref, p), {
+      initialProps: { p: { ...plainParams, ao: true } as PartAnalysisParams },
     })
-    expect(aoUniforms.uAoStrength.value).toBe(0.4)
-    const version = material.version
-    const compiled = material.onBeforeCompile
 
-    rerender({ p: { ...plainParams, ao: true, aoStrength: 0.9 } })
-
-    expect(aoUniforms.uAoStrength.value).toBe(0.9)
-    expect(material.version).toBe(version)
-    expect(material.onBeforeCompile).toBe(compiled)
-    // The uniform is shared by every body material, so a test that moves it must
-    // put it back or the next file's assertions read this value.
-    aoUniforms.uAoStrength.value = 1
+    // Strength is a module constant now: no per-body setter and no recompile.
+    expect(aoUniforms.uAoStrength.value).toBe(AO_STRENGTH)
   })
 
   it('recompiles the same material instance when AO toggles', () => {
