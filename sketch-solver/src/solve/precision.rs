@@ -323,7 +323,7 @@ fn report_sketch_without_horizontal_meets_contract() {
 /// rotation about the top midpoint. Seed it rotated by 1e-6 rad and bend one
 /// corner by 1e-9, so the finish has an angular row to tighten while the free
 /// rotation must stay put.
-fn rotated_half_cube(theta: f64) -> Input {
+pub(super) fn rotated_half_cube(theta: f64) -> Input {
     let rotate = |p: [f64; 2]| -> [f64; 2] {
         let (c, s) = (theta.cos(), theta.sin());
         [p[0] * c - p[1] * s, p[0] * s + p[1] * c]
@@ -481,7 +481,7 @@ fn finish_vertical_line_through_point_stays() {
 /// 0.01 mm apart. The chain is the crate's worst satisfiable cold solve
 /// (9.4e-9 residual at scale 0.01), so its row set is the one a minimum-norm
 /// finish is least able to close.
-fn tight_parallel_chain(s: f64) -> Input {
+pub(super) fn tight_parallel_chain(s: f64) -> Input {
     let mut entities = vec![];
     let mut params = vec![];
     let mut constraints = vec![c_target(ConstraintKind::Fixed, 0, PointSelector::Absent)];

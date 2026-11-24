@@ -276,6 +276,26 @@ pub const CONSTRAINT_FLAG_REDUNDANT: u8 = 1 << 0;
 /// its authored constraints did nothing. The flag lets the host name it.
 pub const CONSTRAINT_FLAG_DROPPED: u8 = 1 << 1;
 
+/// A satisfied constraint that holds its direction only to second order: its
+/// row is stationary at the solved geometry, so the verdict accepts a visible
+/// offset while the Jacobian column reads ~0. The classic case is an axis
+/// distance naming a point at a circle's or arc's extreme, where the distance
+/// is `r * cos(theta)` and the intended solution is the maximum.
+///
+/// Index is the `Input::constraints` position (the wire index the host maps
+/// back to its authored id), not a string: the crate never sees ids.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct WeakConstraint {
+    pub constraint_index: u32,
+    /// How far the sketch can move along that direction, as an ANGLE in
+    /// degrees: an arc's or ellipse's angle slot is already in degrees, a
+    /// world-length step is read as a rotation over the sketch scale. One unit
+    /// keeps the host's "can rotate by up to 0.044 deg" sentence honest whatever
+    /// the weak direction is made of. Always finite: a non-finite estimate is
+    /// not a measurement and is never emitted.
+    pub move_estimate: f64,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct Output {
     pub params_solved: Vec<f64>,
@@ -308,6 +328,12 @@ pub struct Output {
     /// quantum. Empty on the drag fast path, whose commits go through a
     /// mutation rather than the write-back. See `solve::entity_moved`.
     pub entity_moved: Vec<u8>,
+    /// The satisfied constraints that hold their direction only to second order
+    /// (see [`WeakConstraint`]). Empty on a clean sketch, on the drag fast path,
+    /// and on anything but a fully constrained cold solve: only that verdict can
+    /// ship a visible tilt as `dof 0`. Ordered by `move_estimate`, largest
+    /// first.
+    pub weak_constraints: Vec<WeakConstraint>,
     pub diagnostics: Diagnostics,
 }
 

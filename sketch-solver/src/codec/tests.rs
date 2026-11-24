@@ -170,6 +170,7 @@ fn output_floats_round_trip_bit_exact() {
         // -0.0 from 0.0).
         constraint_miss: vec![1.5, 0.25, -0.0],
         entity_moved: vec![0b0000_0010],
+        weak_constraints: Vec::new(),
         diagnostics: Diagnostics::default(),
     };
     let decoded = decode_output(&encode_output(&out)).unwrap();
@@ -263,6 +264,16 @@ fn output_round_trips() {
         constraint_flags: vec![crate::CONSTRAINT_FLAG_REDUNDANT, 0],
         constraint_miss: vec![0.0, 0.375],
         entity_moved: vec![0b0000_0001],
+        weak_constraints: vec![
+            crate::WeakConstraint {
+                constraint_index: 3,
+                move_estimate: 0.0437,
+            },
+            crate::WeakConstraint {
+                constraint_index: 0,
+                move_estimate: 1e-4,
+            },
+        ],
         diagnostics: Diagnostics {
             residual_norm: 1.25e-9,
             rank: 5,
@@ -280,6 +291,13 @@ fn output_round_trips() {
     assert_eq!(decoded.constraint_flags, out.constraint_flags);
     assert_eq!(decoded.constraint_miss, out.constraint_miss);
     assert_eq!(decoded.entity_moved, out.entity_moved);
+    // The weak block keeps its order and both fields bit-exact: the host maps
+    // `constraint_index` back to the authored id and prints the estimate.
+    assert_eq!(decoded.weak_constraints, out.weak_constraints);
+    assert_eq!(
+        decoded.weak_constraints[0].move_estimate.to_bits(),
+        0.0437_f64.to_bits()
+    );
     assert_eq!(decoded.diagnostics.rank, 5);
     assert_eq!(decoded.diagnostics.iters, 7);
     assert!((decoded.diagnostics.residual_norm - 1.25e-9).abs() < 1e-18);
@@ -300,6 +318,7 @@ fn output_round_trips_a_nan_precision_report() {
         constraint_flags: vec![0],
         constraint_miss: vec![0.5],
         entity_moved: vec![0],
+        weak_constraints: Vec::new(),
         diagnostics: Diagnostics {
             angular_miss: f64::NAN,
             linear_miss: f64::NAN,
@@ -452,6 +471,7 @@ fn rev1_output_magic_rejected() {
         constraint_flags: Vec::new(),
         constraint_miss: Vec::new(),
         entity_moved: Vec::new(),
+        weak_constraints: Vec::new(),
         diagnostics: Diagnostics::default(),
     };
     let mut bytes = encode_output(&out);
@@ -469,6 +489,7 @@ fn rev2_output_magic_rejected() {
         constraint_flags: Vec::new(),
         constraint_miss: Vec::new(),
         entity_moved: Vec::new(),
+        weak_constraints: Vec::new(),
         diagnostics: Diagnostics::default(),
     };
     let mut bytes = encode_output(&out);
@@ -489,6 +510,7 @@ fn rev3_output_magic_rejected() {
         constraint_flags: Vec::new(),
         constraint_miss: Vec::new(),
         entity_moved: Vec::new(),
+        weak_constraints: Vec::new(),
         diagnostics: Diagnostics::default(),
     };
     let mut bytes = encode_output(&out);
@@ -509,6 +531,7 @@ fn rev4_output_magic_is_rejected() {
         constraint_flags: Vec::new(),
         constraint_miss: Vec::new(),
         entity_moved: vec![0],
+        weak_constraints: Vec::new(),
         diagnostics: Diagnostics::default(),
     };
     let mut bytes = encode_output(&out);
@@ -528,6 +551,7 @@ fn rev5_output_magic_is_rejected() {
         constraint_flags: Vec::new(),
         constraint_miss: Vec::new(),
         entity_moved: vec![0],
+        weak_constraints: Vec::new(),
         diagnostics: Diagnostics::default(),
     };
     let mut bytes = encode_output(&out);
@@ -771,6 +795,7 @@ fn output_bad_magic_rejected() {
         constraint_flags: Vec::new(),
         constraint_miss: Vec::new(),
         entity_moved: Vec::new(),
+        weak_constraints: Vec::new(),
         diagnostics: Diagnostics::default(),
     };
     let mut bytes = encode_output(&out);
@@ -788,6 +813,7 @@ fn truncated_output_is_unexpected_eof() {
         constraint_flags: vec![1, 0],
         constraint_miss: vec![0.5, 0.25],
         entity_moved: vec![0b0000_0011],
+        weak_constraints: Vec::new(),
         diagnostics: Diagnostics::default(),
     };
     let bytes = encode_output(&out);
@@ -798,8 +824,10 @@ fn truncated_output_is_unexpected_eof() {
         Err(CodecError::UnexpectedEof)
     ));
     // Cutting into the miss block fails on the f64 read instead: drop the
-    // trailing diagnostics (28 bytes) plus the last byte of the miss.
-    let miss_cut = &bytes[..bytes.len() - 28 - 1];
+    // trailing diagnostics (28 bytes), the weak-count u32 and the moved bytes,
+    // plus the last byte of the miss.
+    let tail = 28 + 4 + out.entity_moved.len();
+    let miss_cut = &bytes[..bytes.len() - tail - 1];
     assert!(matches!(
         decode_output(miss_cut),
         Err(CodecError::UnexpectedEof)
@@ -1034,6 +1062,7 @@ fn the_rev_6_output_magic_is_rejected() {
         constraint_flags: Vec::new(),
         constraint_miss: Vec::new(),
         entity_moved: Vec::new(),
+        weak_constraints: Vec::new(),
         diagnostics: Diagnostics::default(),
     };
     let mut bytes = encode_output(&out);
@@ -1060,6 +1089,7 @@ fn the_rev_8_magics_are_rejected() {
         constraint_flags: Vec::new(),
         constraint_miss: Vec::new(),
         entity_moved: Vec::new(),
+        weak_constraints: Vec::new(),
         diagnostics: Diagnostics::default(),
     };
     let mut bytes = encode_output(&out);
@@ -1086,9 +1116,37 @@ fn the_rev_7_magics_are_rejected() {
         constraint_flags: Vec::new(),
         constraint_miss: Vec::new(),
         entity_moved: Vec::new(),
+        weak_constraints: Vec::new(),
         diagnostics: Diagnostics::default(),
     };
     let mut bytes = encode_output(&out);
     bytes[0..4].copy_from_slice(&MAGIC_OUT_SKR7.to_le_bytes());
+    assert_eq!(decode_output(&bytes).unwrap_err(), CodecError::BadMagic);
+}
+
+#[test]
+fn the_rev_9_magics_are_rejected() {
+    // Rev 9's output has no weak block: this reader would take the weak count
+    // from the first diagnostic's bytes and then read entries that are not
+    // there. The pair moves together, so the input magic moves too.
+    let mut input_bytes = encode_input(&sample_input());
+    input_bytes[0..4].copy_from_slice(&MAGIC_SKG9.to_le_bytes());
+    assert_eq!(
+        decode_input(&input_bytes).unwrap_err(),
+        CodecError::BadMagic
+    );
+    let out = Output {
+        params_solved: vec![1.0],
+        entity_status: vec![0],
+        overall_status: 0,
+        vertex_freedom: Vec::new(),
+        constraint_flags: Vec::new(),
+        constraint_miss: Vec::new(),
+        entity_moved: Vec::new(),
+        weak_constraints: Vec::new(),
+        diagnostics: Diagnostics::default(),
+    };
+    let mut bytes = encode_output(&out);
+    bytes[0..4].copy_from_slice(&MAGIC_OUT_SKR9.to_le_bytes());
     assert_eq!(decode_output(&bytes).unwrap_err(), CodecError::BadMagic);
 }
