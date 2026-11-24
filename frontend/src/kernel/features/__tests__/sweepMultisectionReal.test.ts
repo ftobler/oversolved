@@ -463,12 +463,12 @@ describe.skipIf(!oc)('sweep multisection (real OCC)', () => {
     })
     expect(error).toBeNull()
     expect(solved?.status).toBe('partial')
-    expect(solved?.exception).toMatch(/@missing/)
+    expect(solved?.exception).toMatch(/the sketch this pick names no longer resolves/)
     // The two surviving sections still build the frustum.
     expect(solved?.volume).toBeCloseTo(73.303829, 3)
   })
 
-  it('reports the failed ref itself when too few sections remain', () => {
+  it('reports the unresolvable section itself when too few sections remain', () => {
     const repo = new Repository()
     repo.register('_pt_path', FRONT)
     repo.register('_topo_path', {
@@ -481,7 +481,7 @@ describe.skipIf(!oc)('sweep multisection (real OCC)', () => {
     const { error } = solve(oc!, repo, {
       sketch: ['@a', '@missing'], path: '@path', multisection: true, operation: 'new',
     })
-    expect(error ?? '').toMatch(/@missing/)
+    expect(error ?? '').toMatch(/the sketch this pick names no longer resolves/)
     expect(error ?? '').not.toMatch(/needs at least two sections/)
   })
 

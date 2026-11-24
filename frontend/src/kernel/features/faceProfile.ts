@@ -210,7 +210,12 @@ export function resolveFaceProfile(
 
   const faceEntry = (resolveLegacyCapQuery(globalRepo, sketchRef) ??
     globalRepo.query(sketchRef, null, partStore)) as Dict | null
-  if (faceEntry === null) throw new Error('the picked face no longer resolves; pick it again')
+  if (faceEntry === null) {
+    // A section or profile ref is a sketch, not a face: name what was picked.
+    throw new Error(sketchRef.startsWith('@')
+      ? 'the sketch this pick names no longer resolves; pick it again'
+      : 'the picked face no longer resolves; pick it again')
+  }
 
   const partId = faceEntry.body_id as string | undefined
   const faceIndex = faceEntry.face_index as number | undefined
