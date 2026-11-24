@@ -219,7 +219,7 @@ describe.skipIf(!ready)('headless feature problems (real OCC + Rust solver)', ()
     expect(result.doc?.features?.map(feature => feature.id)).toContain('ex1')
     const problem = result.features.find(feature => feature.id === 'ex1')
     expect(problem).toBeDefined()
-    expect(problem!.message).toContain('sketch not found: sk1')
+    expect(problem!.message).toContain("the profile's sketch was not found")
   }, 120_000)
 
   it('builds a through_all hole with no stored depth and cuts all the way through', async () => {

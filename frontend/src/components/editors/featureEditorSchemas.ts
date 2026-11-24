@@ -6,7 +6,8 @@ import {
   DEFAULT_WRAP_HEIGHT,
 } from '@/utils/yamlMutations'
 import { THREAD_TABLE, threadEntry, threadLabel, threadDesignations, DRILL_POINT_ANGLE } from '@/kernel/threadTable'
-import { pickedSketchEntity } from '@/kernel/features/shared/partRef'
+import { pickedSketchEntity, entityKindPhrase, noAreaReason } from '@/kernel/features/shared/partRef'
+import { ENTITY_BY_KIND } from '@/registry/entityRegistry'
 import { circleDrillSiteReason } from '@/kernel/features/shared/drillSite'
 import type { PartFeature, ThreadSpec } from '@/types/cad'
 import { resolvePartPickRef, resolveAxisQuery } from '@/utils/query/resolvePartPickRef'
@@ -47,7 +48,7 @@ export const EXTRUDE_SCHEMA: FeatureEditorSchema = {
   fields: [
     { type: 'pick', key: 'sketch', label: 'Profile', multi: true,
       addMutationType: 'add_extrude_profile', addValueKey: 'sketchQuery',
-      removeMutationType: 'remove_extrude_profile' },
+      removeMutationType: 'remove_extrude_profile', validatePick: profilePickRefusal },
     { type: 'select', key: 'termination', label: 'Termination', default: 'blind',
       options: [
         { value: 'blind', label: 'Blind' },
@@ -109,7 +110,7 @@ export const REVOLVE_SCHEMA: FeatureEditorSchema = {
   fields: [
     { type: 'pick', key: 'sketch', label: 'Profile', multi: true,
       addMutationType: 'add_revolve_profile', addValueKey: 'sketchQuery',
-      removeMutationType: 'remove_revolve_profile' },
+      removeMutationType: 'remove_revolve_profile', validatePick: profilePickRefusal },
     { type: 'number', key: 'angle', label: 'Angle', default: 360, quantity: 'angle', validate: positive },
     { type: 'select', key: 'direction', label: 'Direction', default: 'normal',
       options: [{ value: 'normal', label: 'Normal' }, { value: 'reverse', label: 'Reverse' }, { value: 'symmetric', label: 'Symmetric' }] },
@@ -136,7 +137,8 @@ export const SWEEP_SCHEMA: FeatureEditorSchema = {
       removeMutationType: 'remove_sweep_path', transform: stripSelectionWrapper },
     { type: 'pick', key: 'sketch', label: 'Profile', multi: true,
       addMutationType: 'add_sweep_profile', addValueKey: 'sketchQuery',
-      removeMutationType: 'remove_sweep_profile', transform: stripSelectionWrapper },
+      removeMutationType: 'remove_sweep_profile', transform: stripSelectionWrapper,
+      validatePick: profilePickRefusal },
     // Off by default: with it on, each outer loop is a section the path pierces
     // and the body is blended between them, so a same-plane multi-profile sweep
     // keeps its old body until the user opts in.
@@ -254,6 +256,7 @@ export const WRAP_SCHEMA: FeatureEditorSchema = {
   defaults: { sketch: '', height: DEFAULT_WRAP_HEIGHT, operation: 'add' },
   fields: [
     { type: 'pick', key: 'sketch', label: 'Profile', transform: stripSelectionWrapper,
+      validatePick: profilePickRefusal,
       hint: 'Project a circular edge of the target as a point (its centre is on the axis) and dimension the footprint to it.' },
     // Two picks and a number: the target's own axis is the datum, so there is
     // nothing to place. The kernel refuses a planar or freeform face by name;
@@ -357,6 +360,33 @@ function holeSketchPickRefusal(selectionId: string, features?: readonly PartFeat
   return entity?.kind === 'circle'
     ? circleDrillSiteReason(picked.sketchId, picked.entityId, entity.construction === true)
     : null
+}
+
+/**
+ * The profile pick's own rule: a click on a sketch curve means "what this curve
+ * encloses", so a kind that can never close on its own is refused at the chip
+ * instead of being stored for the build to reject later. The verdict is the
+ * registry's `closesAlone` fact, not a list here: a circle and an ellipse always
+ * close, a line, an arc and a point never do, and whether a spline closes is a
+ * solve fact so the build stays its judge. A `?` area pick that narrows to one
+ * open entity is the same gesture as a curve pick and gets the same verdict; a
+ * whole-sketch ref and a region bounded by several entities are untouched.
+ *
+ * The reason names the kind and no id: the user just clicked the curve, so the
+ * area fill beside it is the next thing to try.
+ */
+export function profilePickRefusal(selectionId: string, features?: readonly PartFeature[]): string | null {
+  if (features === undefined) return null
+  const sketchIds = new Set(features.filter((feature) => feature.kind === 'sketch').map((feature) => feature.id))
+  const picked = pickedSketchEntity(selectionId, sketchIds)
+  if (picked === null) return null
+  const sketch = features.find((feature) => feature.id === picked.sketchId)
+  const entity = sketch?.kind === 'sketch'
+    ? sketch.entities?.find((candidate) => candidate.id === picked.entityId)
+    : undefined
+  if (entity === undefined || ENTITY_BY_KIND.get(entity.kind)?.closesAlone !== 'never') return null
+  const phrase = entityKindPhrase(entity.kind)
+  return phrase === null ? null : noAreaReason(phrase)
 }
 
 export const HOLE_SCHEMA: FeatureEditorSchema = {

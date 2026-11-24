@@ -42,9 +42,19 @@ function repoFor(name: string): { repo: Repository; sketchId: string } {
   return { repo, sketchId: fx.feature_id }
 }
 
-function resolve(name: string, ref: string) {
+function resolve(name: string, ref: string, featuresById?: Record<string, Dict>) {
   const { repo } = repoFor(name)
-  return collectExtrudeLoops(oc, null as never, table, ref, repo, partStore)
+  return collectExtrudeLoops(oc, null as never, table, ref, repo, partStore, featuresById)
+}
+
+/** The message a refused pick raises, for asserting its exact user-facing text. */
+function refusalMessage(run: () => unknown): string {
+  try {
+    run()
+  } catch (error) {
+    return (error as Error).message
+  }
+  throw new Error('expected the profile pick to be refused')
 }
 
 /**
@@ -137,20 +147,54 @@ describe('profile pick of a sketch entity', () => {
   it('refuses a line that borders an area but closes nothing', () => {
     // The square's bottom edge bounds the square region, but the user picked a
     // line: answering with the square would extrude geometry they did not pick.
-    expect(() => resolve('square', 'entity:sk1:ln_b')).toThrow(/bounds no closed area/)
+    expect(() => resolve('square', 'entity:sk1:ln_b')).toThrow(/has no area of its own/)
   })
 
   it('refuses an open chain of collinear pieces', () => {
-    expect(() => resolve('line_through_circle', 'entity:skLC:ln')).toThrow(/bounds no closed area/)
+    expect(() => resolve('line_through_circle', 'entity:skLC:ln')).toThrow(/has no area of its own/)
   })
 
   it('refuses an entity the sketch does not have', () => {
-    expect(() => resolve('standalone_circle', 'entity:skC:nope')).toThrow(/bounds no closed area/)
+    expect(() => resolve('standalone_circle', 'entity:skC:nope')).toThrow(/has no area of its own/)
+  })
+
+  it('names an open entity by kind and ordinal and by its sketch label', () => {
+    // The old sentence printed the entity and sketch ids. The user cannot read
+    // them, but can find "line 1 of 'Sketch 1'" in the tree and the editor.
+    const message = refusalMessage(() => resolve('square', 'entity:sk1:ln_b', {
+      sk1: {
+        id: 'sk1',
+        kind: 'sketch',
+        label: 'Sketch 1',
+        entities: [
+          { id: 'ln_b', kind: 'line' },
+          { id: 'ln_r', kind: 'line' },
+          { id: 'ln_t', kind: 'line' },
+          { id: 'ln_l', kind: 'line' },
+        ],
+      },
+    }))
+    expect(message).toBe(
+      "line 1 of 'Sketch 1' has no area of its own; " +
+      'pick the area beside it, or a closed curve such as a circle',
+    )
+    expect(message).not.toContain('ln_b')
+    expect(message).not.toContain('sk1')
+  })
+
+  it('leaves the sketch name out when the sketch has no label', () => {
+    // A label-less sketch falls back to no name at all, never to its id.
+    const message = refusalMessage(() => resolve('square', 'entity:sk1:ln_b', {
+      sk1: { id: 'sk1', kind: 'sketch', entities: [{ id: 'ln_b', kind: 'line' }] },
+    }))
+    expect(message).toMatch(/^line 1 has no area of its own;/)
+    expect(message).not.toContain('sk1')
+    expect(message).not.toContain('ln_b')
   })
 
   it('reports the missing sketch, not a missing entity', () => {
     const { repo } = repoFor('standalone_circle')
     expect(() => collectExtrudeLoops(oc, null as never, table, 'entity:gone:ci', repo, partStore))
-      .toThrow(/sketch not found: gone/)
+      .toThrow(/profile's sketch was not found/)
   })
 })

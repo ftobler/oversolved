@@ -946,7 +946,7 @@ export function solveSweep(
     }
     let resolved
     try {
-      resolved = collectExtrudeLoops(oc, scope, table, sketchRef, globalRepo, partStore)
+      resolved = collectExtrudeLoops(oc, scope, table, sketchRef, globalRepo, partStore, featuresById)
     } catch (exc) {
       swallowUnlessTrap(exc)
       profileErrors.push(extractErrorMessage(exc))
@@ -999,7 +999,8 @@ export function solveSweep(
     const plane = globalRepo.elements.get('_pt_' + sketchId) as PlaneLike | undefined
     if (plane === undefined) {
       profileErrors.push(
-        laterSketchReorderHint(sketchId, featureId, featuresById) ?? `sketch not found: ${sketchId}`,
+        laterSketchReorderHint(sketchId, featureId, featuresById) ??
+        "the profile's sketch was not found; pick the profile again",
       )
       continue
     }

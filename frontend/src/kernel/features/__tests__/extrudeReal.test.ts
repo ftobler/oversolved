@@ -361,7 +361,11 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): m
   it('a picked open curve is refused instead of widened to its sketch', () => {
     const result = h.run(rectWithCircleSpec('entity:sk1:bottom'))
     expect(h.res(result, 'ex1').status).toBe('exception')
-    expect(String(h.res(result, 'ex1').exception)).toContain('bounds no closed area')
+    const message = String(h.res(result, 'ex1').exception)
+    // The sketch's own tree label names it; neither document id is printed.
+    expect(message).toContain('line 1 of \'Rectangle\' has no area of its own')
+    expect(message).not.toContain('sk1')
+    expect(message).not.toContain('bottom')
   })
 
   it('extrude from top face named query (@ex1/top_face)', () => {
@@ -464,7 +468,7 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): m
       ],
     })
     expect(h.res(result, 'ex1').status).toBe('partial')
-    expect(String(h.res(result, 'ex1').exception)).toMatch(/sketch not found: missing/)
+    expect(String(h.res(result, 'ex1').exception)).toMatch(/profile's sketch was not found/)
     expect(result.bodies).toHaveProperty('body_ex1')
   })
 })

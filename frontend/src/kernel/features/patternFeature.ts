@@ -539,14 +539,14 @@ function buildSourceTools(
     const toolFeature: Dict = { ...source.feature, id: source.id, [source.kind]: toolSub }
     const built = source.kind === 'extrude'
       ? solveExtrude(
-          oc, scope, table, toolFeature, globalRepo, scratch, undefined,
+          oc, scope, table, toolFeature, globalRepo, scratch, featuresById,
           throughAllSource === undefined ? undefined : { ...solveContext, throughAllSource },
         )
       : source.kind === 'wrap'
         // A wrap's operation also signs its height, so the forced `new` must not
         // flip a cut's tool out of the material; its target comes from the record
         // its own solve left (the real store only as a fallback).
-        ? solveWrap(oc, scope, table, toolFeature, globalRepo, scratch, undefined, {
+        ? solveWrap(oc, scope, table, toolFeature, globalRepo, scratch, featuresById, {
             ...solveContext, rebuild: { operation: source.operation, parts: partStore },
           })
         : source.kind === 'hole'
