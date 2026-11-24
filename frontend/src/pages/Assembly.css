@@ -49,10 +49,9 @@
 }
 
 /* The cards float over a bright model, so the assembly's related rows keep the
-   hint hue at alpha. The shared Part.css rules are opaque and stay untouched:
-   the part editor's own `.related` rows are outside this feature's scope. The
-   edited and selected states keep their own looks, as they do in the shared
-   rules. */
+   hint hue at alpha rather than the shared opaque tint. As in the shared rules,
+   the tint alone marks the relation: no outline and no text colour change. The
+   edited and selected states keep their own looks. */
 .assembly-panel .feature-item.related:not(.selected):not(.editing) {
   background: rgba(18, 32, 40, 0.55);
 }

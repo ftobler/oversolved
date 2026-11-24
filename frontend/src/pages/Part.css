@@ -1352,13 +1352,12 @@
 }
 
 /* The relation hint: a selected row marks the rows it relates to (a face's
-   creator, a feature's sketch, an assembly part's mates) in the hint colour
-   family rather than borrowing the hover look. It is weaker than .selected on
-   purpose; the companion below keeps a row that is both reading as selected. */
+   creator, a feature's sketch, an assembly part's mates) with a background
+   tint only. It is quieter than .selected on purpose: no outline and no text
+   colour change, so the tint alone marks the relation (user, 2026-11-23). The
+   companion below keeps a row that is both reading as selected. */
 .feature-item.related {
   background: #122028;
-  color: #cfeaf7;
-  outline: 1px solid #2f6f85;
 }
 
 .feature-item.selected.related {
@@ -1367,14 +1366,12 @@
   outline: 1px solid #1e3a4a;
 }
 
-/* A part row is marked by the same rules, so it uses the same hint family.
+/* A part row is marked by the same rules, so it uses the same tint-only hint.
    These sit after the `.document-panel` row overrides above: with equal
    specificity the companion below keeps a selected-and-related row reading as
    selected, as the feature rows do. */
 .part-item.related {
   background: #122028;
-  color: #cfeaf7;
-  outline: 1px solid #2f6f85;
 }
 
 .part-item.selected.related {
