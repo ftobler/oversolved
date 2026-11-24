@@ -300,6 +300,20 @@ describe('applyAddChamfer', () => {
     applyAddChamfer(doc, 'chamfer1', 'My Chamfer')
     expect(doc.features![0].label).toBe('My Chamfer')
   })
+
+  it('stores a two_distance kind with its second leg and reverse', () => {
+    const doc: PartDoc = { version: 1, kind: 'part', features: [] }
+    applyAddChamfer(doc, 'chamfer1', 'Two distances', [], 1, 'two_distance', 2, 45, true)
+    expect(chamfer0(doc)).toMatchObject({ distance: 1, kind: 'two_distance', distance2: 2, reverse: true })
+  })
+
+  it('keeps a plain add free of the asymmetric keys', () => {
+    const doc: PartDoc = { version: 1, kind: 'part', features: [] }
+    applyAddChamfer(doc, 'chamfer1')
+    const chamfer = chamfer0(doc)
+    expect('distance2' in chamfer).toBe(false)
+    expect('reverse' in chamfer).toBe(false)
+  })
 })
 
 describe('applySetFilletField', () => {
@@ -343,6 +357,37 @@ describe('applySetChamferField kind', () => {
     const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'chamfer1', kind: 'chamfer', chamfer: { edges: [], distance: 1, kind: 'distance', angle: 45 } }] }
     applySetChamferField(doc, 'chamfer1', 'kind', 'angle_distance')
     expect(chamfer0(doc).kind).toBe('angle_distance')
+  })
+
+  it('sets chamfer kind to two_distance', () => {
+    const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'chamfer1', kind: 'chamfer', chamfer: { edges: [], distance: 1, kind: 'distance' } }] }
+    applySetChamferField(doc, 'chamfer1', 'kind', 'two_distance')
+    expect(chamfer0(doc).kind).toBe('two_distance')
+  })
+
+  it('sets chamfer kind to two_distance and seeds the second leg it shows', () => {
+    const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'chamfer1', kind: 'chamfer', chamfer: { edges: [], distance: 3, kind: 'distance' } }] }
+    applySetChamferField(doc, 'chamfer1', 'kind', 'two_distance')
+    expect(chamfer0(doc).kind).toBe('two_distance')
+    expect(chamfer0(doc).distance2).toBe(3)
+  })
+
+  it('keeps an existing second leg when switching to two_distance', () => {
+    const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'chamfer1', kind: 'chamfer', chamfer: { edges: [], distance: 1, distance2: 5, kind: 'distance' } }] }
+    applySetChamferField(doc, 'chamfer1', 'kind', 'two_distance')
+    expect(chamfer0(doc).distance2).toBe(5)
+  })
+
+  it('sets the second distance', () => {
+    const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'chamfer1', kind: 'chamfer', chamfer: { edges: [], distance: 1, kind: 'two_distance' } }] }
+    applySetChamferField(doc, 'chamfer1', 'distance2', 2.5)
+    expect(chamfer0(doc).distance2).toBe(2.5)
+  })
+
+  it('sets reverse', () => {
+    const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'chamfer1', kind: 'chamfer', chamfer: { edges: [], distance: 1, kind: 'angle_distance', angle: 45 } }] }
+    applySetChamferField(doc, 'chamfer1', 'reverse', true)
+    expect(chamfer0(doc).reverse).toBe(true)
   })
 })
 

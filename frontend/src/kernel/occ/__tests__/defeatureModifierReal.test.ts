@@ -117,7 +117,7 @@ describe.skipIf(!oc)('delete-face rung 2: the splitter wedge (real OCC)', () => 
     const scope = new DisposeScope()
     try {
       const base = makeBox(occ, scope, 20, 20, 10)
-      const ch = applyChamferWithDiff(occ, scope, base, 2, [verticalEdges(scope, base)[0]], 'distance', 45)
+      const ch = applyChamferWithDiff(occ, scope, base, { kind: 'distance', distance: 2 }, [verticalEdges(scope, base)[0]])
       expect(ch.success).toBe(true)
       const shaped = scope.track(ch.shape)
       const picks = ch.diff.new_faces as OccShape[]
@@ -176,7 +176,7 @@ describe.skipIf(!oc)('delete-face rung 2: the splitter wedge (real OCC)', () => 
         return Math.abs(g[0][0] - 10) < 1e-6 && Math.abs(g[0][1] - 10) < 1e-6
       })
       if (!inner) throw new Error('the L-block has no inner vertical edge')
-      const ch = applyChamferWithDiff(occ, scope, lBlock, 2, [inner], 'distance', 45)
+      const ch = applyChamferWithDiff(occ, scope, lBlock, { kind: 'distance', distance: 2 }, [inner])
       expect(ch.success).toBe(true)
       const shaped = scope.track(ch.shape)
       const picks = ch.diff.new_faces as OccShape[]

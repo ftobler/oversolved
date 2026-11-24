@@ -1,0 +1,21 @@
+{
+  "method": "The same two-distance chamfer with reverse: the same removed volume and area, with d1 measured on the other face, so the centroid swaps the two legs on this min-y/min-z edge: (a^3/2 - a d1/3)/V in y and (a^3/2 - a d2/3)/V in z; 7 faces, 15 edges",
+  "bodies": 1,
+  "volume": 990,
+  "area": 590.3606797749979,
+  "centroid": [
+    5,
+    5.047138047138047,
+    5.043771043771044
+  ],
+  "bbox": [
+    0,
+    0,
+    0,
+    10,
+    10,
+    10
+  ],
+  "faces": 7,
+  "edges": 15
+}

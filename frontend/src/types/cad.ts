@@ -68,8 +68,14 @@ export type FilletFeatureDef = {
 export type ChamferFeatureDef = {
   edges: string[]
   distance: NumberOrExpr
-  kind?: 'distance' | 'angle_distance'
+  kind?: 'distance' | 'angle_distance' | 'two_distance'
   angle?: NumberOrExpr
+  // Two-distance only: the leg on the face opposite the reference face.
+  distance2?: NumberOrExpr
+  // Angle-distance and two-distance: measure `distance` on the edge's other
+  // face. Ignored by a plain distance chamfer, kept so a kind switch back does
+  // not lose it.
+  reverse?: boolean
 }
 
 export type ShellDirection = 'inward' | 'outward'
@@ -1694,7 +1700,7 @@ export type Mutation =
   | { type: 'remove_sweep_path'; featureId: string; index: number }
   | ({ type: 'add_import_step'; featureId: string; fileId: string; scale?: NumberOrExpr; label?: string } & FeatureInsertion)
   | ({ type: 'add_fillet'; featureId: string; label?: string; edges?: (string | SelectorRef)[]; radius?: NumberOrExpr } & FeatureInsertion)
-  | ({ type: 'add_chamfer'; featureId: string; label?: string; edges?: (string | SelectorRef)[]; distance?: NumberOrExpr } & FeatureInsertion)
+  | ({ type: 'add_chamfer'; featureId: string; label?: string; edges?: (string | SelectorRef)[]; distance?: NumberOrExpr; kind?: ChamferFeatureDef['kind']; distance2?: NumberOrExpr; angle?: NumberOrExpr; reverse?: boolean } & FeatureInsertion)
   | { type: 'set_fillet_field'; featureId: string; field: keyof FilletFeatureDef; value: unknown }
   | { type: 'set_chamfer_field'; featureId: string; field: keyof ChamferFeatureDef; value: unknown }
   | { type: 'add_fillet_edge'; featureId: string; edgeQuery: PickInput }

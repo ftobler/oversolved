@@ -68,8 +68,25 @@ export function faceWidthAcrossEdge(
 const shown = (n: number): number => Number(n.toPrecision(6))
 
 /**
+ * The second face's setback for a kind that has one. An angle-distance
+ * chamfer's second leg is `distance * tan(angle)`, but that only holds while
+ * the chamfer face still meets the other face: at 90 degrees it is parallel to
+ * it (the leg is unbounded) and above 90 `tan` turns negative, so neither is a
+ * measurement. A non-finite leg is no evidence, never a huge distance.
+ */
+export function chamferSecondLeg(distance: number, angleRad: number): number | undefined {
+  if (!(angleRad < Math.PI / 2 - 1e-9)) return undefined
+  const leg = distance * Math.tan(angleRad)
+  return Number.isFinite(leg) ? leg : undefined
+}
+
+/**
  * A chamfer whose distance cannot fit into an adjacent face. The message names
  * the measured width, which is what makes the fix obvious (0.25 on a 0.2 wall).
+ *
+ * `secondLeg` is the other face's setback when the kind has one (a
+ * two-distance chamfer's `distance2`, an angle-distance chamfer's
+ * `distance * tan(angle)`): the wider of the two is what the face has to hold.
  */
 export function chamferWidthDiagnosis(
   oc: OccModule,
@@ -77,7 +94,10 @@ export function chamferWidthDiagnosis(
   shape: OccShape,
   edges: OccShape[],
   distance: number,
+  secondLeg?: number,
 ): string | null {
+  const finiteSecond = secondLeg !== undefined && Number.isFinite(secondLeg) ? secondLeg : undefined
+  const widest = finiteSecond === undefined ? distance : Math.max(distance, finiteSecond)
   let narrowest: number | null = null
   for (const face of exploreFaces(oc, scope, shape)) {
     for (const edge of edges) {
@@ -86,8 +106,8 @@ export function chamferWidthDiagnosis(
       if (width !== null && (narrowest === null || width < narrowest)) narrowest = width
     }
   }
-  if (narrowest === null || distance < narrowest - 1e-9) return null
-  return `distance ${distance} meets or exceeds the adjacent face width ${shown(narrowest)} on the picked edge; use a smaller distance`
+  if (narrowest === null || widest < narrowest - 1e-9) return null
+  return `distance ${widest} meets or exceeds the adjacent face width ${shown(narrowest)} on the picked edge; use a smaller distance`
 }
 
 /**
@@ -149,7 +169,13 @@ export function endFaceDiagnosis(
   edges: OccShape[],
   spec: CornerBlendSpec,
 ): string | null {
-  const value = spec.kind === 'fillet' ? spec.radius : spec.distance
+  // A two-distance chamfer names its larger leg, the one `consumedEndFace`
+  // tested both faces with (the spec cannot say which face got which leg); an
+  // angle-distance chamfer names the authored distance. Neither claims the
+  // leg is the one on the face the end face actually crosses.
+  const value = spec.kind === 'fillet'
+    ? spec.radius
+    : Math.max(spec.distance, spec.distance2 ?? 0)
   for (const edge of edges) {
     const consumed = consumedEndFace(oc, scope, shape, edge, spec)
     if (consumed === null) continue

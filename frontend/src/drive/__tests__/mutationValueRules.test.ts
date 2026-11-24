@@ -1081,6 +1081,37 @@ describe('finding: edge pick lists take inline selectors', () => {
     expect(malformed.message).toContain('{selector: <a select selector>}')
   })
 
+  it('refuses an unknown chamfer kind, naming the field and the three values', () => {
+    const error = refusal({ type: 'add_chamfer', featureId: 'ch1', kind: 'two_angles', distance: 1 })
+    expect(error.code).toBe('invalid-mutation')
+    expect(error.message).toContain('kind')
+    for (const kind of ['distance', 'two_distance', 'angle_distance']) {
+      expect(error.message).toContain(kind)
+    }
+  })
+
+  it('refuses a non-boolean chamfer reverse, naming the field', () => {
+    const error = refusal({ type: 'add_chamfer', featureId: 'ch1', reverse: 'yes', distance: 1 })
+    expect(error.code).toBe('invalid-mutation')
+    expect(error.message).toContain('reverse')
+    expect(error.message).toContain('boolean')
+  })
+
+  it('refuses a non-positive or empty chamfer distance2, naming the field', () => {
+    for (const distance2 of [0, -1, '']) {
+      const error = refusal({ type: 'add_chamfer', featureId: 'ch1', kind: 'two_distance', distance2 })
+      expect(error.code).toBe('invalid-mutation')
+      expect(error.message).toContain('distance2')
+    }
+  })
+
+  it('accepts an expression distance2 and a reversed two_distance add', () => {
+    const result = validateMutation({
+      type: 'add_chamfer', featureId: 'ch1', kind: 'two_distance', distance: 1, distance2: 'leg', reverse: true,
+    }, { doc: null })
+    expect(result.ok).toBe(true)
+  })
+
   it('still refuses a non-pick object on both rows, naming the entry', () => {
     for (const [type, extra] of [
       ['add_fillet', { radius: 1 }],

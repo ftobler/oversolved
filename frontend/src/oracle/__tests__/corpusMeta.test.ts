@@ -76,6 +76,8 @@ describe('oracle corpus meta', () => {
     '44-hole-counterbore',
     '45-split-holed-block-above',
     '46-split-holed-block-both',
+    '47-chamfer-two-distance',
+    '48-chamfer-two-distance-reversed',
   ]
 
   it('holds exactly the committed case list', () => {

@@ -74,6 +74,8 @@ One directory per case: `frontend/oracle/<NN-name>/`.
 | 44-hole-counterbore | 1 | 3612.11513 | 2070.79645 | - | ok | ok |
 | 45-split-holed-block-above | 1 | 401.825230 | 408.904862 | faces 8 | ok | ok |
 | 46-split-holed-block-both | 2 | 803.650459 | 817.809725 | faces 16 | - | ok |
+| 47-chamfer-two-distance | 1 | 990.000000 | 590.360680 | faces 7, edges 15 | - | ok |
+| 48-chamfer-two-distance-reversed | 1 | 990.000000 | 590.360680 | faces 7, edges 15 | - | ok |
 
 ## Cases
 
@@ -945,3 +947,37 @@ STEP round trip:
   - centroid [5.00000000, 5.00000000, 5.00000000] -> [5.00000000, 5.00000000, 5.00000000] (max dev 2.13e-14)
   - bbox [0.00000000, 0.00000000, 0.00000000, 10.0000000, 10.0000000, 10.0000000] -> [0.00000000, 0.00000000, 0.00000000, 10.0000000, 10.0000000, 10.0000000] (max dev 0)
   - counts faces 16 -> faces 16, edges 36
+### 47-chamfer-two-distance
+
+`One edge two-distance chamfered (d1=1, d2=2): V = a^3 - (d1 d2 / 2) a = 1000 - 10; A = 6a^2 - d1 a - d2 a - d1 d2 + sqrt(d1^2 + d2^2) a (two strips and two end triangles off, chamfer face on); the removed prism's centroid is d1/3 in from the reference face and d2/3 in from the other, so on this min-y/min-z edge (the reference face is the min-z one) the body centroid is (a^3/2 - a d2/3)/V in y and (a^3/2 - a d1/3)/V in z; 7 faces, 15 edges`
+
+Live build (expected -> measured):
+  - volume 990.000000 -> 990.000000 (rel dev -1.15e-16)
+  - area 590.360680 -> 590.360680 (rel dev -1.93e-16)
+  - centroid [5.00000000, 5.04377104, 5.04713805] -> [5.00000000, 5.04377104, 5.04713805] (max dev 0)
+  - bbox [0.00000000, 0.00000000, 0.00000000, 10.0000000, 10.0000000, 10.0000000] -> [0.00000000, -2.22044605e-16, -1.11022302e-16, 10.0000000, 10.0000000, 10.0000000] (max dev 2.22e-16)
+  - counts faces 7, edges 15 -> faces 7, edges 15
+
+STEP round trip:
+  - volume 990.000000 -> 990.000000 (rel dev -1.15e-16)
+  - area 590.360680 -> 590.360680 (rel dev -1.93e-16)
+  - centroid [5.00000000, 5.04377104, 5.04713805] -> [5.00000000, 5.04377104, 5.04713805] (max dev 0)
+  - bbox [0.00000000, 0.00000000, 0.00000000, 10.0000000, 10.0000000, 10.0000000] -> [0.00000000, -2.22044605e-16, -1.11022302e-16, 10.0000000, 10.0000000, 10.0000000] (max dev 2.22e-16)
+  - counts faces 7, edges 15 -> faces 7, edges 15
+### 48-chamfer-two-distance-reversed
+
+`The same two-distance chamfer with reverse: the same removed volume and area, with d1 measured on the other face, so the centroid swaps the two legs on this min-y/min-z edge: (a^3/2 - a d1/3)/V in y and (a^3/2 - a d2/3)/V in z; 7 faces, 15 edges`
+
+Live build (expected -> measured):
+  - volume 990.000000 -> 990.000000 (rel dev -2.30e-16)
+  - area 590.360680 -> 590.360680 (rel dev -1.93e-16)
+  - centroid [5.00000000, 5.04713805, 5.04377104] -> [5.00000000, 5.04713805, 5.04377104] (max dev 0)
+  - bbox [0.00000000, 0.00000000, 0.00000000, 10.0000000, 10.0000000, 10.0000000] -> [0.00000000, -1.11022302e-16, -2.22044605e-16, 10.0000000, 10.0000000, 10.0000000] (max dev 2.22e-16)
+  - counts faces 7, edges 15 -> faces 7, edges 15
+
+STEP round trip:
+  - volume 990.000000 -> 990.000000 (rel dev -2.30e-16)
+  - area 590.360680 -> 590.360680 (rel dev -1.93e-16)
+  - centroid [5.00000000, 5.04713805, 5.04377104] -> [5.00000000, 5.04713805, 5.04377104] (max dev 0)
+  - bbox [0.00000000, 0.00000000, 0.00000000, 10.0000000, 10.0000000, 10.0000000] -> [0.00000000, -1.11022302e-16, -2.22044605e-16, 10.0000000, 10.0000000, 10.0000000] (max dev 2.22e-16)
+  - counts faces 7, edges 15 -> faces 7, edges 15

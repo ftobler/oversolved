@@ -87,6 +87,11 @@ export interface RecipeChamfer {
   target: string
   edge: number
   distance: number
+  /** The chamfer kind the runner authors; `two_distance` also carries
+   *  `distance2`. */
+  chamferKind: 'distance' | 'two_distance'
+  distance2?: number
+  reverse: boolean
 }
 
 export interface RecipeHole {
@@ -419,8 +424,24 @@ function drawStep(rnd: () => number, id: string, budget: StepBudget): RecipeStep
     case 'boolean': return drawBoolean(rnd, id)
     case 'fillet':
       return { kind: 'fillet', id, target: PRIMARY_PART, edge: drawInt(rnd, 0, 11), radius: grid(drawInt(rnd, 1, 2)) }
-    case 'chamfer':
-      return { kind: 'chamfer', id, target: PRIMARY_PART, edge: drawInt(rnd, 0, 11), distance: grid(drawInt(rnd, 1, 2)) }
+    case 'chamfer': {
+      const edge = drawInt(rnd, 0, 11)
+      const distance = grid(drawInt(rnd, 1, 2))
+      // The kind and reverse are derived from the already-drawn pair rather
+      // than drawn, the same trick the hole's cosmetic thread uses: every seed
+      // keeps the chain it had before the asymmetric kinds existed, and the
+      // sweep still covers both kinds and both reverse values.
+      const twoDistance = edge % 2 === 0
+      return {
+        kind: 'chamfer', id, target: PRIMARY_PART, edge,
+        chamferKind: twoDistance ? 'two_distance' : 'distance',
+        // A second leg off the same grid, always different from the first so a
+        // reversed build is visibly asymmetric.
+        ...(twoDistance ? { distance2: distance === grid(1) ? grid(2) : grid(1) } : {}),
+        reverse: edge % 4 >= 2,
+        distance,
+      }
+    }
     case 'hole': {
       const face = drawInt(rnd, 0, 3)
       // Drawn in the original order (diameter, depth, mode): reordering the

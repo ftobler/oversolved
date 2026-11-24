@@ -29,6 +29,7 @@ import {
 } from '../occ/primitives'
 import { linearHandle, type FeatureHandle } from './featureHandles'
 import {
+  chamferSecondLeg,
   chamferWidthDiagnosis,
   edgeLabel,
   endFaceDiagnosis,
@@ -41,6 +42,7 @@ import { tangentChain } from './tangentChain'
 import {
   applyFilletWithLineage,
   applyChamferWithLineage,
+  type ChamferKind,
   type EdgeModifierResult,
   type OldNames,
 } from '../occ/edgeModifier'
@@ -794,6 +796,18 @@ export function solveFillet(
   )
 }
 
+/**
+ * The chamfer kind a stored document asks for. The loader already refuses an
+ * unknown enum, so anything else reaching the leaf is a named refusal: falling
+ * back to `distance` would build a symmetric chamfer the document never asked
+ * for.
+ */
+function chamferKindOf(raw: unknown): ChamferKind {
+  if (raw === undefined || raw === null) return 'distance'
+  if (raw === 'distance' || raw === 'two_distance' || raw === 'angle_distance') return raw
+  throw new Error(`chamfer: unknown kind ${JSON.stringify(raw)}`)
+}
+
 /** Solve a chamfer feature (mirrors `_solve_chamfer`). */
 export function solveChamfer(
   oc: OccModule,
@@ -804,28 +818,47 @@ export function solveChamfer(
   partStore: Record<string, PartSolid>,
 ): EdgeFeatureResult {
   const sub = (feature.chamfer as Dict) ?? {}
-  const chamferMode = (sub.kind as string) ?? 'distance'
+  const chamferMode = chamferKindOf(sub.kind)
   const distanceRaw = sub.distance
   const distance = Number(distanceRaw !== undefined && distanceRaw !== null ? distanceRaw : 1.0)
   const angleRaw = sub.angle
   const angle = Number(angleRaw !== undefined && angleRaw !== null ? angleRaw : 45.0)
   if (!Number.isFinite(distance) || distance <= 0) throw new Error('chamfer: distance must be positive')
+  const distance2Raw = sub.distance2
+  // A doc switched to two_distance before the second field is typed keeps the
+  // first distance on both faces instead of failing the build.
+  const distance2 = Number(distance2Raw !== undefined && distance2Raw !== null ? distance2Raw : distance)
+  if (chamferMode === 'two_distance' && (!Number.isFinite(distance2) || distance2 <= 0)) {
+    throw new Error('chamfer: second distance must be positive')
+  }
+  const reverse = sub.reverse === true
   const angleRad = angle * (Math.PI / 180)
-  // The prism cut is only offered for a symmetric distance chamfer: an
-  // angle-distance chamfer's second leg depends on which face OCC took as the
-  // reference, and a wrong-angle bevel is worse than the refusal.
-  const fallback = endFacePrismEnabled() && chamferMode !== 'angle_distance'
+  // The prism cut is only offered for a symmetric distance chamfer. The
+  // reference face is no longer the obstacle (chamferReferenceFace is ours),
+  // but makeChamferPrismFallback builds one symmetric setback and cornerFit's
+  // face order does not carry the FORWARD-use mapping, so a two-distance or
+  // angle-distance prism would put a leg on the wrong face. A wrong-leg bevel
+  // is worse than the refusal.
+  const fallback = endFacePrismEnabled() && chamferMode === 'distance'
     ? makeChamferPrismFallback(distance, (feature.id as string) ?? '')
     : undefined
   const endFaceSpec: CornerBlendSpec = chamferMode === 'angle_distance'
     ? { kind: 'chamfer', distance, angleRad }
-    : { kind: 'chamfer', distance }
+    : chamferMode === 'two_distance'
+      ? { kind: 'chamfer', distance, distance2 }
+      : { kind: 'chamfer', distance }
+  // The wider leg is what an adjacent face has to hold; for an angle-distance
+  // chamfer it is derived from the angle (a right corner's tan), and an angle
+  // at or past 90 degrees has no finite second leg to check.
+  const secondLeg = chamferMode === 'two_distance'
+    ? distance2
+    : chamferMode === 'angle_distance' ? chamferSecondLeg(distance, angleRad) : undefined
   return applyEdgeFeature(oc, scope, table, sub, (feature.id as string) ?? '', partStore, 'chamfer', (o, s, shape, edges, nm) =>
-    applyChamferWithLineage(o, s, shape, distance, edges, chamferMode, angle, nm, fallback),
+    applyChamferWithLineage(o, s, shape, { kind: chamferMode, distance, distance2, angleDeg: angle, reverse }, edges, nm, fallback),
   // See fillet above: unit_scale=1 is a 1:1 UX approximation along the
   // face-bisector normal, not the exact chamfer geometry relation.
   (anchor, direction) => linearHandle('distance', anchor, direction, distance),
-  (shape, edges) => chamferWidthDiagnosis(oc, scope, shape, edges, distance),
+  (shape, edges) => chamferWidthDiagnosis(oc, scope, shape, edges, distance, secondLeg),
   (shape, edges) => endFaceDiagnosis(oc, scope, shape, edges, endFaceSpec),
   )
 }

@@ -336,6 +336,9 @@ const ROUND_TRIPS: RoundTripCase[] = [
   // chamfer
   { name: 'chamfer add_chamfer', makeDoc: emptyDoc, mutation: { type: 'add_chamfer', featureId: 'ch1', label: 'Chamfer' } as Mutation },
   { name: 'chamfer set_chamfer_field', makeDoc: chamferDoc, mutation: { type: 'set_chamfer_field', featureId: 'ch1', field: 'distance', value: 5 } as Mutation },
+  { name: 'chamfer set_chamfer_field kind two_distance', makeDoc: chamferDoc, mutation: { type: 'set_chamfer_field', featureId: 'ch1', field: 'kind', value: 'two_distance' } as Mutation },
+  { name: 'chamfer set_chamfer_field distance2', makeDoc: chamferDoc, mutation: { type: 'set_chamfer_field', featureId: 'ch1', field: 'distance2', value: 2 } as Mutation },
+  { name: 'chamfer set_chamfer_field reverse', makeDoc: chamferDoc, mutation: { type: 'set_chamfer_field', featureId: 'ch1', field: 'reverse', value: true } as Mutation },
   { name: 'chamfer add_chamfer_edge', makeDoc: chamferDoc, mutation: { type: 'add_chamfer_edge', featureId: 'ch1', edgeQuery: '?e1' } as Mutation },
   { name: 'chamfer remove_chamfer_edge', makeDoc: chamferPopulatedDoc, mutation: { type: 'remove_chamfer_edge', featureId: 'ch1', index: 0 } as Mutation },
 

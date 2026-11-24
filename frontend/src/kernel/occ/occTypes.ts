@@ -201,6 +201,10 @@ export interface OccModifierHistory extends OccDisposable {
  */
 export interface OccEdgeModifierMaker extends OccModifierHistory {
   Add_2(value: number, edge: OccShape): void
+  // BRepFilletAPI_MakeChamfer::Add(Dis1, Dis2, E, F): a two-distance chamfer,
+  // Dis1 measured on face F and Dis2 on the edge's other face. Pinned by
+  // chamferTwoDistanceReal.test.ts (a 10-cube edge at 1/2 removes 10).
+  Add_3(distance1: number, distance2: number, edge: OccShape, face: OccShape): void
   AddDA(distance: number, angle: number, edge: OccShape, face: OccShape): void
   Build(progress: OccDisposable): void
   IsDone(): boolean

@@ -782,7 +782,11 @@ function applyStep(
     } else {
       solveChamfer(oc, scope, table, {
         id: step.id,
-        chamfer: { source_body: step.target, edges: [query], distance: step.distance, kind: 'distance' },
+        chamfer: {
+          source_body: step.target, edges: [query], distance: step.distance,
+          kind: step.chamferKind, reverse: step.reverse,
+          ...(step.chamferKind === 'two_distance' ? { distance2: step.distance2 } : {}),
+        },
       }, repoForLeaves, partStore)
     }
     return {}

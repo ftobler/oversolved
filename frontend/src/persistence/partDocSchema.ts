@@ -265,7 +265,8 @@ export const FEATURE_SCHEMA_BY_KIND = {
     key: 'chamfer',
     required: ['edges', 'distance'],
     properties: {
-      edges: REF_LIST, distance: NUMBER_OR_EXPR, kind: { enum: ['distance', 'angle_distance'] }, angle: NUMBER_OR_EXPR,
+      edges: REF_LIST, distance: NUMBER_OR_EXPR, kind: { enum: ['distance', 'angle_distance', 'two_distance'] },
+      angle: NUMBER_OR_EXPR, distance2: NUMBER_OR_EXPR, reverse: { type: 'boolean' },
     },
   }),
   shell: feature('shell', {

@@ -141,6 +141,33 @@ describe('solveChamfer guard paths', () => {
     ).toThrow(/distance must be positive/)
   })
 
+  it('rejects a non-positive second distance by name', () => {
+    for (const distance2 of [0, -2, NaN, Infinity]) {
+      expect(() =>
+        solveChamfer(oc, scope, table, {
+          id: 'c', chamfer: { edges: ['?b:edge:0'], distance: 1, kind: 'two_distance', distance2 },
+        }, repo, onePart()),
+      ).toThrow(/second distance must be positive/)
+    }
+  })
+
+  it('ignores an invalid distance2 on a non-two_distance kind', () => {
+    // A hidden field the user switched away from must not fail the build.
+    expect(() =>
+      solveChamfer(oc, scope, table, {
+        id: 'c', chamfer: { edges: [], distance: 1, kind: 'distance', distance2: -1 },
+      }, repo, onePart()),
+    ).toThrow(/requires at least one edge/)
+  })
+
+  it('refuses an unknown kind by name instead of building symmetric', () => {
+    expect(() =>
+      solveChamfer(oc, scope, table, {
+        id: 'c', chamfer: { edges: ['?b:edge:0'], distance: 1, kind: 'two_dog' },
+      }, repo, onePart()),
+    ).toThrow(/chamfer: unknown kind "two_dog"/)
+  })
+
   it('requires at least one edge', () => {
     expect(() =>
       solveChamfer(oc, scope, table, { id: 'c', chamfer: { edges: [], distance: 2 } }, repo, onePart()),

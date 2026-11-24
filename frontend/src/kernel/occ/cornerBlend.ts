@@ -33,7 +33,9 @@ type NumberPair = [number, number]
 /** What to build at the corner: a fillet arc or a chamfer chord. */
 export type CornerBlendSpec =
   | { kind: 'fillet'; radius: number }
-  | { kind: 'chamfer'; distance: number; angleRad?: number }
+  // `distance2` is a two-distance chamfer's second leg; `angleRad` an
+  // angle-distance chamfer's angle. At most one is set.
+  | { kind: 'chamfer'; distance: number; distance2?: number; angleRad?: number }
 
 /** The corner a blend sits in, read off the pre-modifier shape. */
 export interface CornerFit {
@@ -221,8 +223,9 @@ function straightEdge(oc: OccModule, scope: DisposeScope, edge: OccShape): {
  * The corner at `edge`, or null when the prism is not the rolling-ball result:
  * a curved edge, a curved adjacent face, a concave edge, or a spec whose
  * setbacks cannot be placed. `spec.kind` decides the setback: a fillet sets
- * back `r / tan(theta/2)` along both faces, a chamfer its distance (and, for an
- * angle-distance chamfer, the matching leg on the other face).
+ * back `r / tan(theta/2)` along both faces; a distance chamfer its distance on
+ * both; a two-distance chamfer its two legs; an angle-distance chamfer its
+ * distance and the matching leg on the other face.
  *
  * Nothing here checks the END faces: a blend that ends on a perpendicular
  * planar cap is exactly this prism, but whether it does is measured against the
@@ -281,7 +284,10 @@ export function cornerFit(
     setbacks = [setback, setback]
   } else {
     if (!(spec.distance > 0)) return null
-    if (spec.angleRad === undefined) {
+    if (spec.distance2 !== undefined) {
+      setbacks = [spec.distance, spec.distance2]
+      if (!(setbacks[1] > 1e-9)) return null
+    } else if (spec.angleRad === undefined) {
       setbacks = [spec.distance, spec.distance]
     } else {
       const sinTotal = Math.sin(angle + spec.angleRad)
@@ -375,6 +381,14 @@ export function consumedEndFace(
 ): { fit: CornerFit; reach: EndFaceReach; limit: number } | null {
   const fit = knownFit ?? cornerFit(oc, scope, shape, edge, spec)
   if (fit === null) return null
+  // A two-distance spec cannot say which adjacent face gets which leg: the
+  // reference face is chosen by the kernel's FORWARD-use rule, which this
+  // measurement does not see. Test both faces with the larger leg, the reach
+  // that can actually consume the end face; the message names the same leg.
+  const maxLeg = spec.kind === 'chamfer' && spec.distance2 !== undefined
+    ? Math.max(spec.distance, spec.distance2)
+    : null
+  const setbacks: NumberPair = maxLeg === null ? fit.setbacks : [maxLeg, maxLeg]
   for (const vertex of canonicalVertices(oc, scope, edge) as OccShape[]) {
     for (const face of facesAtVertex(oc, scope, shape, vertex)) {
       if (fit.faces.some((adjacent) => (adjacent as OccSubShape).IsSame(face as OccSubShape))) continue
@@ -383,7 +397,7 @@ export function consumedEndFace(
       // A face that is not square to the edge is consumed at every size: the
       // blend does not end flat on it, so no extent bounds the cross-section.
       if (!reach.square) return { fit, reach, limit: NaN }
-      const crossed = reach.extents.filter((extent, i) => fit.setbacks[i] >= extent - 1e-9 * Math.max(1, extent))
+      const crossed = reach.extents.filter((extent, i) => setbacks[i] >= extent - 1e-9 * Math.max(1, extent))
       if (crossed.length > 0) return { fit, reach, limit: Math.min(...crossed) }
     }
   }

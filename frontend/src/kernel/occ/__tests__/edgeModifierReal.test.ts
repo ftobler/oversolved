@@ -96,7 +96,7 @@ describe.skipIf(!oc)('applyFillet/ChamferWithLineage (real OCC)', () => {
         const res =
           c.kind === 'fillet'
             ? applyFilletWithLineage(occ, scope, box, c.value, [edge])
-            : applyChamferWithLineage(occ, scope, box, c.value, [edge], 'distance', 45.0)
+            : applyChamferWithLineage(occ, scope, box, { kind: 'distance', distance: c.value }, [edge])
         expect(res.success).toBe(true)
         expect(volumeOf(occ, scope, res.shape)).toBeCloseTo(c.volume, 3)
         expect(diffCounts(res.diff as unknown as Record<string, unknown[]>)).toEqual(c.diff_counts)
@@ -117,7 +117,7 @@ describe.skipIf(!oc)('applyFillet/ChamferWithLineage (real OCC)', () => {
     try {
       const box = makeBox(occ, scope, 10, 10, 10)
       const edge = firstEdge(occ, scope, box)
-      const res = applyChamferWithLineage(occ, scope, box, 1, [edge], 'angle_distance', 45)
+      const res = applyChamferWithLineage(occ, scope, box, { kind: 'angle_distance', distance: 1, angleDeg: 45 }, [edge])
       expect(res.reason).toBe(null)
       expect(res.success).toBe(true)
       expect(volumeOf(occ, scope, res.shape)).toBeCloseTo(1000 - 5, 3)

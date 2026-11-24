@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, act } from '@testing-library/react'
 import { FeatureEditor } from '@/components/editors/FeatureEditor'
 import type { FeatureEditorSchema } from '@/components/editors/FeatureEditor'
-import { EXTRUDE_SCHEMA, FILLET_SCHEMA, VARIABLE_SCHEMA, BOOLEAN_SCHEMA, EDITOR_SCHEMAS } from '@/components/editors/featureEditorSchemas'
+import { EXTRUDE_SCHEMA, FILLET_SCHEMA, CHAMFER_SCHEMA, VARIABLE_SCHEMA, BOOLEAN_SCHEMA, EDITOR_SCHEMAS } from '@/components/editors/featureEditorSchemas'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import type { ExtrudeFeature, PartFeature, Mutation } from '@/types/cad'
@@ -186,6 +186,65 @@ describe('FeatureEditor checkbox field', () => {
     render(<FeatureEditor feature={makeFeature('test', 'test', { enabled: false })} onMutation={onMutation} schema={schema} />)
     fireEvent.click(screen.getByRole('checkbox'))
     expect(onMutation).toHaveBeenCalledWith({ type: 'set_test_field', featureId: 'f1', field: 'enabled', value: true })
+  })
+})
+
+// ─── chamfer kinds ───
+
+describe('FeatureEditor chamfer kinds', () => {
+  const renderChamfer = (chamfer: SchemaData, onMutation = vi.fn()) => {
+    render(<FeatureEditor feature={makeFeature('chamfer', 'chamfer', chamfer)} onMutation={onMutation} schema={CHAMFER_SCHEMA} />)
+    return onMutation
+  }
+
+  it('shows Distance 2 only for two_distance', () => {
+    renderChamfer({ edges: [], distance: 1, kind: 'two_distance', distance2: 2 })
+    expect(screen.getByText('Distance 2')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('2')).toBeInTheDocument()
+  })
+
+  it('shows the kernel fallback when a two_distance doc has no distance2', () => {
+    renderChamfer({ edges: [], distance: 3, kind: 'two_distance' })
+    expect(screen.getByText('Distance 2')).toBeInTheDocument()
+    // Both legs read 3: the field shows the value the kernel would build.
+    expect(screen.getAllByDisplayValue('3')).toHaveLength(2)
+  })
+
+  it('hides Distance 2 for the other kinds', () => {
+    for (const kind of ['distance', 'angle_distance']) {
+      const { unmount } = render(
+        <FeatureEditor
+          feature={makeFeature('chamfer', 'chamfer', { edges: [], distance: 1, kind, distance2: 2 })}
+          onMutation={vi.fn()}
+          schema={CHAMFER_SCHEMA}
+        />,
+      )
+      expect(screen.queryByText('Distance 2')).not.toBeInTheDocument()
+      unmount()
+    }
+  })
+
+  it('shows Reverse for both asymmetric kinds and hides it for distance', () => {
+    for (const [kind, shown] of [['two_distance', true], ['angle_distance', true], ['distance', false]] as const) {
+      const { unmount } = render(
+        <FeatureEditor
+          feature={makeFeature('chamfer', 'chamfer', { edges: [], distance: 1, kind, reverse: false })}
+          onMutation={vi.fn()}
+          schema={CHAMFER_SCHEMA}
+        />,
+      )
+      expect(screen.queryByText('Reverse') !== null).toBe(shown)
+      unmount()
+    }
+  })
+
+  it('toggling Reverse emits exactly one set_chamfer_field', () => {
+    const onMutation = renderChamfer({ edges: [], distance: 1, kind: 'angle_distance', angle: 45, reverse: false })
+    fireEvent.click(screen.getByRole('checkbox'))
+    expect(onMutation).toHaveBeenCalledTimes(1)
+    expect(onMutation).toHaveBeenCalledWith({
+      type: 'set_chamfer_field', featureId: 'f1', field: 'reverse', value: true,
+    })
   })
 })
 
