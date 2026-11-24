@@ -1597,7 +1597,7 @@ export function loadPartDoc(raw: unknown, opts: LoadOptions = {}): LoadResult<Lo
   // The same shape and size gate the validator uses: a hostile sparse list must
   // not be walked twice, once by the normalizer and once by the checker.
   return loadRecord<LoadedPartDoc>(raw, opts, validatePart, doc =>
-    isRecordList(doc.features, MAX_FEATURES) ? normalizeThroughAllDistance(doc as unknown as PartDoc) : 0)
+    isRecordList(doc.features, MAX_FEATURES) ? normalizeThroughAllDistance(doc.features) : 0)
 }
 
 /** Validate and migrate part document text. */
