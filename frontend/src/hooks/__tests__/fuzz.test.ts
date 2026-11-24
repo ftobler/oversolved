@@ -136,13 +136,16 @@ describe('the seeded session fuzz (fake scheduler)', () => {
 
 // Seeds the ratchet keeps pinned under the PR gate, each to its exact length:
 // the minimiser's known fault seed and a long mixed sequence. They pin replay
-// stability, not the cap: the dedicated cap case below is what proves entries
-// are dropped, and seed 29 was measured to reach the cap without ever dropping
-// one. A fuzz run that finds a genuine failure adds its seed here (with the
-// failing message in the note) before the fix, so the fix has a regression
-// test. The group-drag mutation joined the registry and re-rolled every
-// sequence; these two pins were re-measured after that (seed 15 is still the
-// first to draw set_rollback, the cap seed moved from the old 8).
+// stability, not the cap: the dedicated cap case below is what proves the cap
+// is reached without dropping an entry. A fuzz run that finds a genuine failure
+// adds its seed here (with the failing message in the note) before the fix, so
+// the fix has a regression test. Every new mutation type re-rolls the sequence:
+// clear_pick_field made the old cap pin 29 stop at 47, so the cap seed was
+// re-measured to the first one that still reaches 50 with no drop. Seed 15 is
+// still the first to draw set_rollback, so that pin did not move.
+const CAP_SEED = 6
+const CAP_STEPS = 100
+
 const REGRESSION_SEEDS: readonly { seed: number; steps: number; note: string }[] = [
   {
     seed: 15,
@@ -150,9 +153,9 @@ const REGRESSION_SEEDS: readonly { seed: number; steps: number; note: string }[]
     note: 'first sequence reaching set_rollback; the minimiser reduces it to that step',
   },
   {
-    seed: 29,
-    steps: 100,
-    note: 'long mixed sequence; measured to reach the 50-entry cap without dropping an entry',
+    seed: CAP_SEED,
+    steps: CAP_STEPS,
+    note: 'long mixed sequence; first seed measured to reach the 50-entry cap without dropping an entry',
   },
 ]
 
@@ -166,7 +169,9 @@ describe('the pinned fuzz regressions (fake scheduler)', () => {
   it('the cap pin really reaches the cap without dropping an entry', async () => {
     // The note above is a claim, so it is a ratchet, not prose: if a registry
     // change re-rolls the sequence, this fails instead of leaving a stale note.
-    const result = await runFake(29, 100)
+    // The seed and length are shared with REGRESSION_SEEDS so the two pins
+    // cannot drift apart when a re-roll is measured.
+    const result = await runFake(CAP_SEED, CAP_STEPS)
     expect(result.maxUndoDepth).toBe(MAX_UNDO_DEPTH)
     expect(result.droppedEntries).toBe(0)
   })
