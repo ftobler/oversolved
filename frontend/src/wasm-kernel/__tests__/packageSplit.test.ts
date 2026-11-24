@@ -37,7 +37,8 @@ describeReal('wasm package split', () => {
 
   it('rejects a buffer carrying the other format\'s magic', () => {
     const solveMate = matePkg as (input: Uint8Array) => Uint8Array
-    // The current sketch input magic ("SKG6", little-endian).
+    // A sketch input magic ("SKG6", little-endian), frozen on purpose: the mate
+    // package must reject a sketch buffer whatever revision stamped it.
     const sketchMagic = Uint8Array.from([0x53, 0x4b, 0x47, 0x36, ...new Array(32).fill(0)])
     expect(() => solveMate(sketchMagic)).toThrow()
   })

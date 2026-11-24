@@ -230,6 +230,20 @@ export function shouldActivateDrag(
   return Math.hypot(currentClient[0] - startClient[0], currentClient[1] - startClient[1]) >= CLICK_THRESHOLD_PX
 }
 
+/** True when the document holds every element the drag would move: an edge drag
+ *  on a held entity, or a group whose every member is held. The preview stays
+ *  frozen then (the fallback and the WASM solve both hold the entity), so the
+ *  release must commit nothing rather than record a dead translate. A mixed
+ *  group is not held: its free members still move. A vertex drag is never
+ *  dropped: a fixed point can still be pivoted about by the live solver, and
+ *  its preview is that solve, not the whole-entity translation. */
+export function dragIsHeld(drag: VertexOrEdgeDrag, held: ReadonlySet<string>): boolean {
+  if (drag.group && drag.group.length > 1) {
+    return drag.group.every(member => held.has(member.entityId))
+  }
+  return drag.type === 'edge' && held.has(drag.entityId)
+}
+
 /** Compute snap target and effective position for the current drag.
  *  pixelsPerUnit = p2w(camera) -- the caller extracts this from Three.js and passes it in as
  *  a plain number so this function has zero Three.js dependencies.

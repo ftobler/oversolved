@@ -737,6 +737,37 @@ describe.skipIf(!solveBytes)('prepareDragContext + solveSketchDrag (real WASM so
     expect(ctx.input.options.dragAnchors).toHaveLength(2)
   })
 
+  it('a group pressed on an arc endpoint takes the translation path, not the arc mapping', () => {
+    // A line's `start` is a direct pair, so the vertex guard above would pass
+    // even without the group branch. An arc end is the derived case: without the
+    // group branch prepareDragContext would build an `arcEndpoint` vertex drag
+    // and pin curve parameters instead of translating the selection.
+    const feature = {
+      id: 'groupArcPress', kind: 'sketch', plane: '@builtin_plane_front',
+      entities: [{ id: 'A1', kind: 'arc' }, { id: 'L1', kind: 'line' }],
+      initial: { A1: [0, 0, 5, 0, 90], L1: [0, 10, 10, 10] },
+      constraints: [],
+    } as unknown as SketchFeature
+    const group = [
+      { entityId: 'A1', vertexKey: 'start' },
+      { entityId: 'L1', vertexKey: 'edge' },
+    ]
+    const ctx = prepareDragContext(feature, 'A1', 'start', [0, 0], undefined, undefined, group)!
+    expect(ctx.isEdgeDrag).toBe(true)
+    expect(ctx.arcEndpoint).toBeUndefined()
+    expect(ctx.ellipseAxis).toBeUndefined()
+    expect(ctx.group).toHaveLength(2)
+    // The arc's derived end promotes the arc to a whole member; both are anchored.
+    expect(ctx.input.options.dragAnchors).toHaveLength(2)
+
+    const delta: [number, number] = [2, 1]
+    const frame = solveSketchDrag(ctx, ctx.params0, delta, delta)!
+    expect(frame.geometry.A1[0]).toBeCloseTo(2, 1)
+    expect(frame.geometry.A1[1]).toBeCloseTo(1, 1)
+    expect(frame.geometry.L1[0]).toBeCloseTo(2, 1)
+    expect(frame.geometry.L1[1]).toBeCloseTo(11, 1)
+  })
+
   it('collapses a duplicate point member so its pair moves once', () => {
     const feature = constructionLineFeature('groupDupPoint')
     const group = [
@@ -780,6 +811,32 @@ describe.skipIf(!solveBytes)('prepareDragContext + solveSketchDrag (real WASM so
     expect(frame.geometry.L1[1]).toBeCloseTo(1, 1)
   })
 
+  it('a group pressed on a projected entity still moves its free member', () => {
+    // Pressing the held member must not strand the group: the projected entity
+    // is skipped, and the free member still translates as a one-member group.
+    const feature = {
+      id: 'groupProjectedPress', kind: 'sketch', plane: '@builtin_plane_front',
+      entities: [
+        { id: 'P1', kind: 'line', source: 'some>ancestry>query' },
+        { id: 'L1', kind: 'line' },
+      ],
+      initial: { P1: [0, 5, 10, 5], L1: [0, 0, 10, 0] },
+      constraints: [],
+    } as unknown as SketchFeature
+    const group = [
+      { entityId: 'P1', vertexKey: 'edge' },
+      { entityId: 'L1', vertexKey: 'edge' },
+    ]
+    const ctx = prepareDragContext(feature, 'P1', null, [0, 0], undefined, undefined, group)!
+    expect(ctx.isEdgeDrag).toBe(true)
+    expect(ctx.group).toHaveLength(1)
+    const delta: [number, number] = [3, 1]
+    const frame = solveSketchDrag(ctx, ctx.params0, delta, delta)!
+    frame.geometry.P1.forEach((value, i) => expect(value).toBeCloseTo(feature.initial!.P1[i], 3))
+    expect(frame.geometry.L1[0]).toBeCloseTo(3, 1)
+    expect(frame.geometry.L1[1]).toBeCloseTo(1, 1)
+  })
+
   it('probes an all-fixed group as locked and a free group as translate', () => {
     const pinned = {
       id: 'groupFixed', kind: 'sketch', plane: '@builtin_plane_front',
@@ -804,6 +861,23 @@ describe.skipIf(!solveBytes)('prepareDragContext + solveSketchDrag (real WASM so
     ]
     const freeCtx = prepareDragContext(free, 'ref', null, [0, 0], undefined, undefined, freeGroup)!
     expect(probeGroupDragMode(freeCtx)).toBe('translate')
+  })
+
+  it('fails open when a probe cannot solve', () => {
+    // A null probe measures nothing; latching 'locked' from it would silently
+    // swallow a gesture the solver merely failed to answer.
+    const feature = constructionLineFeature('groupProbeNull')
+    const group = [
+      { entityId: 'ref', vertexKey: 'edge' },
+      { entityId: 'edge', vertexKey: 'edge' },
+    ]
+    const ctx = prepareDragContext(feature, 'ref', null, [0, 0], undefined, undefined, group)!
+    resetSketchSolver()
+    try {
+      expect(probeGroupDragMode(ctx)).toBe('translate')
+    } finally {
+      setSketchSolver(solveBytes!)
+    }
   })
 
   it('a fully selected rectangle group-drags by the cursor delta', () => {

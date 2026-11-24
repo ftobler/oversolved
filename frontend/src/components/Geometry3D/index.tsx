@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import type { Sketch, Constraints, Topology, PlaneTransform, EntityStatus, PartEntityDef, SketchFeature, DroppedSketchConstraint } from '@/types/cad'
-import { useSketchEditorStore, type VertexOrEdgeDrag } from '@/stores/sketchEditorStore'
+import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 
 // Vertex/point rendering
 import { VertexDot, VertexHighlight } from '@/components/Geometry3D/VertexDots'
@@ -42,7 +42,7 @@ import { topologyStale } from '@/components/Geometry3D/dragTopologyGate'
 // WASM drag solve: runs the real solver on every drag frame.
 import { useWasmDragSolve } from '@/hooks/useWasmDragSolve'
 import { resolvedKindsOfSketch } from '@/kernel/features/sketch'
-import { pinnedProjectionIds } from '@/kernel/features/projectionMembers'
+import { heldEntityIds } from '@/kernel/features/projectionMembers'
 
 // Drawing tools
 import { DrawPreview, DrawPlane } from '@/components/Geometry3D/Drawing'
@@ -134,10 +134,11 @@ export default function Geometry3D({ featureId, solved, entities, projectionMemb
     () => Object.values(projectionMembers ?? {}).flatMap(report => report.entities),
     [projectionMembers],
   )
-  // Projected entities are pinned by the solve, so the fallback translation must
-  // leave them out; the WASM path gets the same set from pinProjectionTargets.
-  const dragPinnedIds = useMemo(
-    () => (featureDef ? pinnedProjectionIds(featureDef) : undefined),
+  // Projected and fixed entities are held by the solve, so the fallback
+  // translation and the release both leave them out; the WASM path gets the
+  // same set from pinProjectionTargets plus its own lift of the fixed rows.
+  const dragHeldIds = useMemo(
+    () => (featureDef ? heldEntityIds(featureDef) : undefined),
     [featureDef],
   )
 
@@ -165,14 +166,14 @@ export default function Geometry3D({ featureId, solved, entities, projectionMemb
         // same fallback; a single vertex drag has none (its preview is the WASM
         // solve, and without it the sketch stays static).
         if (isTranslationDrag(drag)) {
-          return edgeDragPreview(solved, drag as VertexOrEdgeDrag, dragPinnedIds)
+          return edgeDragPreview(solved, drag, dragHeldIds)
         }
       }
       return null
     },
     // Depend on the result fields, not the result object: the hook returns a
     // fresh object every render, which would defeat the memo.
-    [solved, drag, featureId, wasmDrag.engaged, wasmDrag.sketch, dragPinnedIds],
+    [solved, drag, featureId, wasmDrag.engaged, wasmDrag.sketch, dragHeldIds],
   )
 
   // On pointer-up the committed mutation re-solves asynchronously. Until the
@@ -397,7 +398,7 @@ export default function Geometry3D({ featureId, solved, entities, projectionMemb
       <EntityLines sketch={displaySketch} featureId={featureId} color={entityStatus ? getEntityColor : baseColor} lineWidth={2} isEditing={isEditing} constraints={featureDef?.constraints} />
       {(constraints || droppedConstraints?.length) && isEditing && <ConstraintOverlays constraints={constraints ?? {}} sketch={displaySketch} extent={extent} featureId={featureId} planeTransform={resolvedPlaneTransform} droppedConstraints={droppedConstraints} authoredConstraints={featureDef?.constraints} onSelectionContextMenu={onSelectionContextMenu} geometryStale={stale} />}
       {isEditing && !stale && <InferredContactMarkers candidates={inferredCandidates} />}
-      {isEditing && <DragPlane featureId={featureId} sketch={displaySketch} sketchGroupRef={groupRef} otherSketches={otherSketches} constraints={featureDef?.constraints} topology={stale ? undefined : topology} />}
+      {isEditing && <DragPlane featureId={featureId} sketch={displaySketch} sketchGroupRef={groupRef} otherSketches={otherSketches} constraints={featureDef?.constraints} heldIds={dragHeldIds} topology={stale ? undefined : topology} />}
       {isEditing && <DragSnapIndicator />}
       <DrawPreview featureId={featureId} activeFeatureId={activeFeatureId} sketch={displaySketch} otherSketches={otherSketches} />
       <DrawPlane featureId={featureId} activeFeatureId={activeFeatureId} sketch={displaySketch} sketchGroupRef={groupRef} otherSketches={otherSketches} />

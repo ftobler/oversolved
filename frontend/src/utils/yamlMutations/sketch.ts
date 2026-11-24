@@ -24,7 +24,7 @@ import { fitPointIndex } from '@/types/vertexKeys'
 import { hidePlanesIfFirstBoundSketch } from './featureAdmin'
 import { applyAddFitSpline, applyDeleteFitPoint, type FitSplineAddOptions } from './fitSpline'
 import {
-  deriveMemberIds, faceProjectionConstraintId, isFaceProjectionSource, pinnedProjectionIds, reconcileFaceProjection,
+  deriveMemberIds, faceProjectionConstraintId, heldEntityIds, isFaceProjectionSource, reconcileFaceProjection,
   describeProjectionSourceProblem, projectionDependentsReport, type ProjectionDependentsReport,
 } from '@/kernel/features/projectionMembers'
 import type { FaceBoundaryLookup } from '@/kernel/features/faceBoundary'
@@ -222,21 +222,13 @@ function resolveGroupMember(
   return { params, pairs }
 }
 
-/** True when the member's entity is held still by the document: a projection
- *  pins it (its params do not follow a delta), or a `fixed` constraint targets
- *  the entity or one of its points. The headless delta path must leave such a
- *  member exactly where it is instead of translating it and letting the next
- *  solve pull it back. */
-function memberIsHeld(
-  feature: { constraints?: ReadonlyArray<PartConstraint> },
-  pinned: ReadonlySet<string>,
-  member: DragMember,
-): boolean {
-  if (pinned.has(member.entityId)) return true
-  return (feature.constraints ?? []).some(c =>
-    c.kind === 'fixed'
-    && CONSTRAINT_REF_FIELDS.some(field => refMatchesEntity(c[field], member.entityId)),
-  )
+/** True when the member's entity is held by the document: a projection pins it
+ *  (its params do not follow a delta), or a `fixed` constraint targets the
+ *  entity or one of its points. The headless delta path must leave such a member
+ *  exactly where it is instead of translating it and letting the next solve pull
+ *  it back. */
+function memberIsHeld(held: ReadonlySet<string>, member: DragMember): boolean {
+  return held.has(member.entityId)
 }
 
 /** Drag commit for a multi-selection: every member translated in one mutation,
@@ -261,12 +253,12 @@ export function applyMoveSketchGroup(
     warn('applyMoveSketchGroup: ignoring non-finite delta', { featureId, members, delta })
     return
   }
-  const pinned = pinnedProjectionIds(feature)
+  const held = heldEntityIds(feature)
   // Resolve before the bake and before any write: a refused member must leave
   // the whole commit untouched, and a solved frame must not silently skip an
   // entity the document no longer has.
   const resolved = members
-    .filter(member => !memberIsHeld(feature, pinned, member))
+    .filter(member => !memberIsHeld(held, member))
     .map(member => ({
       member,
       target: resolveGroupMember(feature.initial!, feature.entities, member),
@@ -315,6 +307,10 @@ export function applyMoveEntity(
   const [dx, dy] = delta
   const feature = findSketchFeature(doc, featureId)
   if (!feature?.initial) return
+  // A held entity (projected or fixed) does not follow a drag: the solve pins it,
+  // so a headless translate would offset the document and let the next solve snap
+  // it back, leaving a dead undo entry. Skip before the frame is adopted too.
+  if (heldEntityIds(feature).has(entityId)) return
   // A non-finite delta is broken pointer math upstream (a drag frame divided by
   // a zero extent, or an empty numeric input parsed). round(NaN) is still NaN,
   // so the translate would persist the poison into the doc and every later

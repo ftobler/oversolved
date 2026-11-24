@@ -112,6 +112,29 @@ describe('DragTool', () => {
 
       expect(result).toBeNull()
     })
+
+    it('groups a vertex press when the vertex and another entity are selected', () => {
+      const setDragPending = vi.fn()
+      const tool = createDragTool()
+      const context = createMockContext({
+        setDragPending,
+        normalSelection: new Set(['vertex:S1:L1:start', 'entity:S1:L2']),
+        hoveredVertexId: 'vertex:S1:L1:start',
+        activeFeatureId: 'S1',
+      })
+
+      tool.handlers.onPointerDown!({} as PointerEvent, [10, 10], context)
+
+      expect(setDragPending).toHaveBeenCalledWith(expect.objectContaining({
+        type: 'vertex',
+        entityId: 'L1',
+        vertexKey: 'start',
+        group: [
+          { entityId: 'L2', vertexKey: 'edge' },
+          { entityId: 'L1', vertexKey: 'start' },
+        ],
+      }))
+    })
   })
 
   describe('onPointerMove', () => {
@@ -161,6 +184,39 @@ describe('DragTool', () => {
         type: 'edge',
         startWorld: [5, 5],  // resolved from worldPt (cursor position at activation)
         currentWorld: [5, 5],
+      }), false)
+    })
+
+    it('starts a vertex-pressed group at the activation point', () => {
+      const setDrag = vi.fn()
+      const tool = createDragTool()
+      const group = [
+        { entityId: 'L2', vertexKey: 'edge' },
+        { entityId: 'L1', vertexKey: 'start' },
+      ]
+      const context = createMockContext({
+        setDrag,
+        startClient: [100, 100],
+        dragPending: {
+          type: 'vertex',
+          vertexId: 'vertex:S1:L1:start',
+          featureId: 'S1',
+          entityId: 'L1',
+          vertexKey: 'start',
+          startWorld: [0, 0],
+          group,
+        },
+      })
+
+      tool.handlers.onPointerMove!({ clientX: 200, clientY: 200 } as PointerEvent, [5, 5], null, context)
+
+      // A group drag is a translation, so its startWorld is the cursor at
+      // activation, not the press point the vertex gesture kept.
+      expect(setDrag).toHaveBeenCalledWith(expect.objectContaining({
+        type: 'vertex',
+        startWorld: [5, 5],
+        currentWorld: [5, 5],
+        group,
       }), false)
     })
 

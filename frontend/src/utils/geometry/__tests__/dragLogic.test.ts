@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import type { Sketch, SketchFeature, Mutation, PartConstraint } from '@/types/cad'
-import { shouldActivateDrag, computeDragMove, computeDragMutation, dragSnapSkips } from '@/utils/geometry/dragLogic'
+import { shouldActivateDrag, computeDragMove, computeDragMutation, dragSnapSkips, dragIsHeld } from '@/utils/geometry/dragLogic'
 import { sketchToVertexCandidates, sketchToEntityCandidates } from '@/utils/geometry/snapDetection'
 import { CLICK_THRESHOLD_PX } from '@/utils/pointerAbstraction'
 import { mutationHandlers } from '@/hooks/mutationDispatch'
@@ -40,6 +40,37 @@ describe('shouldActivateDrag', () => {
 
   it('returns true when movement exceeds threshold', () => {
     expect(shouldActivateDrag([100, 100], [200, 200])).toBe(true)
+  })
+})
+
+describe('dragIsHeld', () => {
+  it('holds an edge drag on a held entity and any all-held group', () => {
+    const held = new Set(['L1'])
+    expect(dragIsHeld(makeDrag({ type: 'edge', entityId: 'L1' }), held)).toBe(true)
+    expect(dragIsHeld(makeDrag({
+      type: 'edge',
+      group: [
+        { entityId: 'L1', vertexKey: 'edge' },
+        { entityId: 'L2', vertexKey: 'edge' },
+      ],
+    }), held)).toBe(false)
+  })
+
+  it('never drops a vertex drag from a held set (a fixed point can still pivot)', () => {
+    // A `fixed` on one point holds the whole entity on the headless path, but the
+    // live solver rotates the entity about it; dropping the vertex release would
+    // snap the user's drag back.
+    expect(dragIsHeld(makeDrag({ entityId: 'L1' }), new Set(['L1']))).toBe(false)
+  })
+
+  it('a group is held only when every member is held', () => {
+    expect(dragIsHeld(makeDrag({
+      type: 'edge',
+      group: [
+        { entityId: 'L1', vertexKey: 'edge' },
+        { entityId: 'L2', vertexKey: 'edge' },
+      ],
+    }), new Set(['L1', 'L2']))).toBe(true)
   })
 })
 

@@ -369,6 +369,86 @@ describe('DragPlane pointer-up commit', () => {
   })
 })
 
+describe('DragPlane held release', () => {
+  function edgeDragOf(entityId: string, group?: Array<{ entityId: string; vertexKey: string }>) {
+    return {
+      type: 'edge' as const,
+      vertexId: `entity:S1:${entityId}`,
+      featureId: 'S1',
+      entityId,
+      vertexKey: '',
+      startWorld: [0, 0] as [number, number],
+      currentWorld: [3, 4] as [number, number],
+      startClient: [100, 100] as [number, number],
+      ...(group ? { group } : {}),
+    }
+  }
+
+  function pendingOf(drag: ReturnType<typeof edgeDragOf>) {
+    return {
+      type: 'edge' as const,
+      vertexId: drag.vertexId,
+      featureId: drag.featureId,
+      entityId: drag.entityId,
+      vertexKey: '',
+      startWorld: drag.startWorld,
+      ...(drag.group ? { group: drag.group } : {}),
+    }
+  }
+
+  it('a single drag on a held entity commits nothing and records no entry', () => {
+    const onMutation = vi.fn()
+    setSketchCallback('onMutation', onMutation)
+    const drag = edgeDragOf('lineA')
+    useEditorState.setState({
+      drag, dragPending: pendingOf(drag), dragStartClient: [100, 100], isPointerDown: true,
+    })
+    render(<DragPlane featureId="S1" sketchGroupRef={groupRef} heldIds={new Set(['lineA'])} />)
+
+    up(200, 200)
+
+    expect(onMutation).not.toHaveBeenCalled()
+    const s = useSketchEditorStore.getState()
+    expect(s.drag).toBeNull()
+    expect(s.dragSnap).toBeNull()
+  })
+
+  it('a group whose every member is held commits nothing (the degraded no-probe path)', () => {
+    const onMutation = vi.fn()
+    setSketchCallback('onMutation', onMutation)
+    const drag = edgeDragOf('lineA', [
+      { entityId: 'lineA', vertexKey: 'edge' },
+      { entityId: 'lineB', vertexKey: 'edge' },
+    ])
+    useEditorState.setState({
+      drag, dragPending: pendingOf(drag), dragStartClient: [100, 100], isPointerDown: true,
+    })
+    render(<DragPlane featureId="S1" sketchGroupRef={groupRef} heldIds={new Set(['lineA', 'lineB'])} />)
+
+    up(200, 200)
+
+    expect(onMutation).not.toHaveBeenCalled()
+    expect(useSketchEditorStore.getState().drag).toBeNull()
+  })
+
+  it('a mixed group still commits its free members', () => {
+    const onMutation = vi.fn()
+    setSketchCallback('onMutation', onMutation)
+    const drag = edgeDragOf('lineA', [
+      { entityId: 'lineA', vertexKey: 'edge' },
+      { entityId: 'lineB', vertexKey: 'edge' },
+    ])
+    useEditorState.setState({
+      drag, dragPending: pendingOf(drag), dragStartClient: [100, 100], isPointerDown: true,
+    })
+    render(<DragPlane featureId="S1" sketchGroupRef={groupRef} heldIds={new Set(['lineA'])} />)
+
+    up(200, 200)
+
+    expect(onMutation).toHaveBeenCalledWith(expect.objectContaining({ type: 'move_sketch_group' }))
+  })
+})
+
 describe('DragPlane group drag', () => {
   const sketch: Sketch = {
     lineA: { start: [0, 0], end: [10, 0] },

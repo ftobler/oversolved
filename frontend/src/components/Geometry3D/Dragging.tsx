@@ -8,7 +8,7 @@ import { Dot } from '@/components/Geometry3D/VertexDots'
 import { p2w } from '@/components/Geometry3D/sketchSceneHelpers'
 import { COLOR_SNAP } from '@/components/Geometry3D/constants'
 import { sanitizePointerEvent } from '@/components/Geometry3D/pointerAbstractionAdapters'
-import { computeDragMove, shouldActivateDrag, dragSnapSkips } from '@/utils/geometry/dragLogic'
+import { computeDragMove, shouldActivateDrag, dragSnapSkips, dragIsHeld } from '@/utils/geometry/dragLogic'
 import type { PartConstraint, Topology } from '@/types/cad'
 import { buildDragToolContext } from '@/tools/DragTool'
 import { dimLabelCommitOffset } from '@/utils/geometry/dimLabelDrag'
@@ -23,12 +23,15 @@ import { projectCursorToSketchPlane } from '@/components/Geometry3D/dragMathPlan
 // also clear it on release; a lost release (e.g. a load race that unmounts this
 // DragPlane mid-gesture) is recovered by the pointer-up gating in
 // deriveOrbitEnabled rather than relying solely on the handlers here.
-export function DragPlane({ featureId, sketch, sketchGroupRef, otherSketches, constraints, topology }: {
+export function DragPlane({ featureId, sketch, sketchGroupRef, otherSketches, constraints, heldIds, topology }: {
   featureId: string
   sketch?: Sketch
   sketchGroupRef?: React.RefObject<THREE.Group | null>
   otherSketches?: Record<string, Sketch>
   constraints?: PartConstraint[]
+  /** Entities the document holds still (projected or fixed). A release that
+   *  would move only these commits nothing. */
+  heldIds?: ReadonlySet<string>
   topology?: Topology
 }) {
   const drag = useSketchEditorStore(s => s.drag)
@@ -205,6 +208,15 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, otherSketches, co
       }
       // A label drag's preview is the solved sketch itself, so it never leaves a
       // hold (and never needs one); end it uncommitted for the hold gate.
+      setDrag(null, false); setDragSnap(null); setDragStartClient(null)
+      return
+    }
+
+    // The preview (fallback or WASM) never moved a held entity, so releasing must
+    // not record a translate the user did not see: a single drag on a held
+    // entity, or a group whose every member is held, ends uncommitted with no
+    // undo entry. A mixed group still commits its free members.
+    if (heldIds && dragIsHeld(currentDrag, heldIds)) {
       setDrag(null, false); setDragSnap(null); setDragStartClient(null)
       return
     }

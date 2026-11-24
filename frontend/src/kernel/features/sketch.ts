@@ -1754,7 +1754,7 @@ export function solveSketchDrag(
     for (let i = 0; i < n; i++) {
       input.params[i] = ctx.params0[i]
     }
-    if (ctx.group) {
+    if (ctx.group !== undefined) {
       for (const member of ctx.group) {
         for (const [xi, yi] of member.coordPairs) {
           input.params[xi] += edgeDelta[0]
@@ -1918,12 +1918,15 @@ export function probeCircleDragMode(ctx: DragContext): CircleDragMode {
   return resolveDragMode({ translateX: tx, translateY: ty, radius: rr })
 }
 
-/** The probe step for a group: a fraction of the group's coordinate extent, so
- *  the step scales with the dragged geometry instead of being a fixed unit that
- *  is wrong on a 0.5 mm hole and a 500 mm flange at once. */
+/** The probe step for a group: a fraction of the SMALLEST member's own
+ *  coordinate extent, so one large entity cannot inflate the step past a small
+ *  member's scale. A member with no extent (a point, two coincident pairs) is
+ *  ignored; a group made only of those falls back to a unit step. The floor keeps
+ *  a degenerate member from producing a zero-length probe. */
 function groupProbeStep(ctx: DragContext): number {
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+  let smallest = Infinity
   for (const member of ctx.group ?? []) {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
     for (const [xi, yi] of member.coordPairs) {
       const x = ctx.params0[xi]
       const y = ctx.params0[yi]
@@ -1933,9 +1936,12 @@ function groupProbeStep(ctx: DragContext): number {
       maxX = Math.max(maxX, x)
       maxY = Math.max(maxY, y)
     }
+    if (maxX < minX) continue
+    const extent = Math.hypot(maxX - minX, maxY - minY)
+    if (extent > 0) smallest = Math.min(smallest, extent)
   }
-  const extent = maxX >= minX ? Math.hypot(maxX - minX, maxY - minY) : 0
-  return PROBE_STEP_REL * Math.max(extent, 1)
+  const base = Number.isFinite(smallest) ? smallest : 1
+  return PROBE_STEP_REL * Math.max(base, 1e-3)
 }
 
 /**
@@ -1943,8 +1949,11 @@ function groupProbeStep(ctx: DragContext): number {
  * all. Runs the same per-frame solve twice, once per axis, and reads how far the
  * most responsive member's pairs travelled. Every member fixed or projected
  * yields 'locked', so the release commits nothing and records no undo entry; a
- * group free along either axis yields 'translate'. Like `probeCircleDragMode`,
- * it must not touch dragSolveRegistry, and it re-seeds from `params0` each call.
+ * group free along either axis yields 'translate'. A probe that could not solve
+ * is not evidence of immobility: it yields 'translate' (the gesture commits and
+ * the applier's held-member skip keeps the document sane) rather than latching
+ * the whole gesture locked on a solver failure. Like `probeCircleDragMode`, it
+ * must not touch dragSolveRegistry, and it re-seeds from `params0` each call.
  */
 export function probeGroupDragMode(ctx: DragContext): CircleDragMode {
   if (!ctx.group || ctx.group.length === 0) return 'locked'
@@ -1963,5 +1972,8 @@ export function probeGroupDragMode(ctx: DragContext): CircleDragMode {
   }
   const probeX = solveSketchDrag(ctx, ctx.params0, [h, 0], [h, 0])
   const probeY = solveSketchDrag(ctx, ctx.params0, [0, h], [0, h])
+  // Fail open on a probe error: a null solve measures nothing, and latching
+  // 'locked' from it would silently swallow the gesture.
+  if (probeX === null || probeY === null) return 'translate'
   return resolveGroupDragMode({ x: response(probeX), y: response(probeY) })
 }

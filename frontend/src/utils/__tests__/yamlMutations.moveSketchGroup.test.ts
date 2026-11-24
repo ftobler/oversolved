@@ -8,7 +8,7 @@ import { createDocSession, type DocSession, type EditorFacts } from '@/session/D
 import type { DirtyFacts } from '@/session/dirty'
 import { createFakeSolveScheduler } from '@/session/__tests__/fakeSolveScheduler'
 import { makeDoc, makeSketch } from '@/utils/core/testFixture'
-import { applyMoveSketchGroup } from '@/utils/yamlMutations'
+import { applyMoveEntity, applyMoveSketchGroup } from '@/utils/yamlMutations'
 import { MutationRefusal } from '@/utils/yamlMutations/helpers'
 import { sketchAt } from '@/testing/featureAccess'
 
@@ -184,6 +184,30 @@ describe('move_sketch_group applier', () => {
     const before = JSON.stringify(doc)
     applyMoveSketchGroup(doc, 'nope', [{ entityId: 'l1', vertexKey: 'edge' }], [1, 1])
     expect(JSON.stringify(doc)).toBe(before)
+  })
+})
+
+describe('single-entity drag on a held entity', () => {
+  it('leaves a fixed entity where it is', () => {
+    // The live drag preview is frozen for a held entity, so a headless
+    // move_entity must not offset the document and leave a dead undo entry.
+    const doc = groupDoc({
+      constraints: [{ id: 'fix1', kind: 'fixed', target: '$l1' }],
+    })
+    applyMoveEntity(doc, 'sk', 'l1', [3, 1])
+    expect(sketch(doc).initial!.l1).toEqual([0, 0, 10, 0])
+    applyMoveEntity(doc, 'sk', 'l2', [3, 1])
+    expect(sketch(doc).initial!.l2).toEqual([23, 6, 33, 6])
+  })
+
+  it('leaves a projected entity where it is, even with a solved frame', () => {
+    const doc = groupDoc({
+      constraints: [{ id: 'proj1', kind: 'projection', target: '$p1', source: '?edge;x' }],
+    })
+    applyMoveEntity(doc, 'sk', 'p1', [3, 1], { p1: [43, 1], l1: [3, 1, 13, 1] })
+    // Neither the delta nor the frame is written: the next solve pins it back.
+    expect(sketch(doc).initial!.p1).toEqual([40, 0])
+    expect(sketch(doc).initial!.l1).toEqual([0, 0, 10, 0])
   })
 })
 

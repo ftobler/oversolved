@@ -140,7 +140,7 @@ export function useWasmDragSolve(
   // group is locked, so the release commits nothing and records no undo entry.
   const dragMode = useMemo(() => {
     if (!ctx || !isDragHere) return undefined
-    if (ctx.group) return probeGroupDragMode(ctx)
+    if (ctx.group !== undefined) return probeGroupDragMode(ctx)
     if (!isEdgeDragHere || ctx.sizeIndex === undefined) return undefined
     return probeCircleDragMode(ctx)
   }, [ctx, isDragHere, isEdgeDragHere])
@@ -190,7 +190,7 @@ export function useWasmDragSolve(
       if (dirtyRef.current && latestCursorRef.current) {
         dirtyRef.current = false
 
-        if ((ctx.isEdgeDrag || ctx.group) && startWorldRef.current) {
+        if ((ctx.isEdgeDrag || ctx.group !== undefined) && startWorldRef.current) {
           const cursor = latestCursorRef.current
           if (dragMode === 'locked') {
             // Neither the centre nor the radius can move. Solve nothing and publish

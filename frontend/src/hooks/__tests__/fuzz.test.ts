@@ -162,6 +162,14 @@ describe('the pinned fuzz regressions (fake scheduler)', () => {
     reportFailureDocs(seed, result)
     expect(result.violations).toEqual([])
   })
+
+  it('the cap pin really reaches the cap without dropping an entry', async () => {
+    // The note above is a claim, so it is a ratchet, not prose: if a registry
+    // change re-rolls the sequence, this fails instead of leaving a stale note.
+    const result = await runFake(29, 100)
+    expect(result.maxUndoDepth).toBe(MAX_UNDO_DEPTH)
+    expect(result.droppedEntries).toBe(0)
+  })
 })
 
 // The cap itself has to bite: sixty always-landing pushes with no undo between
