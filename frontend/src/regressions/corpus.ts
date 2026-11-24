@@ -86,6 +86,11 @@ export interface RegressionChecks {
   topology: 'report' | 'strict'
   measures: RegressionMeasures
   snapshot: boolean
+  /** Optional warning-text checks: a feature id -> a substring its solve
+   *  warning (or exception) must contain. `features` pins the verdict and
+   *  `measures` the geometry; this pins the MECHANISM the case exists for, so a
+   *  case cannot pass with the right numbers and the wrong cause. */
+  warnings?: Record<string, string>
 }
 
 /** One body's frozen identity and geometry fingerprints, in sorted order. */
@@ -235,6 +240,16 @@ function parseTolerance(where: string, value: unknown): { rel: number; abs: numb
   return { rel, abs }
 }
 
+/** The optional readable warning checks: one required substring per feature id. */
+function parseWarnings(where: string, value: unknown): Record<string, string> {
+  const record = requireRecord(where, value)
+  const out: Record<string, string> = {}
+  for (const [id, text] of Object.entries(record)) {
+    out[id] = requireString(`${where}.${id}`, text)
+  }
+  return out
+}
+
 function parseMeasures(where: string, value: unknown): RegressionMeasures {
   const record = requireRecord(where, value)
   rejectUnknownKeys(where, record, ['bodies', 'volume', 'area', 'centroid', 'bbox', 'faces', 'edges'])
@@ -277,6 +292,7 @@ export function parseChecks(
   const record = requireRecord(where, raw)
   rejectUnknownKeys(where, record, [
     'origin', 'license', 'severity', 'what', 'features', 'tolerance', 'topology', 'measures', 'snapshot',
+    'warnings',
   ])
   const severity = record.severity
   if (typeof severity !== 'string' || !SEVERITIES.includes(severity as Severity)) {
@@ -297,6 +313,7 @@ export function parseChecks(
     topology,
     measures: parseMeasures(`${where}.measures`, record.measures),
     snapshot,
+    ...(record.warnings !== undefined && { warnings: parseWarnings(`${where}.warnings`, record.warnings) }),
   }
 }
 

@@ -154,6 +154,7 @@ export function regressionIssues(
     .filter((row) => row.enforced)
     .map((row) => ({ check: row.check, ours: row.ours, expected: row.expected }))
     .concat(regressionFeatureIssues(checks, recipeFeatureIdsInRecipe, build))
+    .concat(regressionWarningIssues(checks, build))
 }
 
 /**
@@ -222,6 +223,25 @@ function regressionFeatureIssues(
   return issues
 }
 
+/**
+ * The readable warning checks: each named feature's solve text (its warning or,
+ * for a failed row, its exception) must contain the stated substring. This is
+ * what pins WHY a case looks the way it does, not only that its measures match.
+ */
+function regressionWarningIssues(checks: RegressionChecks, build: RegressionBuild): RegressionIssue[] {
+  const rows: RegressionIssue[] = []
+  for (const [id, needle] of Object.entries(checks.warnings ?? {})) {
+    const detail = build.details[id]
+    if (detail !== undefined && detail.includes(needle)) continue
+    rows.push({
+      check: `warnings/${id}`,
+      ours: detail === undefined ? 'no warning' : detail,
+      expected: `contains ${JSON.stringify(needle)}`,
+    })
+  }
+  return rows
+}
+
 /** Build and compare one case. */
 export async function runRegressionCase(regressionCase: RegressionCase): Promise<RegressionRun> {
   const doc = partSpecFromText(regressionCase.recipe)
@@ -236,6 +256,14 @@ export async function runRegressionCase(regressionCase: RegressionCase): Promise
           `the recipe has ${featureIds.length} feature(s): ${featureIds.join(', ')}`,
         )
       }
+    }
+  }
+  for (const id of Object.keys(regressionCase.checks.warnings ?? {})) {
+    if (!featureIds.includes(id)) {
+      throw new Error(
+        `regressions/${regressionCase.name}/checks.json.warnings.${id}: unknown feature id; ` +
+        `the recipe has ${featureIds.length} feature(s): ${featureIds.join(', ')}`,
+      )
     }
   }
 

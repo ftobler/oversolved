@@ -86,6 +86,31 @@ describe('applySolveResult -- fields the feature tree reads', () => {
     expect(result.current.solveResults['sk1'].dof).toBe(4)
   })
 
+  it('keeps a weak constraint warning and the constraint mark', async () => {
+    // Same seam, second verdict: a fully constrained sketch with a weak
+    // dimension is a warning row, and the mark on the authored constraint is
+    // what paints the dimension label. Dropping either here leaves the app
+    // clean while the MCP reply warns.
+    const result = setupHook()
+    await solveWith(result, {
+      sk1: {
+        status: 'fully_constrained',
+        geometry: {},
+        solver_warning: "x distance 2 holds the profile only at the arc's extreme, so the profile can rotate by up to 0.045 deg.",
+        constraints: {
+          c1: {
+            render: { kind: 'dim_linear', p1: [0, 0], p2: [2, 0], normal: [0, 1], value: 2, dimKind: 'point_distance_x' },
+            residual: 0,
+            weak: true,
+            weak_angle: 0.045,
+          },
+        },
+      },
+    })
+    expect(result.current.solveResults.sk1.solver_warning).toContain("holds the profile only at the arc's extreme")
+    expect(result.current.solveResults.sk1.constraints?.c1).toMatchObject({ weak: true, weak_angle: 0.045 })
+  })
+
   it('keeps the per-pick lists the pick chips mark', async () => {
     // PickField strikes through `unresolved_*` and reddens `failed_*`; dropped
     // here, a partial fillet showed a healthy chip in the app while every

@@ -968,7 +968,8 @@ fn a_short_jacobian_stops_the_redundancy_walk_instead_of_misflagging_the_tail() 
     assert_eq!(full.nrows(), 3, "fixture assumes one row per horizontal");
 
     let short = full.rows(0, 2).into_owned();
-    let flags = redundancy_flags(&problem, &x, &short, 3);
+    let layout = row_layout(&problem, &x);
+    let flags = redundancy_flags(&short, 3, &layout);
     assert_eq!(
         flags,
         vec![0, 0, 0],

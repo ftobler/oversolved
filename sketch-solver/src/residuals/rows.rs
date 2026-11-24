@@ -418,6 +418,20 @@ impl Problem<'_> {
         RowClass::Unclassified
     }
 
+    /// True when param `i` is a shape angle carried in degrees (an arc's
+    /// endpoint angle or an ellipse's rotation), by the same block walk
+    /// `param_class_at` uses. The weak-constraint report reads a step's
+    /// angular size, so it has to tell a degree slot from a world length: an
+    /// index no block owns is a length, the conservative reading.
+    pub fn param_is_angle(&self, i: usize) -> bool {
+        self.entities.iter().any(|entity| {
+            let end = entity.param_offset + entity.param_count;
+            entity.param_offset <= i
+                && i < end
+                && is_angle_param(entity.kind, i - entity.param_offset)
+        })
+    }
+
     /// Every residual row with the class the contract reads it as, in wire
     /// order: constraint rows, then the pin rows, then the equality pins.
     pub fn contract_rows(&self, x: &[f64]) -> Vec<(f64, RowClass)> {

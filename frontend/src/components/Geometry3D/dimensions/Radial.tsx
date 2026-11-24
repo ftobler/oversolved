@@ -13,7 +13,7 @@ export function RadiusDimension({ cid, dim, interaction, planeTransform }: {
   interaction?: DimInteraction
   planeTransform?: PlaneTransform
 }) {
-  const { color, onOver, onOut, onClick, onDoubleClick, resetDragMoved, isDragged   } = useDimInteraction(cid, dim.value, interaction)
+  const { color, hovered, title, onOver, onOut, onClick, onDoubleClick, resetDragMoved, isDragged } = useDimInteraction(cid, dim.value, interaction)
   const activeDragPos = useActiveLabelDrag(cid)
 
   // p1 = center, p2 = edge point; r is the circle/arc radius.
@@ -84,6 +84,8 @@ export function RadiusDimension({ cid, dim, interaction, planeTransform }: {
       <DimensionLabel
         cid={cid} enabled={!!interaction}
         x={labelX} y={labelY} label={label} color={color}
+        title={title}
+        hovered={hovered}
         isDragged={isDragged}
       />
     </group>
@@ -96,7 +98,7 @@ export function DiameterDimension({ cid, dim, interaction, planeTransform }: {
   interaction?: DimInteraction
   planeTransform?: PlaneTransform
 }) {
-  const { color, onOver, onOut, onClick, onDoubleClick, resetDragMoved, isDragged } = useDimInteraction(cid, dim.value, interaction)
+  const { color, hovered, title, onOver, onOut, onClick, onDoubleClick, resetDragMoved, isDragged } = useDimInteraction(cid, dim.value, interaction)
   const activeDragPos = useActiveLabelDrag(cid)
 
   // p1 and p2 are the two endpoints of the diameter; center is their midpoint.
@@ -164,6 +166,8 @@ export function DiameterDimension({ cid, dim, interaction, planeTransform }: {
       <DimensionLabel
         cid={cid} enabled={!!interaction}
         x={labelX} y={labelY} label={label} color={color}
+        title={title}
+        hovered={hovered}
         isDragged={isDragged}
       />
     </group>

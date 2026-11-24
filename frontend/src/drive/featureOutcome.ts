@@ -53,6 +53,11 @@ export interface FeatureOutcome {
   // position and the rows that never had one. A soft error: the sketch keeps its
   // status and dof, the row is a warning, and an export still tolerates it.
   projectionErrors?: ProjectionErrorReport
+  // A sketch's weak (second-order) constraints: satisfied rows that hold a
+  // direction only at an extreme, so the sketch can be tilted while fully
+  // constrained. `moveEstimate` is the rotation they allow, in degrees. The
+  // ids are for machines; the warning message names the constraint by kind.
+  weak?: Array<{ constraintId: string; moveEstimate: number }>
 }
 
 /** A feature the solve did not finish cleanly, in feature log order. */
@@ -64,6 +69,9 @@ export interface FeatureProblem {
   // A sketch's failing projections, when it has any: the rows that kept a last
   // position and the rows that never had one.
   projectionErrors?: ProjectionErrorReport
+  // A sketch's weak constraints, when it has any: the structured ids beside the
+  // readable message.
+  weak?: Array<{ constraintId: string; moveEstimate: number }>
 }
 
 /**
@@ -160,7 +168,7 @@ export function readSolveOutcomes(
     const row = feature as {
       status?: unknown; exception?: unknown; solver_warning?: unknown; solver_note?: unknown
       resolved_warning?: unknown; direction?: unknown; body_id?: unknown; dof?: unknown
-      projection_errors?: unknown; projection_unpositioned?: unknown
+      projection_errors?: unknown; projection_unpositioned?: unknown; weak_constraints?: unknown
     }
     if (typeof row.status !== 'string') continue
     const exception = typeof row.exception === 'string' && row.exception !== '' ? row.exception : undefined
@@ -175,6 +183,7 @@ export function readSolveOutcomes(
     const partId = typeof row.body_id === 'string' && row.body_id !== '' ? row.body_id : undefined
     const dof = typeof row.dof === 'number' && Number.isFinite(row.dof) ? row.dof : undefined
     const projectionErrors = projectionErrorReport(row.projection_errors, row.projection_unpositioned)
+    const weak = weakReport(row.weak_constraints)
     outcomes[id] = {
       status: row.status,
       ...(exception !== undefined && { exception }),
@@ -185,6 +194,7 @@ export function readSolveOutcomes(
       ...(partId !== undefined && { bodyId: partId }),
       ...(dof !== undefined && { dof }),
       ...(projectionErrors !== undefined && { projectionErrors }),
+      ...(weak !== undefined && { weak }),
     }
   }
   return outcomes
@@ -194,6 +204,21 @@ function idList(value: unknown): string[] {
   return Array.isArray(value)
     ? value.filter((entry): entry is string => typeof entry === 'string' && entry !== '')
     : []
+}
+
+/** The weak-constraint report as written by the sketch solve: ids plus the
+ *  rotation each allows. Entries without a usable id or estimate are dropped;
+ *  the message still carries the readable sentence. */
+function weakReport(value: unknown): FeatureOutcome['weak'] | undefined {
+  if (!Array.isArray(value)) return undefined
+  const entries = value.filter((entry): entry is { constraintId: string; moveEstimate: number } => (
+    typeof entry === 'object' && entry !== null
+    && typeof (entry as { constraintId?: unknown }).constraintId === 'string'
+    && (entry as { constraintId: string }).constraintId !== ''
+    && typeof (entry as { moveEstimate?: unknown }).moveEstimate === 'number'
+    && Number.isFinite((entry as { moveEstimate: number }).moveEstimate)
+  ))
+  return entries.length > 0 ? entries.map(entry => ({ ...entry })) : undefined
 }
 
 /** The solve's projection report, or undefined when the sketch had none. The
@@ -260,6 +285,7 @@ export function featureProblems(
       status: outcome.status,
       message: outcome.exception ?? outcome.warning ?? defaultMessage(outcome.status),
       ...(outcome.projectionErrors !== undefined && { projectionErrors: outcome.projectionErrors }),
+      ...(outcome.weak !== undefined && { weak: outcome.weak }),
     })
   }
   return problems

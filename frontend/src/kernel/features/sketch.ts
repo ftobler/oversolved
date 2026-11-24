@@ -32,7 +32,7 @@ import {
 import { entityVertexIndices, entityCoordPairs, fitSplineHandlesFromFlags } from '@/registry'
 import { deriveConstraints, unflattenGeometry } from '@/utils/geometry/geometryMapping'
 import { ellipseAxisDrag, isEllipseAxisKey, type EllipseAxisKey } from '@/utils/geometry/ellipseAxis'
-import { ignoredConstraintWarning } from '@/utils/constraintProblems'
+import { ignoredConstraintWarning, weakConstraintNoun, weakConstraintWarning } from '@/utils/constraintProblems'
 import {
   tangentKindsAdmitted,
   tangentNeedsSharedEndpointReason,
@@ -118,6 +118,11 @@ export interface SketchResult {
    *  editor draws each as a red tile at its surviving local operand and the
    *  cleanup command removes them; the warning text names the same ids. */
   dropped_constraints?: DroppedConstraint[]
+  /** The constraints the solve found weak (a second-order root): satisfied, yet
+   *  holding the profile's direction only at an extreme. `moveEstimate` is how
+   *  far the profile can rotate along it, in degrees. The warning text names
+   *  them by kind and value; this list keeps the ids for machines. */
+  weak_constraints?: Array<{ constraintId: string; moveEstimate: number }>
 }
 
 let solverBytes: SolveBytes | null = null
@@ -843,14 +848,15 @@ export function droppedConstraintRecords(
   input: FlatInput,
   layout: EntityLayout[],
   constraintIds: ReadonlyArray<string | null>,
-  authoredKindById: ReadonlyMap<string, string>,
+  authoredById: ReadonlyMap<string, { kind: string }>,
 ): DroppedConstraint[] {
   const dropped: DroppedConstraint[] = []
   for (let i = 0; i < out.constraintFlags.length; i++) {
     if ((out.constraintFlags[i] & CONSTRAINT_FLAG.dropped) === 0) continue
     const cid = constraintIds[i]
     if (cid === null || cid === undefined) continue
-    const kind = authoredKindById.get(cid) ?? CONSTRAINT_KIND_NAME[input.constraints[i]?.kind ?? -1] ?? 'constraint'
+    const kind = authoredById.get(cid)?.kind
+      ?? CONSTRAINT_KIND_NAME[input.constraints[i]?.kind ?? -1] ?? 'constraint'
     dropped.push({ id: cid, kind, reason: droppedConstraintReason(input, layout, i) })
   }
   return dropped
@@ -1051,16 +1057,19 @@ export function solveSketch(
   const culprits = satisfiedSolve
     ? new Set<number>()
     : culpritConstraintIndices(out.constraintMiss)
+  const weakByWire = new Map(out.weakConstraints.map(w => [w.index, w.moveEstimate]))
   const constraintResults: Constraints = {}
   for (const [cid, c] of Object.entries(rendered)) {
     const idx = wireIndexById.get(cid)
     if (idx === undefined) continue
     const redundant = satisfiedSolve && (out.constraintFlags[idx] & CONSTRAINT_FLAG.redundant) !== 0
+    const weakAngle = weakByWire.get(idx)
     constraintResults[cid] = {
       ...c,
       residual: out.constraintMiss[idx] ?? 0,
       ...(redundant ? { superfluous: true } : {}),
       ...(culprits.has(idx) ? { culprit: true } : {}),
+      ...(weakAngle !== undefined ? { weak: true, weak_angle: weakAngle } : {}),
     }
   }
 
@@ -1071,14 +1080,26 @@ export function solveSketch(
   const warnings: string[] = status === 'underconstrained'
     ? [underconstrainedWarning(out.diagnostics.dof, freeIds)]
     : []
-  const authoredKindById = new Map<string, string>((pf.constraints ?? []).map(c => [c.id, c.kind]))
+  const authoredById = new Map((pf.constraints ?? []).map(c => [c.id, c]))
+  // The weak (second-order) constraints: the solve says the sketch is fully
+  // constrained and still names the rows that only hold at an extreme. The
+  // sentence says what the user can change; the structured list keeps the ids
+  // for the drive reply and the tile mark.
+  const weakReports: Array<{ constraintId: string; moveEstimate: number }> = []
+  for (const [wire, cid] of constraintIds.entries()) {
+    const moveEstimate = weakByWire.get(wire)
+    if (moveEstimate === undefined || cid === null || cid === undefined) continue
+    const authored = authoredById.get(cid)
+    weakReports.push({ constraintId: cid, moveEstimate })
+    warnings.push(weakConstraintWarning(weakConstraintNoun(authored?.kind, authored?.value), moveEstimate))
+  }
   // Both drop routes in one list: the lowering drops (unresolvable refs, bad
   // shapes) and the solver's survivors filter. The editor draws a tile per record
   // and the cleanup command removes them, so this list is the single answer to
   // "which authored constraints does the solve not use".
   const droppedList: DroppedConstraint[] = [
     ...droppedConstraints,
-    ...droppedConstraintRecords(out, input, layout, constraintIds, authoredKindById),
+    ...droppedConstraintRecords(out, input, layout, constraintIds, authoredById),
   ]
   warnings.push(...droppedList.map(d => ignoredConstraintWarning(d.id, d.kind, d.reason)))
   // An unresolved projection used to be silent over MCP (it survives as a pinned
@@ -1112,6 +1133,7 @@ export function solveSketch(
     ...(projectionUnpositioned.length ? { projection_unpositioned: projectionUnpositioned } : {}),
     ...(degenerateList.length ? { degenerate_entities: degenerateList } : {}),
     ...(droppedList.length ? { dropped_constraints: droppedList } : {}),
+    ...(weakReports.length ? { weak_constraints: weakReports } : {}),
     solve_ms: 0,
   }
 }

@@ -1,0 +1,30 @@
+{
+  "origin": {
+    "kind": "bug_report",
+    "ref": "bugreports/20261123_2307_solver_accuracy.md",
+    "date": "2026-11-24"
+  },
+  "license": "own",
+  "severity": "hard",
+  "what": "an x distance at the inner arc's extreme leaves the U profile fully constrained but tilted 0.044 deg; extrude 2 follows the tilted cap face and adds 10",
+  "features": {
+    "default": "ok",
+    "except": {
+      "sk1": "fully_constrained"
+    }
+  },
+  "tolerance": {
+    "rel": 0.000001,
+    "abs": 0.000001
+  },
+  "topology": "strict",
+  "measures": {
+    "bodies": 1,
+    "volume": 27.928904424438503
+  },
+  "warnings": {
+    "sk1": "x distance 2 holds the profile only at the arc",
+    "xUH6HOpLrnzoUULH0yU7HhLL": "see the warning on sketch sk1"
+  },
+  "snapshot": false
+}

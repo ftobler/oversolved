@@ -3,7 +3,7 @@ import { renderHook, act } from '@testing-library/react'
 import { useSketchEditorStore, setSketchCallback, useSketchUiStore } from '@/stores/sketchEditorStore'
 import { useDimInteraction, useDimLabelPointerDown, type DimInteraction } from '../useDimInteraction'
 import { COLOR_CONSTRAINT, COLOR_CONSTRAINT_DIM } from '@/utils/geometry/sketchHelpers'
-import { COLOR_ERROR_DEEP } from '@/components/Geometry3D/constants'
+import { COLOR_ERROR_DEEP, COLOR_CONSTRAINT_WEAK } from '@/components/Geometry3D/constants'
 import type { DragState } from '@/stores/sketchEditorStore'
 import { useEditorState } from '@/hooks/useEditorState'
 
@@ -209,6 +209,18 @@ describe('useDimInteraction hover / isDragged', () => {
     // Idle and clean: the normal constraint amber.
     const { result: clean } = renderHook(() => useDimInteraction('c1', 10, INTERACTION))
     expect(clean.current.color).toBe(COLOR_CONSTRAINT)
+  })
+
+  it('a weak dimension paints the weak blue and exports its sentence for the label tooltip', () => {
+    const sentence = "x distance 2 holds the profile only at the arc's extreme, so the profile can rotate by up to 0.045 deg."
+    const { result } = renderHook(() =>
+      useDimInteraction('c1', 2, { ...INTERACTION, weak: true, weakTitle: sentence }))
+    expect(result.current.color).toBe(COLOR_CONSTRAINT_WEAK)
+    expect(result.current.title).toBe(sentence)
+    // Hover still outranks the verdict tint, and the sentence stays available.
+    act(() => result.current.onOver({ stopPropagation: vi.fn() }))
+    expect(result.current.color).toBe('#ffffff')
+    expect(result.current.title).toBe(sentence)
   })
 
   it('selection and hover still outrank the verdict tint', () => {

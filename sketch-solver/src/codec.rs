@@ -53,12 +53,13 @@
 //!
 //! ```text
 //! header:
-//!   u32  magic = MAGIC_OUT ("SKR6", little-endian on the wire)
+//!   u32  magic = MAGIC_OUT ("SKRA", little-endian on the wire)
 //!   u32  n_params
 //!   u32  n_entities_status   // 0 on the drag fast path or when skip_status_pass
 //!   u32  vertex_freedom_len  // f64 count; also 0 on the drag fast path
 //!   u32  n_constraints_status // per-constraint verdict count; 0 on the drag fast path
 //!   u32  n_entity_moved      // byte count of entity_moved; 0 on the drag fast path
+//!   u32  n_weak              // weak-constraint count; 0 on a clean or drag solve
 //!   u8   overall_status
 //! params_solved:  n_params x f64
 //! entity_status:  n_entities_status x u8
@@ -66,9 +67,15 @@
 //! constraint_flags: n_constraints_status x u8
 //! constraint_miss:  n_constraints_status x f64
 //! entity_moved:   n_entity_moved bytes (one bit per entity, LSB-first)
+//! weak:           n_weak x { u32 constraint_index, f64 move_estimate }
 //! diagnostics:    f64 residual_norm, u32 rank, u32 dof, u32 iters, f64 ms,
 //!                 f64 angular_miss, f64 linear_miss
 //! ```
+//!
+//! The `SKGA`/`SKRA` pair adds `weak`, the satisfied constraints that hold
+//! their direction only to second order, each with the rotation it allows in
+//! degrees (see `WeakConstraint`). An older reader would read the new count's
+//! bytes as the first diagnostic, so the magic moves with the layout.
 //!
 //! The `SKG9`/`SKR9` pair changes what a `Group` row means: the third ref names
 //! the member point (or the whole arc/ellipse angle) the group's rotation is
@@ -107,8 +114,8 @@
 //! of the boundary (this file and frontend/src/wasm-kernel/codec.ts) on any
 //! layout change. Invalidating old cached payloads is acceptable and safe
 //! post-wave-1: bundle-cache reads of stale buffers degrade to cold rebuilds.
-pub const MAGIC: u32 = 0x3947_4B53; // "SKG9" in LE memory order
-pub const MAGIC_OUT: u32 = 0x3952_4B53; // "SKR9" in LE memory order
+pub const MAGIC: u32 = 0x4147_4B53; // "SKGA" in LE memory order
+pub const MAGIC_OUT: u32 = 0x4152_4B53; // "SKRA" in LE memory order
 
 /// The rev 1 and rev 2 values (and rev 3, whose output lacked the
 /// per-constraint verdicts). Kept only so tests can assert a stale pairing
@@ -165,6 +172,13 @@ pub const MAGIC_OUT_SKR7: u32 = 0x3752_4B53;
 pub const MAGIC_SKG8: u32 = 0x3847_4B53;
 #[cfg(test)]
 pub const MAGIC_OUT_SKR8: u32 = 0x3852_4B53;
+/// The rev 9 pair. Its output ends at the diagnostics, with no weak-constraint
+/// block: this reader would take the last precision f64's first bytes as the
+/// weak count and run off the end (or invent entries from them).
+#[cfg(test)]
+pub const MAGIC_SKG9: u32 = 0x3947_4B53;
+#[cfg(test)]
+pub const MAGIC_OUT_SKR9: u32 = 0x3952_4B53;
 
 use solver_core::bytes::{Eof, Reader, Writer};
 
@@ -487,6 +501,7 @@ pub fn encode_output(out: &Output) -> Vec<u8> {
     w.u32(out.vertex_freedom.len() as u32);
     w.u32(out.constraint_flags.len() as u32);
     w.u32(out.entity_moved.len() as u32);
+    w.u32(out.weak_constraints.len() as u32);
     w.u8(out.overall_status);
     for &p in &out.params_solved {
         w.f64(p);
@@ -505,6 +520,10 @@ pub fn encode_output(out: &Output) -> Vec<u8> {
     }
     for &b in &out.entity_moved {
         w.u8(b);
+    }
+    for weak in &out.weak_constraints {
+        w.u32(weak.constraint_index);
+        w.f64(weak.move_estimate);
     }
     w.f64(out.diagnostics.residual_norm);
     w.u32(out.diagnostics.rank);
@@ -526,6 +545,7 @@ pub fn decode_output(buf: &[u8]) -> Result<Output, CodecError> {
     let vf_len = r.u32()? as usize;
     let n_constraint_status = r.u32()? as usize;
     let n_moved = r.u32()? as usize;
+    let n_weak = r.u32()? as usize;
     let overall_status = r.u8()?;
     let mut params_solved = Vec::with_capacity(r.capacity_for(n_params, 8));
     for _ in 0..n_params {
@@ -548,6 +568,15 @@ pub fn decode_output(buf: &[u8]) -> Result<Output, CodecError> {
         constraint_miss.push(r.f64()?);
     }
     let entity_moved = r.take(n_moved)?.to_vec();
+    let mut weak_constraints = Vec::with_capacity(r.capacity_for(n_weak, 12));
+    for _ in 0..n_weak {
+        let constraint_index = r.u32()?;
+        let move_estimate = r.f64()?;
+        weak_constraints.push(crate::WeakConstraint {
+            constraint_index,
+            move_estimate,
+        });
+    }
     let residual_norm = r.f64()?;
     let rank = r.u32()?;
     let dof = r.u32()?;
@@ -563,6 +592,7 @@ pub fn decode_output(buf: &[u8]) -> Result<Output, CodecError> {
         constraint_flags,
         constraint_miss,
         entity_moved,
+        weak_constraints,
         diagnostics: Diagnostics {
             residual_norm,
             rank,

@@ -85,8 +85,15 @@ function points(call: number): unknown {
 // The handlers the ID ring dispatches for the most recently rendered label.
 function lastDispatch() {
   return spies.dispatch.at(-1)! as {
+    onOver: (e: { stopPropagation: () => void }) => void
+    onOut: () => void
     onDoubleClick: (e: { stopPropagation: () => void; clientX: number; clientY: number }) => void
   }
+}
+
+// The props the most recent DimensionLabel render received.
+function lastLabel(): Record<string, unknown> {
+  return spies.Label.mock.calls.at(-1)![0]
 }
 
 // -udirY can be -0; normalise it so a component-side signed zero does not
@@ -284,5 +291,26 @@ describe('LinearDimension Flip side', () => {
     act(() => lastDispatch().onDoubleClick({ stopPropagation: () => {}, clientX: 0, clientY: 0 }))
 
     expect(useSketchUiStore.getState().pendingDialog?.extraAction).toBeUndefined()
+  })
+})
+
+describe('LinearDimension weak verdict', () => {
+  const sentence = "x distance 2 holds the profile only at the arc's extreme, so the profile can rotate by up to 0.045 deg."
+
+  it('hands the label its sentence and shows it through the label hover path', () => {
+    renderDim({}, { interaction: { ...INTERACTION, weak: true, weakTitle: sentence } })
+
+    // Idle: the sentence is ready but not painted.
+    expect(lastLabel()).toMatchObject({ title: sentence, hovered: false })
+    act(() => lastDispatch().onOver({ stopPropagation: vi.fn() }))
+    expect(lastLabel()).toMatchObject({ title: sentence, hovered: true })
+    act(() => lastDispatch().onOut())
+    expect(lastLabel()).toMatchObject({ hovered: false })
+  })
+
+  it('hands no sentence to a clean dimension', () => {
+    renderDim({}, { interaction: INTERACTION })
+    act(() => lastDispatch().onOver({ stopPropagation: vi.fn() }))
+    expect(lastLabel().title).toBeUndefined()
   })
 })

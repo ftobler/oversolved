@@ -32,6 +32,12 @@ export const COLOR_ERROR = '#ef5350'
 // family as COLOR_ERROR, only darker, so it reads as "this one" rather than as
 // a different state.
 export const COLOR_ERROR_DEEP = '#b71c1c'
+// A weak (second-order) constraint: the solve is satisfied and the sketch is
+// fully constrained, yet the constraint only holds the profile at an extreme,
+// so the geometry can be visibly tilted. A cool blue keeps it apart from the
+// culprit's red (a failed solve) and the redundant tile's amber (a
+// measurement): it is a warning, not either of those.
+export const COLOR_CONSTRAINT_WEAK = '#29b6f6'
 export const COLOR_INACTIVE = '#3a4048'
 export const COLOR_HOVER = '#ffffff'
 export const COLOR_SELECTED = '#ff9800'

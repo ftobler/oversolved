@@ -28,11 +28,14 @@ import {
 
 /** The realised precision of the geometry a body was built from, in radians
  *  (angular) and document length units (linear). `sketch` names the solve that
- *  reported it, so a ceiling warning can say which one. */
+ *  reported it, so a ceiling warning can say which one; `weak` is true when
+ *  that solve also reported a weak (second-order) constraint, which is the
+ *  reason the geometry can be visibly tilted while the rows still read tight. */
 export interface KernelPrecision {
   angular: number
   linear: number
   sketch?: string
+  weak?: boolean
 }
 
 /** The widest the merge may read, one rung above the contract on each side. */
@@ -49,22 +52,26 @@ function floored(value: unknown, floor: number): number {
 }
 
 /** A solve's reported misses as a precision record, floored at the contract.
- *  The sketch id rides along for the ceiling warning. */
+ *  The sketch id rides along for the ceiling warning, as does the weak flag: a
+ *  weak constraint is the reason a tight-looking solve can still be tilted. */
 export function contractPrecision(
   angular: unknown,
   linear: unknown,
   sketch?: string,
+  weak = false,
 ): KernelPrecision {
   return {
     angular: floored(angular, OCC_ANGULAR),
     linear: floored(linear, OCC_CONFUSION),
     ...(sketch ? { sketch } : {}),
+    ...(weak ? { weak: true } : {}),
   }
 }
 
 /** The componentwise max of two records (either may be absent), keeping the
- *  sketch name of the record that dominates. "The max over its producing
- *  sketches' misses" is what a body made from several profiles carries. */
+ *  sketch name (and weak flag) of the record that dominates. "The max over its
+ *  producing sketches' misses" is what a body made from several profiles
+ *  carries. */
 export function maxPrecision(
   a: KernelPrecision | null | undefined,
   b: KernelPrecision | null | undefined,
@@ -77,6 +84,7 @@ export function maxPrecision(
     angular: Math.max(a.angular, b.angular),
     linear: Math.max(a.linear, b.linear),
     ...(winner.sketch ? { sketch: winner.sketch } : {}),
+    ...(winner.weak ? { weak: true } : {}),
   }
 }
 
@@ -112,7 +120,9 @@ const tol = (value: number): string => value.toExponential()
  * The build warning a feature carries when its merge ran at the ceiling. Null
  * when nothing was clamped, which is every within-contract solve. The sketch is
  * named when the record knows it; a body whose warning was already emitted at
- * the merge that acquired the precision carries the same name forward.
+ * the merge that acquired the precision carries the same name forward. When the
+ * named sketch also reported a weak constraint, a closing clause points at that
+ * warning: the tilt, not the merge, is the cause the author can act on.
  */
 export function precisionCeilingWarning(precision: KernelPrecision): string | null {
   const { ceilingMiss } = mergeTolerance(precision)
@@ -133,7 +143,10 @@ export function precisionCeilingWarning(precision: KernelPrecision): string | nu
       'merge ceiling; near-coincident faces may stay split',
     )
   }
-  return parts.join('; ')
+  const pointer = precision.weak && precision.sketch
+    ? `; see the warning on sketch ${precision.sketch}`
+    : ''
+  return parts.join('; ') + pointer
 }
 
 /** The repo key a solved sketch publishes its realised precision under, beside
@@ -143,13 +156,16 @@ export function precisionKey(sketchId: string): string {
 }
 
 /** The precision a solve result reports for `sketchId`, or null when the result
- *  carries neither miss (a non-sketch feature, a failed solve). */
+ *  carries neither miss (a non-sketch feature, a failed solve). The weak flag
+ *  rides along so a downstream ceiling warning can point at that sketch's own
+ *  warning. */
 export function precisionOfSolve(
-  result: { angular_miss?: unknown; linear_miss?: unknown },
+  result: { angular_miss?: unknown; linear_miss?: unknown; weak_constraints?: unknown },
   sketchId: string,
 ): KernelPrecision | null {
   if (!('angular_miss' in result) && !('linear_miss' in result)) return null
-  return contractPrecision(result.angular_miss, result.linear_miss, sketchId)
+  const weak = Array.isArray(result.weak_constraints) && result.weak_constraints.length > 0
+  return contractPrecision(result.angular_miss, result.linear_miss, sketchId, weak)
 }
 
 function isPrecisionRecord(value: unknown): value is KernelPrecision {
@@ -158,6 +174,7 @@ function isPrecisionRecord(value: unknown): value is KernelPrecision {
   return typeof v.angular === 'number' && Number.isFinite(v.angular)
     && typeof v.linear === 'number' && Number.isFinite(v.linear)
     && (v.sketch === undefined || typeof v.sketch === 'string')
+    && (v.weak === undefined || typeof v.weak === 'boolean')
 }
 
 /**

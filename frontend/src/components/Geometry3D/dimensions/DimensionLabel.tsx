@@ -29,7 +29,7 @@ const LABEL_HALO = '0 0 2px #111, 0 0 2px #111'
  * could only under-cover a long label and would disagree with the box.
  */
 export function DimensionLabel({
-  cid, x, y, label, color, enabled = true, isDragged, angleDeg, onTextElement,
+  cid, x, y, label, color, enabled = true, isDragged, angleDeg, hovered = false, title, onTextElement,
 }: {
   cid: string
   x: number
@@ -40,6 +40,13 @@ export function DimensionLabel({
   isDragged: boolean
   // CSS `rotate()` degrees for the glyph block; unset keeps it horizontal.
   angleDeg?: number
+  // The label is hovered through the canvas dispatcher (the glyphs themselves
+  // take no pointer events). A `title` is shown as a small tooltip only then:
+  // it is a solve sentence, not something to keep on screen permanently.
+  hovered?: boolean
+  // Hover text for a solve verdict that has a sentence of its own (a weak
+  // constraint), beside the usual colour marking.
+  title?: string
   // Publishes the glyph block itself, whether or not it is pickable, so a
   // linear dimension can size the gap in its line from the rendered text and
   // keep the rotation current. Must be identity-stable: a changing callback
@@ -75,6 +82,16 @@ export function DimensionLabel({
       >
         {label}
       </div>
+      {hovered && title && (
+        // Out of flow on purpose: the drei wrapper is the containing block, and
+        // an in-flow tooltip would grow the centred block, move the glyphs under
+        // the cursor and make the hover hit box drop it (the sentence would
+        // strobe). Sibling of the glyph block, not part of it, so
+        // `onTextElement` still measures the label alone.
+        <div style={{ position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)', width: 'max-content', padding: '2px 6px', background: '#1b1b1b', color: '#e8e8e8', fontSize: 11, borderRadius: 3, maxWidth: 260, whiteSpace: 'normal', textAlign: 'left' }}>
+          {title}
+        </div>
+      )}
     </Html>
   )
 }

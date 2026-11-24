@@ -1300,6 +1300,12 @@ export interface Constraint {
   /** The solve blamed this constraint for a share of an unsatisfied sketch's
    *  miss. Rendered in the deeper error red, on top of the all-red sketch. */
   culprit?: boolean
+  /** The solve found this constraint holds its direction only to second order
+   *  (an axis distance at a circle's extreme), so a satisfied sketch can still
+   *  be visibly tilted. Rendered with the weak outline; `weak_angle` is how far
+   *  the profile can rotate along it, in degrees, for the tooltip. */
+  weak?: boolean
+  weak_angle?: number
 }
 
 export interface Constraints {

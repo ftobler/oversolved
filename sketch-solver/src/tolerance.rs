@@ -52,6 +52,12 @@
 //!     resolution. `topology`'s degeneracy guards (`ZERO_LENGTH_SQ`,
 //!     `CIRCLE_TANGENT_EPS`) are guards on the shape of an expression (a
 //!     division, a segment test), absolute by construction.
+//!   - `WEAK_SURFACE_IDENTITY` / `WEAK_SURFACE_PARALLEL`: the two TS-side
+//!     rungs the weak-constraint estimate is read against. Absolute because
+//!     they are the kernel half's own surface-identity and axis-parallel
+//!     widths, mirrored by value rather than derived from the sketch, so a
+//!     reported weak constraint means the same thing the kernel comparison
+//!     does.
 //!
 //! The kernel precision contract ([`OCC_CONFUSION`], [`OCC_ANGULAR`]) is the
 //! newest deliberately absolute rung, and the only one this crate does not own:
@@ -75,10 +81,18 @@
 //! row width can close it. The finish tightens rows (parallel pairs agree to
 //! 1e-12 here); it cannot pin a free global direction. The decision of
 //! 2026-11-14 is the authored `horizontal`: the report document closes its seam
-//! with a row that measures the direction. No orientation-uncertainty signal is
-//! added, and the kernel half does not widen to a fixed rung, so
-//! `feature/kernel-unify-within-contract.md`'s widening cannot merge the raw
-//! report document by itself.
+//! with a row that measures the direction, and the kernel half does not widen to
+//! a fixed rung, so `feature/kernel-unify-within-contract.md`'s widening cannot
+//! merge the raw report document by itself.
+//!
+//! A second case exists where the direction IS measured and still ships tilted:
+//! a dimension at a geometric extreme (an axis distance naming a point at the
+//! top, bottom or side of a circle) is a double root, so its row is stationary
+//! at the intended solution and the verdict accepts a visible offset. That one
+//! is reported rather than fixed (see `solve::weak_constraints`, and
+//! [`WEAK_SURFACE_IDENTITY`] / [`WEAK_SURFACE_PARALLEL`]): no row width can
+//! repair a quadratic root, and moving the geometry along the near-free
+//! direction is exactly what the finish cap refuses to do.
 //!
 //! The area builder's sampled scan (`geom_core::curve_intersect`) is the one
 //! place where an absolute RESOLUTION is deliberate rather than derived:
@@ -183,6 +197,25 @@ pub fn contract_angular(seed_len: f64) -> f64 {
 pub fn contract_positional() -> f64 {
     OCC_CONFUSION * CONTRACT_POSITIONAL_REL
 }
+
+/// Surface identity as the weak-constraint test reads it: the largest world
+/// distance a solved sketch may be uncertain of along its weakest direction
+/// before that direction is a visible offset rather than a precision miss.
+/// The value is the TS side's `TOL_SURFACE_IDENTITY` rung
+/// (`frontend/src/kernel/solverConstants.ts`), mirrored here because the
+/// solver's diagnostic is what the kernel half then has to explain. Named
+/// without the `TOL_` prefix on purpose: that namespace belongs to the
+/// frontend ladder (and the mirror test that parses `geom-core` counts its
+/// members), while this is the solver's reading of the same rung.
+pub const WEAK_SURFACE_IDENTITY: f64 = 1e-6;
+
+/// The angular companion: the weak direction's uncertainty over the sketch
+/// scale, in radians, past which the sketch can rotate visibly. By value the
+/// TS side's `TOL_SURFACE_PARALLEL` rung ("same analytic axis"), the coarsest
+/// angular width the kernel half compares against, so a reported weak
+/// constraint cannot be dismissed as within its own noise. Same naming rule as
+/// [`WEAK_SURFACE_IDENTITY`].
+pub const WEAK_SURFACE_PARALLEL: f64 = 1e-9;
 
 /// How far a solved param may sit from its seed and still count as the seed
 /// the document already stores: half of the host's storage quantum, i.e. a

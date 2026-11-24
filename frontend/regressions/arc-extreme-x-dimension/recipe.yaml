@@ -1,0 +1,95 @@
+# The report document of bugreports/20261123_2307_solver_accuracy.md as exported
+# (`extrude 2` followed a cap face tilted 0.044 deg). Random ids are kept: the
+# point is the document, and the scripted-fix test names its constraints.
+features:
+  - id: sk1
+    kind: sketch
+    plane: "@builtin_plane_front"
+    entities:
+      - { id: l1, kind: line }
+      - { id: l2, kind: line }
+      - { id: ZXtu9tQXHRqK21tp, kind: arc }
+      - { id: 4XYHeH6KY5dotoHf, kind: line }
+      - { id: 4TjS1xixmBqWFlDW, kind: arc }
+      - { id: eFnI-hQ5yVyNef-9, kind: line }
+      - { id: cap1, kind: line }
+      - { id: cap2, kind: line }
+      - { id: p7vaJV370VWNDoaM, kind: point }
+    initial:
+      l1: [-7, 3, 0, 3]
+      l2: [2.999999, -0.002306, 2.994619, -7.002304]
+      ZXtu9tQXHRqK21tp: [0, 0, 3, -0.044038, 90]
+      4XYHeH6KY5dotoHf: [-7, 2.000001, 0, 2.000001]
+      4TjS1xixmBqWFlDW: [0, 0, 2.000001, -0.044038, 90]
+      eFnI-hQ5yVyNef-9: [2, -0.001537, 1.99462, -7.001535]
+      cap1: [-7, 2.000001, -7, 3]
+      cap2: [2.994619, -7.002304, 1.994619, -7.001535]
+      p7vaJV370VWNDoaM: [0, 0]
+    constraints:
+      - { id: c_coincident_PakTOghU, kind: coincident, a: "$l1end", b: "$ZXtu9tQXHRqK21tpend" }
+      - { id: c_coincident_4k_NMxXA, kind: coincident, a: "$ZXtu9tQXHRqK21tpstart", b: "$l2start" }
+      - { id: c_tangent_MFmrSvKS, kind: tangent, a: "$l1", b: "$ZXtu9tQXHRqK21tp" }
+      - { id: c_tangent_PgBiWh3y, kind: tangent, a: "$ZXtu9tQXHRqK21tp", b: "$l2" }
+      - { id: c_parallel_FvrE1efd, kind: parallel, a: "$l1", b: "$4XYHeH6KY5dotoHf" }
+      - { id: c_concentric_b_bA55fJ, kind: concentric, a: "$ZXtu9tQXHRqK21tp", b: "$4TjS1xixmBqWFlDW" }
+      - { id: c_parallel_qco9yeie, kind: parallel, a: "$l2", b: "$eFnI-hQ5yVyNef-9" }
+      - { id: c_tangent_DBu_64z_, kind: tangent, a: "$4XYHeH6KY5dotoHf", b: "$4TjS1xixmBqWFlDW" }
+      - { id: c_tangent_fZzigZWb, kind: tangent, a: "$4TjS1xixmBqWFlDW", b: "$eFnI-hQ5yVyNef-9" }
+      - id: c_point_distance_x_OJPy7uYJ
+        kind: point_distance_x
+        a: "$4TjS1xixmBqWFlDWstart"
+        b: "$ZXtu9tQXHRqK21tpcenter"
+        value: 2
+        pos: [0.017804, -2.069152]
+        sign: -1
+      - id: c_length_cVtXV-g-
+        kind: length
+        target: "$eFnI-hQ5yVyNef-9"
+        value: 7
+        pos: [-0.949204, -0.153928]
+      - id: c_length_Ub1TosET
+        kind: length
+        target: "$4XYHeH6KY5dotoHf"
+        value: 7
+        pos: [0.781808, -1.34688]
+      - id: c_length_7evyA5Z6
+        kind: length
+        target: "$cap2"
+        value: 1
+        pos: [-0.057069, -1.190135]
+      - id: c_radius_xmOvyexn
+        kind: radius
+        target: "$ZXtu9tQXHRqK21tp"
+        value: 3
+        pos: [3.229752, 3.828299]
+      - { id: c_coincident_6kmA-BJ_, kind: coincident, a: "$cap1end", b: "$l1start" }
+      - { id: c_coincident_gvyPwiIL, kind: coincident, a: "$cap1start", b: "$4XYHeH6KY5dotoHfstart" }
+      - { id: c_normal_EPUiV_M0, kind: normal, a: "$4XYHeH6KY5dotoHf", b: "$cap1" }
+      - { id: c_coincident_CI8QFVdj, kind: coincident, a: "$4XYHeH6KY5dotoHfend", b: "$4TjS1xixmBqWFlDWend" }
+      - { id: c_coincident_Y7vCFUV5, kind: coincident, a: "$eFnI-hQ5yVyNef-9end", b: "$cap2end" }
+      - { id: c_coincident_-s78VcFr, kind: coincident, a: "$eFnI-hQ5yVyNef-9start", b: "$4TjS1xixmBqWFlDWstart" }
+      - { id: c_coincident_wtkdqfHE, kind: coincident, a: "$l2end", b: "$cap2start" }
+      - { id: c_normal_3pSiMtJt, kind: normal, a: "$cap2", b: "$eFnI-hQ5yVyNef-9" }
+      - { id: proj_p7vaJV370VWNDoaM, kind: projection, target: "$p7vaJV370VWNDoaM", source: "@builtin_origin" }
+      - { id: c_coincident_bf-6qZa4, kind: coincident, a: "$p7vaJV370VWNDoaMxy", b: "$ZXtu9tQXHRqK21tpcenter" }
+      - { id: c_horizontal_FGrvYLjM, kind: horizontal, target: "$4XYHeH6KY5dotoHf" }
+  - id: ex1
+    kind: extrude
+    label: Extrude
+    extrude:
+      sketch: ["$sk1"]
+      distance: 1
+      direction: normal
+      operation: new
+  - id: xUH6HOpLrnzoUULH0yU7HhLL
+    kind: extrude
+    label: extrude 2
+    extrude:
+      sketch: ["?15,4,9,9,7,7;@u|u_1716bfecb1416995@ex1@body_ex1@sk1/cap2@cls_xp@cls_yn:flatface"]
+      distance: 10
+      direction: normal
+part_style:
+  body_ex1:
+    name: part 1
+    color: "#6AB59B"
+    created_by: ex1

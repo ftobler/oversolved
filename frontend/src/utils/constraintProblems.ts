@@ -133,6 +133,34 @@ export function ignoredConstraintWarning(id: string, kind: string, reason: strin
   return `constraint ${id} (${kind}) names operands it cannot use (${reason}) and was ignored.`
 }
 
+/**
+ * The user-facing noun for a constraint in the weak warning: the axis-distance
+ * family in its own words ("x distance 2"), any other kind as its name and
+ * value. Never the id (feature/ui-names-not-ids.md; until the shared display
+ * names land this is the kind-and-value form that plan allows).
+ */
+export function weakConstraintNoun(kind: string | undefined, value: number | undefined): string {
+  const measure = value === undefined || !Number.isFinite(value)
+    ? ''
+    : ` ${Number(value.toPrecision(6))}`
+  if (kind === 'point_distance_x') return `x distance${measure}`
+  if (kind === 'point_distance_y') return `y distance${measure}`
+  return `${(kind ?? 'constraint').replace(/_/g, ' ')}${measure}`
+}
+
+/**
+ * The build warning a weak (second-order) constraint reports, and the tooltip of
+ * its tile. The sketch is fully constrained and still visibly tilted: the
+ * dimension holds the profile only at an extreme, where its row is stationary,
+ * so the solve accepts the tilt instead of pulling the geometry along a
+ * near-free direction. `degrees` is the rotation the solve measured along it.
+ */
+export function weakConstraintWarning(noun: string, degrees: number): string {
+  const shown = Number.isFinite(degrees) && degrees > 0 ? Number(degrees.toPrecision(2)) : 0
+  return `${noun} holds the profile only at the arc's extreme, so the profile can rotate by up to `
+    + `${shown} deg. Constrain the line vertical, or dimension a point that is not at the arc's extreme.`
+}
+
 /** The keys a midpoint stores, in the document's usual `$`/`@` wire form. The
  *  two forms are distinct: one line with its midpoint, or the point midway
  *  between two points. */

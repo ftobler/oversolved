@@ -142,6 +142,32 @@ describe('DimensionLabel text', () => {
   })
 })
 
+describe('DimensionLabel weak tooltip', () => {
+  // A weak constraint's sentence is a solve explanation, not a permanent caption:
+  // it appears only through the label's own hover path (the glyphs take no
+  // pointer events, so the canvas dispatcher owns that state).
+  it('shows the sentence while hovered and hides it otherwise', async () => {
+    const sentence = "x distance 2 holds the profile only at the arc's extreme, so the profile can rotate by up to 0.045 deg."
+    const shown = await renderLabel({ title: sentence, hovered: true })
+    expect(labelWrapper().textContent).toContain(sentence)
+    // Out of flow, or the centred block grows under the cursor and the hover
+    // hit box drops it (the sentence would strobe in and out).
+    const tooltip = labelWrapper().querySelectorAll('div')[1]
+    expect(tooltip?.style.position).toBe('absolute')
+    expect(tooltip?.textContent).toBe(sentence)
+    shown.unmount()
+
+    await act(async () => {})
+    await renderLabel({ title: sentence, hovered: false })
+    expect(labelWrapper().textContent).toBe('R5')
+  })
+
+  it('shows nothing for a hovered label with no verdict sentence', async () => {
+    await renderLabel({ hovered: true })
+    expect(labelWrapper().textContent).toBe('R5')
+  })
+})
+
 describe('DimensionLabel rotation', () => {
   it('rotates the text block by the given angle', async () => {
     await renderLabel({ angleDeg: 15.5 })

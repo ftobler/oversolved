@@ -7,8 +7,8 @@
 // no per-constraint verdicts, SKG4/SKR4: no storage quantum / moved report,
 // SKG5/SKR5: no dropped verdict bit, SKG6/SKR6: no reference params,
 // SKG7/SKR7: no realised-precision diagnostics, SKG8/SKR8: a Group row holds no
-// rotation carrier) are refused instead of decoded with shifted offsets or
-// misread verdicts.
+// rotation carrier, SKR9: no weak-constraint block) are refused instead of
+// decoded with shifted offsets or misread verdicts.
 
 import { describe, it, expect } from 'vitest'
 import {
@@ -20,8 +20,9 @@ import { OCC_ANGULAR, OCC_CONFUSION } from '@/kernel/solverConstants'
 
 const solveBytes = loadSolver()
 
-const MAGIC_IN = 0x39474b53  // "SKG9"
-const MAGIC_OUT = 0x39524b53  // "SKR9"
+const MAGIC_IN = 0x41474b53  // "SKGA"
+const MAGIC_OUT = 0x41524b53  // "SKRA"
+const MAGIC_OUT_SKR9 = 0x39524b53  // "SKR9" (no weak-constraint block)
 const MAGIC_OUT_SKR8 = 0x38524b53  // "SKR8" (a Group row holds no rotation carrier)
 const MAGIC_OUT_SKR7 = 0x37524b53  // "SKR7" (diagnostics stop at ms)
 const MAGIC_OUT_SKR6 = 0x36524b53  // "SKR6" (no reference params in the input)
@@ -55,10 +56,12 @@ function outputBytes(magic: number, entityMoved = [0b0000_0011]): Uint8Array {
   const vertexFreedom = [0, 1, 1, 0]
   const constraintFlags = [1, 0, 2]
   const constraintMiss = [0.5, 0, 0.125]
-  const size = 4 + 4 + 4 + 4 + 4 + 4 + 1
+  const weak = [{ index: 2, moveEstimate: 0.0437 }]
+  const size = 4 + 4 + 4 + 4 + 4 + 4 + 4 + 1
     + params.length * 8 + entityStatus.length + vertexFreedom.length * 8
     + constraintFlags.length + constraintMiss.length * 8
     + entityMoved.length
+    + weak.length * 12
     + 8 + 4 + 4 + 4 + 8 + 8 + 8
   const buf = new ArrayBuffer(size)
   const dv = new DataView(buf)
@@ -72,6 +75,7 @@ function outputBytes(magic: number, entityMoved = [0b0000_0011]): Uint8Array {
   u32(vertexFreedom.length)  // vertexFreedom length
   u32(constraintFlags.length)  // per-constraint verdict count
   u32(entityMoved.length)  // entity_moved byte count
+  u32(weak.length)  // weak-constraint count
   u8(1)  // overallStatus: underconstrained
   for (const p of params) f64(p)
   for (const s of entityStatus) u8(s)
@@ -79,6 +83,10 @@ function outputBytes(magic: number, entityMoved = [0b0000_0011]): Uint8Array {
   for (const f of constraintFlags) u8(f)
   for (const m of constraintMiss) f64(m)
   for (const m of entityMoved) u8(m)
+  for (const w of weak) {
+    u32(w.index)
+    f64(w.moveEstimate)
+  }
   f64(1.25)  // residualNorm
   u32(5)  // rank
   u32(1)  // dof
@@ -108,6 +116,7 @@ describe('sketch wire magic', () => {
     expect(out.constraintFlags).toEqual([1, 0, 2])
     expect(out.constraintMiss).toEqual([0.5, 0, 0.125])
     expect(out.entityMoved).toEqual([0b0000_0011])
+    expect(out.weakConstraints).toEqual([{ index: 2, moveEstimate: 0.0437 }])
     expect(out.overallStatus).toBe(1)
     expect(out.diagnostics.residualNorm).toBe(1.25)
     expect(out.diagnostics.rank).toBe(5)
@@ -130,12 +139,21 @@ describe('sketch wire magic', () => {
     const vf = view.getUint32(12, true)
     const nCon = view.getUint32(16, true)
     const nMoved = view.getUint32(20, true)
-    const tail = 25 + n * 8 + nStatus + vf * 8 + nCon * 9 + nMoved + 8 + 4 + 4 + 4 + 8
+    const nWeak = view.getUint32(24, true)
+    // The fixture carries one weak entry, and the NaN report sits after it.
+    expect(nWeak).toBe(1)
+    const tail = 29 + n * 8 + nStatus + vf * 8 + nCon * 9 + nMoved + nWeak * 12 + 8 + 4 + 4 + 4 + 8
     view.setFloat64(tail, Number.NaN, true)
     view.setFloat64(tail + 8, Number.NaN, true)
     const out = decodeOutput(bytes)
     expect(Number.isNaN(out.diagnostics.angularMiss)).toBe(true)
     expect(Number.isNaN(out.diagnostics.linearMiss)).toBe(true)
+  })
+
+  it('decodeOutput rejects the rev 9 (SKR9) output magic', () => {
+    // Rev 9's output ends at the diagnostics, with no weak block: this reader
+    // would take the last precision f64's bytes as a weak count.
+    expect(() => decodeOutput(outputBytes(MAGIC_OUT_SKR9))).toThrow('bad output magic')
   })
 
   it('decodeOutput rejects the rev 8 (SKR8) output magic', () => {

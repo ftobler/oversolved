@@ -101,7 +101,7 @@ export function useSolver(
       topology?: import('@/types/cad').Topology
       originLocal?: [number, number]
       plane_transform?: import('@/types/cad').PlaneTransform
-      constraints?: Record<string, { residual: number; render: import('@/types/cad').ConstraintRender; superfluous?: boolean; culprit?: boolean }>
+      constraints?: Record<string, { residual: number; render: import('@/types/cad').ConstraintRender; superfluous?: boolean; culprit?: boolean; weak?: boolean; weak_angle?: number }>
       plane?: { origin: number[]; x_axis: number[]; y_axis: number[]; normal: number[] }
       body_id?: string
       body_ids?: string[]
@@ -186,6 +186,8 @@ export function useSolver(
                   residual: c.residual,
                   ...(c.superfluous ? { superfluous: true } : {}),
                   ...(c.culprit ? { culprit: true } : {}),
+                  ...(c.weak ? { weak: true } : {}),
+                  ...(c.weak ? { weak_angle: c.weak_angle ?? 0 } : {}),
                 }]
               })
             )

@@ -72,7 +72,7 @@ export function LinearDimension({ cid, dim, dimOffset, interaction, planeTransfo
       type: 'set_constraint_sign', featureId: interaction.featureId, constraintId: cid, sign: -current,
     })
   }, [interaction, cid, dimKind, dim.p1, dim.p2, dim.normal])
-  const { color, onOver, onOut, onClick, onDoubleClick, resetDragMoved, isDragged } =
+  const { color, hovered, title, onOver, onOut, onClick, onDoubleClick, resetDragMoved, isDragged } =
     useDimInteraction(cid, dim.value, interaction, true, isDirectional ? onFlip : undefined, dimKind)
   const activeDragPos = useActiveLabelDrag(cid)
 
@@ -302,6 +302,8 @@ export function LinearDimension({ cid, dim, dimOffset, interaction, planeTransfo
       <DimensionLabel
         cid={cid} enabled={!!interaction}
         x={labelX} y={labelY} label={label} color={color}
+        title={title}
+        hovered={hovered}
         isDragged={isDragged}
         angleDeg={angleDeg}
         onTextElement={onTextElement}

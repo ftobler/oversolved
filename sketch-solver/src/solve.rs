@@ -10,14 +10,17 @@ use crate::residuals::rows::RowClass;
 use crate::residuals::Problem;
 use crate::tolerance::{
     seed_keep_tol, verdict_tol, FREE_COMPONENT_TOL, RANK_TOL, REDUNDANT_ROW_REL,
+    WEAK_SURFACE_IDENTITY, WEAK_SURFACE_PARALLEL,
 };
 use crate::{
-    Diagnostics, Input, Kind, Output, Status, CONSTRAINT_FLAG_DROPPED, CONSTRAINT_FLAG_REDUNDANT,
+    Diagnostics, Input, Kind, Output, Status, WeakConstraint, CONSTRAINT_FLAG_DROPPED,
+    CONSTRAINT_FLAG_REDUNDANT,
 };
 use nalgebra::DMatrix;
 use solver_core::lm::{
     solve_lm, solve_lm_sparse, solve_lm_sparse_anchored, solve_lm_sparse_proximal, LmResult,
 };
+use std::collections::HashSet;
 
 /// True when a solve's final residual reads as a satisfied system. The width
 /// comes from the tolerance ladder (`tolerance::verdict_tol`: the measured
@@ -128,6 +131,9 @@ pub fn solve_sketch(input: &Input) -> Output {
             // reads no moved report; keep it empty like the other per-entity
             // arrays.
             entity_moved: Vec::new(),
+            // The drag path is not a settled cold solve, so it never reports a
+            // weak constraint: the caller's count guard expects this empty.
+            weak_constraints: Vec::new(),
             diagnostics: Diagnostics {
                 residual_norm: clean.residual_norm,
                 rank: 0,
@@ -236,11 +242,34 @@ pub fn solve_sketch(input: &Input) -> Output {
     // the number a caller recomputes from `params_solved` is exactly this one.
     // An overconstrained solve (including one whose seed already held invalid
     // geometry) has no precision to promise: NaN, never the finish's last
-    // reading.
+    // reading. The same measurement feeds the weak check below: it must not
+    // depend on whether the finish ran or was restored.
+    let shipped_misses = problem.contract_misses(&params_solved);
     finish = if finish.has_measured_miss() && status != Status::Overconstrained {
-        Finish::from_misses(finish.steps, problem.contract_misses(&params_solved))
+        finish.with_misses(shipped_misses)
     } else {
         Finish::unsatisfied()
+    };
+
+    // One evaluation of the constraint rows serves the weak report's row map and
+    // the per-constraint verdict walk below; both read the same solved params.
+    let layout = row_layout(&problem, &params_solved);
+
+    // Weak (second-order) constraints: only a fully constrained cold solve can
+    // ship one as `dof 0`, and only it reads the report (a free direction is
+    // already named by the underconstrained verdict). Both of this module's
+    // tests run here, see `weak_constraints`.
+    let weak_constraints = if status == Status::FullyConstrained && result.jacobian_finite {
+        weak_constraints(
+            &problem,
+            &jac,
+            &spectrum,
+            &layout,
+            finish.weak.as_ref(),
+            shipped_misses.1,
+        )
+    } else {
+        Vec::new()
     };
 
     // Per-constraint verdicts: a satisfied cold solve marks redundancy, an
@@ -251,18 +280,12 @@ pub fn solve_sketch(input: &Input) -> Output {
     // ratio. `skip_status_pass` does not gate them: it skips the per-ENTITY
     // pass, which is a different cost class.
     let (mut constraint_flags, constraint_miss) = if status == Status::Overconstrained {
-        let mut miss = constraint_miss(
-            &problem,
-            &params_solved,
-            &jac,
-            problem.scale(),
-            input.constraints.len(),
-        );
+        let mut miss = constraint_miss(&jac, problem.scale(), input.constraints.len(), &layout);
         flag_invalid_geometry(&problem, &invalid, &mut miss);
         (vec![0u8; input.constraints.len()], miss)
     } else {
         (
-            redundancy_flags(&problem, &params_solved, &jac, input.constraints.len()),
+            redundancy_flags(&jac, input.constraints.len(), &layout),
             vec![0f64; input.constraints.len()],
         )
     };
@@ -289,6 +312,7 @@ pub fn solve_sketch(input: &Input) -> Output {
         constraint_flags,
         constraint_miss,
         entity_moved,
+        weak_constraints,
         diagnostics: Diagnostics {
             residual_norm: result.residual_norm,
             rank: rank as u32,
@@ -358,6 +382,24 @@ struct Finish {
     steps: u32,
     angular_miss: f64,
     linear_miss: f64,
+    /// The step the finish refused because it was a visible move, not a
+    /// precision correction. Kept so `weak_constraints` can name the rows that
+    /// drove it; cleared when the finish is discarded (a red solve promises no
+    /// diagnostic either).
+    weak: Option<WeakDirection>,
+}
+
+/// A minimum-norm step the finish rejected, with the rows that drive it.
+///
+/// The finish cap exists so a near-free direction is not yanked; that same
+/// near-free direction is the weak constraint this crate now reports.
+/// `estimate` is the refused step read as a rotation in degrees (see
+/// `rotation_estimate`), the number the cap compared against.
+struct WeakDirection {
+    estimate: f64,
+    /// Jacobian rows whose own share of the step is at least half the largest,
+    /// largest first.
+    rows: Vec<usize>,
 }
 
 impl Finish {
@@ -366,6 +408,7 @@ impl Finish {
             steps: 0,
             angular_miss: f64::NAN,
             linear_miss: f64::NAN,
+            weak: None,
         }
     }
 
@@ -377,16 +420,25 @@ impl Finish {
         !(self.angular_miss.is_nan() && self.linear_miss.is_nan())
     }
 
-    fn from_misses(steps: u32, (angular_miss, linear_miss): (f64, f64)) -> Finish {
+    /// The same finish with the misses recomputed for the shipped params. The
+    /// refused-step diagnostic is about the same direction the params still
+    /// carry, so it rides along.
+    fn with_misses(self, (angular_miss, linear_miss): (f64, f64)) -> Finish {
+        Finish {
+            angular_miss,
+            linear_miss,
+            ..self
+        }
+    }
+
+    fn of(problem: &Problem, x: &[f64], steps: u32, weak: Option<WeakDirection>) -> Finish {
+        let (angular_miss, linear_miss) = problem.contract_misses(x);
         Finish {
             steps,
             angular_miss,
             linear_miss,
+            weak,
         }
-    }
-
-    fn of(problem: &Problem, x: &[f64], steps: u32) -> Finish {
-        Finish::from_misses(steps, problem.contract_misses(x))
     }
 }
 
@@ -422,18 +474,26 @@ fn finish_contract(input: &Input, problem: &Problem, x: &mut [f64]) -> Finish {
     let baseline_invalid = invalid_geometry(input, x);
     let step_cap = FINISH_STEP_REL * problem.scale();
     let mut steps = 0;
+    let mut rejected: Option<WeakDirection> = None;
     while steps < FINISH_STEPS && best > 1.0 {
         let jac = problem.jacobian(x, n);
         if !jac.iter().all(|v| v.is_finite()) {
             break;
         }
-        let Some(dx) = min_norm_step(&jac, &problem.residuals(x)) else {
+        let residual = problem.residuals(x);
+        let Some(dx) = min_norm_step(&jac, &residual) else {
             break;
         };
         // Near-degenerate direction: a singular value just over `RANK_TOL`
         // divides a tiny row by ~1e-6 and asks for a visible move along a nearly
         // free direction. A correction this large is not a precision tightening.
+        // The refusal is also the weak-constraint diagnostic: the step the rows
+        // want, and the rows whose own share of it is largest.
         if step_cap <= 0.0 || dx.iter().any(|d| d.abs() > step_cap) {
+            rejected = Some(WeakDirection {
+                estimate: rotation_estimate(problem, problem.scale(), &dx),
+                rows: step_rows(&jac, &residual),
+            });
             break;
         }
         let mut trial = x.to_vec();
@@ -461,7 +521,7 @@ fn finish_contract(input: &Input, problem: &Problem, x: &mut [f64]) -> Finish {
         best = trial_miss;
         steps += 1;
     }
-    Finish::of(problem, x, steps)
+    Finish::of(problem, x, steps, rejected)
 }
 
 /// The largest row miss as a multiple of its contract target: at or under 1
@@ -513,6 +573,251 @@ fn min_norm_step(jac: &DMatrix<f64>, residual: &[f64]) -> Option<Vec<f64>> {
         return None;
     }
     Some(dx.iter().copied().collect())
+}
+
+/// The rows that drive a minimum-norm step.
+///
+/// `dx = -J⁺ r`, so row `i` contributes `-r_i * J⁺[:, i]`; its size is
+/// `|r_i| * ||J⁺[:, i]||`, which the SVD factors give as
+/// `sqrt(sum_k (u[i,k] / s_k)²)` over the retained singular values. Only rows
+/// carrying at least half the largest contribution are kept: rows whose
+/// residual is at the solve's noise floor contribute nothing, so the report
+/// names the row (or few rows) the step is actually about.
+fn step_rows(jac: &DMatrix<f64>, residual: &[f64]) -> Vec<usize> {
+    let n = jac.ncols();
+    if n == 0 || jac.nrows() == 0 || residual.len() != jac.nrows() {
+        return Vec::new();
+    }
+    let svd = jac.clone().svd(true, true);
+    let Some(u) = svd.u else {
+        return Vec::new();
+    };
+    let sv = &svd.singular_values;
+    let mut scored: Vec<(usize, f64)> = Vec::with_capacity(jac.nrows());
+    for (i, &r_i) in residual.iter().enumerate() {
+        // ||J⁺[:, i]||: the same truncated pseudo-inverse `min_norm_step`
+        // builds, column by column.
+        let norm_sq: f64 = (0..sv.len())
+            .filter(|&k| sv[k] > RANK_TOL)
+            .map(|k| (u[(i, k)] / sv[k]).powi(2))
+            .sum();
+        scored.push((i, r_i.abs() * norm_sq.sqrt()));
+    }
+    dominant(scored).into_iter().map(|(row, _)| row).collect()
+}
+
+/// The rotation a param step amounts to, in degrees: an arc/ellipse angle slot
+/// is already degrees, any other slot is a world length read as a rotation over
+/// the sketch scale. The largest slot wins, so a step whose biggest component
+/// is an angle reports that angle rather than a smaller coordinate cousin.
+fn rotation_estimate(problem: &Problem, scale: f64, step: &[f64]) -> f64 {
+    let divisor = if scale > 0.0 { scale } else { 1.0 };
+    step.iter()
+        .enumerate()
+        .map(|(i, &d)| {
+            if problem.param_is_angle(i) {
+                d.abs()
+            } else {
+                (d.abs() / divisor).to_degrees()
+            }
+        })
+        .fold(0.0_f64, f64::max)
+}
+
+/// Keep the rows carrying at least half the largest entry, largest first. An
+/// all-zero (or non-finite-only) set selects nothing: there is no direction to
+/// name.
+fn dominant(mut rows: Vec<(usize, f64)>) -> Vec<(usize, f64)> {
+    let top = rows
+        .iter()
+        .map(|&(_, d)| if d.is_finite() { d } else { 0.0 })
+        .fold(0.0_f64, f64::max);
+    if top <= 0.0 {
+        return Vec::new();
+    }
+    rows.retain(|&(_, d)| d.is_finite() && d >= 0.5 * top);
+    rows.sort_by(|a, b| b.1.total_cmp(&a.1));
+    rows
+}
+
+/// The surviving constraints in residual-row order: the wire index, the first
+/// Jacobian row and the row count each owns, plus every constraint row's
+/// residual in that order.
+///
+/// The Jacobian stacks constraints, then pins, in exactly this order, so one
+/// evaluation of the constraint rows serves the weak report's row -> constraint
+/// map, the redundancy walk and the per-constraint miss. Rows are counted from
+/// the builders themselves; a broken residual/Jacobian mirror is still caught by
+/// each caller's own bounds checks.
+struct RowLayout {
+    /// `(wire index, first row, row count)`, one per surviving constraint.
+    constraints: Vec<(usize, usize, usize)>,
+    /// The residual of every constraint row, in Jacobian order.
+    residuals: Vec<f64>,
+}
+
+fn row_layout(problem: &Problem, x: &[f64]) -> RowLayout {
+    let wire = problem.constraint_wire_indices();
+    let mut constraints = Vec::with_capacity(problem.constraints().len());
+    let mut residuals = Vec::new();
+    let mut rows: Vec<f64> = Vec::new();
+    for (ci, c) in problem.constraints().iter().enumerate() {
+        rows.clear();
+        problem.residual_one(c, x, &mut rows);
+        constraints.push((
+            wire.get(ci).copied().unwrap_or(ci),
+            residuals.len(),
+            rows.len(),
+        ));
+        residuals.extend_from_slice(&rows);
+    }
+    RowLayout {
+        constraints,
+        residuals,
+    }
+}
+
+/// The wire index (`Input::constraints` position) of the surviving constraint
+/// that owns each Jacobian row, or `None` for the pin rows that follow them.
+fn constraint_row_wires(layout: &RowLayout, n_rows: usize) -> Vec<Option<usize>> {
+    let mut owners = vec![None; n_rows];
+    for &(wire, start, count) in &layout.constraints {
+        let end = (start + count).min(n_rows);
+        for owner in owners.iter_mut().take(end).skip(start) {
+            *owner = Some(wire);
+        }
+    }
+    owners
+}
+
+/// The weak constraints of a fully constrained solve, from the two independent
+/// tests.
+///
+/// 1. The finish refused a step larger than a precision correction (see
+///    `step_rows`). This is the exact case the diagnostic was born from: the
+///    verdict accepts the tilt, the finish knows the step that would undo it and
+///    refuses because the direction is near-free.
+/// 2. The solved Jacobian's smallest singular value. A direction the rows only
+///    hold to second order sits there, and the position uncertainty along it is
+///    about `linear_miss / sigma_min`, where `linear_miss` is the miss measured
+///    on the SHIPPED params by the caller (`Problem::contract_misses`), never
+///    the finish's own reading: a finish that ran, was restored or never ran
+///    must not change what this test sees. Over `WEAK_SURFACE_IDENTITY`, or over
+///    `WEAK_SURFACE_PARALLEL` once read as an angle across the sketch scale, the
+///    direction is a visible offset whichever way the finish got there. A
+///    non-finite miss is no measurement, so the test does not fire.
+///
+/// Both tests implicate rows, and a direction that nearly satisfies every row
+/// implicates the whole moving branch (each coincidence, tangency and length on
+/// it shares the first-order response). The report therefore keeps only the
+/// axis-distance rows: that is the one dimension family whose row is stationary
+/// at a geometric extreme (a point at a circle's top, bottom or side), which is
+/// the double root this diagnostic exists for, and it is the row the host's
+/// sentence tells the user to change. A weak coincidence or tangency is not "the
+/// wrong constraint", and a length or radius row is not stationary this way, so
+/// reporting them would be noise. A constraint found by both tests keeps the
+/// larger estimate; the report is ordered largest first.
+fn weak_constraints(
+    problem: &Problem,
+    jac: &DMatrix<f64>,
+    spectrum: &Spectrum,
+    layout: &RowLayout,
+    finish_weak: Option<&WeakDirection>,
+    linear_miss: f64,
+) -> Vec<WeakConstraint> {
+    let owners = constraint_row_wires(layout, jac.nrows());
+    let mut found: Vec<(usize, f64)> = Vec::new();
+    let mut blame = |rows: &[usize], degrees: f64| {
+        for &row in rows {
+            let Some(Some(wire)) = owners.get(row) else {
+                continue;
+            };
+            match found.iter_mut().find(|(existing, _)| existing == wire) {
+                Some((_, best)) => *best = best.max(degrees),
+                None => found.push((*wire, degrees)),
+            }
+        }
+    };
+    if let Some(weak) = finish_weak {
+        blame(&weak.rows, weak.estimate);
+    }
+    if let Some((rows, estimate)) = sigma_blame(
+        jac,
+        spectrum.weakest_sv,
+        &spectrum.weakest_dir,
+        linear_miss,
+        problem.scale(),
+    ) {
+        blame(&rows, estimate);
+    }
+    let axis_wires: HashSet<usize> = problem
+        .constraints()
+        .iter()
+        .zip(problem.constraint_wire_indices())
+        .filter(|(c, _)| {
+            matches!(
+                c.kind(),
+                Some(crate::constraints::ConstraintKind::PointDistanceX)
+                    | Some(crate::constraints::ConstraintKind::PointDistanceY)
+            )
+        })
+        .map(|(_, &wire)| wire)
+        .collect();
+    let mut kept: Vec<(usize, f64)> = found
+        .into_iter()
+        .filter(|(wire, _)| axis_wires.contains(wire))
+        .collect();
+    kept.sort_by(|a, b| b.1.total_cmp(&a.1));
+    kept.into_iter()
+        .filter(|&(_, degrees)| degrees.is_finite() && degrees > 0.0)
+        .map(|(wire, degrees)| WeakConstraint {
+            constraint_index: wire as u32,
+            move_estimate: degrees,
+        })
+        .collect()
+}
+
+/// Test 2 of [`weak_constraints`]: the smallest singular value and the rows
+/// that drive its direction, or `None` when the direction is not weak.
+///
+/// The uncertainty is `linear_miss / sigma_min` in parameter units; read over
+/// the sketch scale it is the rotation the weak direction allows, so that is
+/// the estimate. The rows implicated are the ones whose first-order gain along
+/// the direction is at least half the largest. A non-finite miss is no
+/// measurement and never fires the test.
+fn sigma_blame(
+    jac: &DMatrix<f64>,
+    sigma_min: f64,
+    direction: &[f64],
+    linear_miss: f64,
+    scale: f64,
+) -> Option<(Vec<usize>, f64)> {
+    if sigma_min <= 0.0 || direction.len() != jac.ncols() || !linear_miss.is_finite() {
+        return None;
+    }
+    let uncertainty = linear_miss / sigma_min;
+    // The angular clause needs a scale to divide by; a zero-sized sketch has no
+    // rotation to speak of, so the world clause is the only one there.
+    let wide = uncertainty > WEAK_SURFACE_IDENTITY
+        || (scale > 0.0 && uncertainty / scale > WEAK_SURFACE_PARALLEL);
+    if !wide {
+        return None;
+    }
+    let mut gains: Vec<(usize, f64)> = Vec::with_capacity(jac.nrows());
+    for i in 0..jac.nrows() {
+        let gain: f64 = jac
+            .row(i)
+            .iter()
+            .zip(direction.iter())
+            .map(|(j, v)| j * v)
+            .sum();
+        gains.push((i, gain.abs()));
+    }
+    let rows = dominant(gains).into_iter().map(|(row, _)| row).collect();
+    Some((
+        rows,
+        (uncertainty / scale.max(f64::MIN_POSITIVE)).to_degrees(),
+    ))
 }
 
 /// Keep the finished LM answer when it still reads as a satisfied, finite
@@ -653,35 +958,30 @@ fn flag_invalid_geometry(problem: &Problem, invalid: &[usize], miss: &mut [f64])
 /// by construction, so the walk stops accumulating there. One pass, no SVD:
 /// O(m n^2) worst case, the alternative's 5.9 s for 200 lines is the stated
 /// reason.
-fn redundancy_flags(problem: &Problem, x: &[f64], jac: &DMatrix<f64>, n_wire: usize) -> Vec<u8> {
+fn redundancy_flags(jac: &DMatrix<f64>, n_wire: usize, layout: &RowLayout) -> Vec<u8> {
     let mut flags = vec![0u8; n_wire];
     let n = jac.ncols();
     if n == 0 {
         return flags;
     }
-    let wire = problem.constraint_wire_indices();
     // Orthonormal basis of the span so far, one flat row per direction.
     let mut basis: Vec<Vec<f64>> = Vec::new();
-    let mut rows: Vec<f64> = Vec::new();
-    let mut row0 = 0usize;
-    for (ci, c) in problem.constraints().iter().enumerate() {
-        rows.clear();
-        problem.residual_one(c, x, &mut rows);
+    for &(wire, start, count) in &layout.constraints {
         let mut adds_rank = false;
-        for (r, _) in rows.iter().enumerate() {
+        for r in 0..count {
             // The residual and Jacobian builders mirror row counts by contract;
             // a broken mirror must not trap the Worker, so a short Jacobian
             // stops the WHOLE walk and keeps the flags decided so far. If only
-            // this row were skipped, `row0` would still advance past the end
-            // and every later constraint would read a missing row as "adds no
-            // rank", misflagging the rest of the set as redundant.
-            if row0 + r >= jac.nrows() {
+            // this row were skipped, the later constraints would still read a
+            // missing row as "adds no rank", misflagging the rest of the set as
+            // redundant.
+            if start + r >= jac.nrows() {
                 return flags;
             }
             if basis.len() == n {
                 break;
             }
-            let mut v: Vec<f64> = jac.row(row0 + r).iter().copied().collect();
+            let mut v: Vec<f64> = jac.row(start + r).iter().copied().collect();
             let before = norm(&v);
             for _ in 0..2 {
                 for b in &basis {
@@ -702,10 +1002,9 @@ fn redundancy_flags(problem: &Problem, x: &[f64], jac: &DMatrix<f64>, n_wire: us
                 adds_rank = true;
             }
         }
-        if !rows.is_empty() && !adds_rank {
-            flags[wire[ci]] = CONSTRAINT_FLAG_REDUNDANT;
+        if count > 0 && !adds_rank {
+            flags[wire] = CONSTRAINT_FLAG_REDUNDANT;
         }
-        row0 += rows.len();
     }
     flags
 }
@@ -722,33 +1021,22 @@ fn redundancy_flags(problem: &Problem, x: &[f64], jac: &DMatrix<f64>, n_wire: us
 /// to pick the culprits of an unsatisfied solve (top contributors covering 90%
 /// of the total miss), so it needs exactly this: how far each constraint is
 /// from being satisfiable in the units of the sketch.
-fn constraint_miss(
-    problem: &Problem,
-    x: &[f64],
-    jac: &DMatrix<f64>,
-    scale: f64,
-    n_wire: usize,
-) -> Vec<f64> {
+fn constraint_miss(jac: &DMatrix<f64>, scale: f64, n_wire: usize, layout: &RowLayout) -> Vec<f64> {
     let mut miss = vec![0f64; n_wire];
     let denom = if scale > 0.0 { scale } else { 1.0 };
-    let wire = problem.constraint_wire_indices();
-    let mut rows: Vec<f64> = Vec::new();
-    let mut row0 = 0usize;
-    for (ci, c) in problem.constraints().iter().enumerate() {
-        rows.clear();
-        problem.residual_one(c, x, &mut rows);
+    for &(wire, start, count) in &layout.constraints {
         let mut worst = 0f64;
-        for (r, &res) in rows.iter().enumerate() {
-            if row0 + r >= jac.nrows() {
+        for r in 0..count {
+            if start + r >= jac.nrows() {
                 break;
             }
-            let jn = jac.row(row0 + r).norm();
+            let jn = jac.row(start + r).norm();
             if jn > 0.0 {
-                worst = worst.max(res.abs() / jn);
+                let residual = layout.residuals.get(start + r).copied().unwrap_or(0.0);
+                worst = worst.max(residual.abs() / jn);
             }
         }
-        miss[wire[ci]] = worst / denom;
-        row0 += rows.len();
+        miss[wire] = worst / denom;
     }
     miss
 }
@@ -769,6 +1057,12 @@ struct Spectrum {
     /// `n x k`, one null direction per column; empty unless requested.
     null: DMatrix<f64>,
     null_sv: Vec<f64>,
+    /// The smallest singular value above `RANK_TOL` and its right singular
+    /// vector: the direction the rows hold most weakly, which is where a
+    /// second-order (weak) constraint shows up. `0.0` / empty when no direction
+    /// is retained (every one is free or the matrix was not decomposed).
+    weakest_sv: f64,
+    weakest_dir: Vec<f64>,
 }
 
 impl Spectrum {
@@ -780,6 +1074,8 @@ impl Spectrum {
             rank: 0,
             null: DMatrix::zeros(0, 0),
             null_sv: Vec::new(),
+            weakest_sv: 0.0,
+            weakest_dir: Vec::new(),
         }
     }
 
@@ -789,6 +1085,8 @@ impl Spectrum {
                 rank: 0,
                 null: DMatrix::zeros(0, 0),
                 null_sv: Vec::new(),
+                weakest_sv: 0.0,
+                weakest_dir: Vec::new(),
             };
         }
         // The last line of defence: nalgebra's SVD has no answer for a NaN
@@ -813,7 +1111,10 @@ impl Spectrum {
         } else {
             j
         };
-        let svd = j.clone().svd(false, want_null);
+        // `v_t` is requested even when the caller skipped the null basis: the
+        // weakest direction is the weak-constraint test's input, and it must
+        // not disappear with `skip_status_pass`.
+        let svd = j.clone().svd(false, true);
         let sv = &svd.singular_values;
         // `RANK_TOL` is a numerical-rank floor on a dimensionless spectrum;
         // its own comment in `tolerance` says why it is absolute.
@@ -823,17 +1124,34 @@ impl Spectrum {
                 rank,
                 null: DMatrix::zeros(n, 0),
                 null_sv: Vec::new(),
+                weakest_sv: 0.0,
+                weakest_dir: Vec::new(),
             };
         };
         let free: Vec<usize> = (0..sv.len()).filter(|&i| sv[i] <= RANK_TOL).collect();
-        let mut null = DMatrix::<f64>::zeros(n, free.len());
-        for (k, &i) in free.iter().enumerate() {
+        // The null basis is the per-entity pass's input and is skipped on
+        // request; the weakest direction below is not, so `v_t` is always read.
+        let mut null = DMatrix::<f64>::zeros(n, if want_null { free.len() } else { 0 });
+        for (k, &i) in free.iter().enumerate().take(null.ncols()) {
             null.set_column(k, &v_t.row(i).transpose());
         }
+        let weakest = (0..sv.len())
+            .filter(|&i| sv[i] > RANK_TOL)
+            .min_by(|&a, &b| sv[a].total_cmp(&sv[b]));
+        let (weakest_sv, weakest_dir) = match weakest {
+            Some(i) => (sv[i], v_t.row(i).iter().copied().collect()),
+            None => (0.0, Vec::new()),
+        };
         Spectrum {
             rank,
             null,
-            null_sv: free.iter().map(|&i| sv[i]).collect(),
+            null_sv: if want_null {
+                free.iter().map(|&i| sv[i]).collect()
+            } else {
+                Vec::new()
+            },
+            weakest_sv,
+            weakest_dir,
         }
     }
 }
@@ -968,3 +1286,6 @@ fn vertex_freedom(input: &Input, spectrum: &Spectrum) -> Vec<f64> {
 mod precision;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+#[path = "solve/weak.rs"]
+mod weak;
