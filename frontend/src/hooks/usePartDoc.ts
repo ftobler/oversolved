@@ -288,7 +288,8 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
   const cancelPlacement = useCallback(() => {
     const id = findTransaction('placement')
     if (id) session.cancel(id)
-  }, [session, findTransaction])
+    mirrorDirty()
+  }, [session, findTransaction, mirrorDirty])
 
   const handleUndo = useCallback(() => {
     session.undo()

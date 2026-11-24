@@ -238,6 +238,13 @@ const PREVIEW_COMMIT_FALLBACK: Mutation = { type: 'preview_commit', description:
 // labels its commit like the projection it banked before placements existed.
 const PLACEMENT_COMMIT_FALLBACK: Mutation = { type: 'preview_commit', description: 'add projected edge' }
 
+// The sketch target a projection mutation materializes, in the spelling a
+// scratch delete names. A face projection has no entity row, so it has no
+// target here.
+function projectionTarget(m: Extract<Mutation, { type: 'add_projected_entity' }>): string | null {
+  return m.entityId === undefined ? null : `entity:${m.featureId}:${m.entityId}`
+}
+
 // The mutations that can add a doc-addressable id (a feature, an entity, a
 // constraint). The id set is only diffed for dispatches that contain one, so
 // the drag path pays nothing for a field it can never fill. The list itself
@@ -437,6 +444,10 @@ interface PlacementTransaction extends TransactionBase {
   dirty: DirtyPin
   mutation: Mutation | null
   constraintIds: Set<string>
+  // The projected entity targets this gesture materialized (`entity:<fid>:<eid>`).
+  // A scratch delete is only part of the gesture when every one of its targets
+  // is in here; a Delete of an ordinary selected entity is a steal.
+  projectionTargets: Set<string>
 }
 
 type Transaction = PreviewTransaction | EditTransaction | PlacementTransaction
@@ -739,15 +750,18 @@ export class DocSession {
       this.commitPreviewTransaction(preview, mutations[0])
     }
     // A placement resolves before the ordinary push. Its own gesture mutations
-    // (the projection, the insert, and the editor's edit of the inserted
-    // constraint) are withheld; anything else commits the placement first, so
-    // half a gesture can never be left open behind an unrelated edit.
+    // (the projection, a scratch delete, the insert and the editor's edit of
+    // the inserted constraint) are withheld; anything else commits the placement
+    // first, so half a gesture can never be left open behind an unrelated edit.
+    const created = this.createdIdsFor(mutations, current, applied.next)
     const placement = this.findTransaction('placement')
     const placementScope = placement !== null && this.placementSwallows(placement, mutations)
     if (placement && !placementScope) {
       this.commitPlacementTransaction(placement)
     }
-    if (placementScope) this.recordPlacementMutations(placement, mutations)
+    if (placementScope) {
+      this.recordPlacementMutations(placement, mutations, created.ok ? created.createdIds : [])
+    }
     // Re-read the stack after the escapes: the commits above removed their
     // transactions, so the branches below see the world the mutation is
     // actually landing in.
@@ -777,7 +791,7 @@ export class DocSession {
 
     this.landApplied(current, mutations, applied)
     this.emit({ type: 'changed' })
-    return this.createdIdsFor(mutations, current, applied.next)
+    return created
   }
 
   // The doc swap and the solve request, shared by every path that lands a
@@ -1171,10 +1185,16 @@ export class DocSession {
 
   private beginPlacement(): OpenedResult {
     const existing = this.findTransaction('placement')
-    if (existing) {
+    if (existing?.constraintIds.size === 0) {
       // A later pick in the same gesture joins the open placement: re-beginning
       // must not move the baseline the cancel path promised to restore.
       return openedResult(existing.id)
+    }
+    if (existing) {
+      // The previous insert's editor was never resolved (a stray second
+      // placement or a double-clicked label): its gesture is finished and banks
+      // its entry, and the new placement starts from the doc it leaves behind.
+      this.commitPlacementTransaction(existing)
     }
     const current = this.deps.doc.get()
     if (!current) return this.fault('no-document', 'placement refused: no document')
@@ -1185,6 +1205,7 @@ export class DocSession {
       dirty: this.pinDirty(),
       mutation: null,
       constraintIds: new Set(),
+      projectionTargets: new Set(),
     }
     this.openTransaction(txn)
     return openedResult(txn.id)
@@ -1263,9 +1284,11 @@ export class DocSession {
     this.removeTransaction(txn)
     if (changed) {
       // The insert names the entry exactly like an ordinary add; a placement
-      // that only projected an edge keeps the projection's own label.
+      // that only projected an edge keeps the projection's own label. The
+      // baseline is already the transaction's own clone and the transaction is
+      // dropped below, so the push takes it without cloning the whole doc again.
       const mutation = txn.mutation ?? PLACEMENT_COMMIT_FALLBACK
-      this.pushHistory(describeMutation(mutation), txn.baseline, mutation, false)
+      this.pushHistory(describeMutation(mutation), txn.baseline, mutation, true)
     }
     this.emit({ type: 'changed' })
     return okResult()
@@ -1335,26 +1358,65 @@ export class DocSession {
     return okResult()
   }
 
-  // Which mutations the open placement withholds. The gesture is the brep
-  // projection, the scratch delete that replaces a pick, the dimension insert,
-  // and the editor's own edit of the constraint that insert minted; anything
-  // else is a steal that resolves the placement first.
+  // Which mutations the open placement withholds. The gesture is a brep pick's
+  // projection, the scratch delete that replaces such a projection, the
+  // dimension insert, and the editor's own edit of the constraint that insert
+  // minted. Anything else is a steal that resolves the placement first: a
+  // constraint command, a Delete of an ordinary selected entity, a rename.
   private placementSwallows(txn: PlacementTransaction, mutations: Mutation[]): boolean {
-    return mutations.every(m => {
-      if (m.type === 'add_projected_entity' || m.type === 'delete' || m.type === 'add_constraint') return true
-      if (m.type === 'set_constraint_value' || m.type === 'set_constraint_sign') {
-        return txn.constraintIds.has(m.constraintId)
+    const projections = new Set(txn.projectionTargets)
+    const constraintIds = new Set(txn.constraintIds)
+    for (const m of mutations) {
+      switch (m.type) {
+        case 'add_projected_entity': {
+          const target = projectionTarget(m)
+          if (target !== null) projections.add(target)
+          break
+        }
+        case 'delete':
+          // Every target must be a projection this placement materialized; a
+          // delete that touches authored geometry is not scratch cleanup.
+          if (!m.targets.every(t => projections.has(t))) return false
+          break
+        case 'add_constraint':
+          // A dimension add the caller named (the editor addresses that id).
+          // A value-less or id-less add is a command or a script, not this
+          // gesture's insert.
+          if (!isDimensionKind(m.kind) || m.id === undefined) return false
+          constraintIds.add(m.id)
+          break
+        case 'set_constraint_value':
+        case 'set_constraint_sign':
+          if (!constraintIds.has(m.constraintId)) return false
+          break
+        default:
+          return false
       }
-      return false
-    })
+    }
+    return true
   }
 
-  // Remembers the dimension add (for the commit label) and the ids it minted.
-  private recordPlacementMutations(txn: PlacementTransaction, mutations: Mutation[]): void {
+  // Remembers the dimension add (for the commit label), the ids it minted (the
+  // applier may substitute on collision, so the created id is the real one) and
+  // the projection targets a following scratch delete may name.
+  private recordPlacementMutations(
+    txn: PlacementTransaction,
+    mutations: Mutation[],
+    createdIds: readonly string[],
+  ): void {
     for (const m of mutations) {
+      if (m.type === 'add_projected_entity') {
+        const target = projectionTarget(m)
+        if (target !== null) txn.projectionTargets.add(target)
+        continue
+      }
       if (m.type !== 'add_constraint') continue
       txn.mutation = m
-      if (m.id !== undefined) txn.constraintIds.add(m.id)
+      if (createdIds.length > 0) {
+        for (const id of createdIds) txn.constraintIds.add(id)
+      } else if (m.id !== undefined) {
+        txn.constraintIds.add(m.id)
+      }
     }
   }
 

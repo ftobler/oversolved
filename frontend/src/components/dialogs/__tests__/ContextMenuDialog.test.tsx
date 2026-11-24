@@ -307,6 +307,34 @@ describe('ContextMenuDialog looks like the sketch property card', () => {
     expect(input.value).toBe('2*w')
   })
 
+  it('flips left at the right edge instead of pushing OK off screen', () => {
+    act(() => {
+      useSketchUiStore.setState({
+        pendingDialog: {
+          position: [980, 20],
+          label: 'dimension',
+          defaultValue: '10',
+          quantity: 'length',
+          onConfirm: vi.fn(),
+        },
+      })
+    })
+    const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+      x: 0, y: 0, top: 0, left: 0, right: 300, bottom: 40, width: 300, height: 40,
+      toJSON: () => ({}),
+    } as DOMRect)
+    try {
+      render(<ContextMenuDialog />)
+      const root = document.querySelector('.context-menu-dialog') as HTMLElement
+      // The anchor is 980 + 12 = 992 and the measured row is 300 wide; the
+      // window is 1024, so it flips to 992 - 300 = 692.
+      expect(root.style.left).toBe('692px')
+      expect(root.style.top).toBe('28px')
+    } finally {
+      rect.mockRestore()
+    }
+  })
+
   it('sizes the input for -12345.12345 with the unit suffix reserved', () => {
     // The widest formatted default is `-12345.12345`, twelve monospace chars;
     // 14ch holds it with two to spare, and the extra 34px is the input's left
@@ -320,10 +348,10 @@ describe('ContextMenuDialog looks like the sketch property card', () => {
 
     // The suffix's own reservation is the shared UnitBox rule: a box with a
     // unit keeps a 26px right padding, so the digits never run under `mm`.
-    const partCss = css('../../../pages/Part.css')
-    const unitRule = /\.field-unit-box--with-unit > input\s*\{([^}]*)\}/.exec(partCss)![1]
+    const glassCss = css('../../layout/Glass.css')
+    const unitRule = /\.field-unit-box--with-unit > input\s*\{([^}]*)\}/.exec(glassCss)![1]
     expect(unitRule).toMatch(/padding-right:\s*var\(--field-unit-slot\)/)
-    expect(partCss).toMatch(/--field-unit-slot:\s*26px/)
+    expect(glassCss).toMatch(/--field-unit-slot:\s*26px/)
 
     open()
     render(<ContextMenuDialog />)

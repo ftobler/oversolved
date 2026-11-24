@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest'
-import { constraintCommandSpec, escapeStage, openOffsetDialog, PART_COMMAND_SPECS } from '@/pages/commandEntries'
+import { constraintCommandSpec, escapeStage, openFilletDialog, openOffsetDialog, PART_COMMAND_SPECS } from '@/pages/commandEntries'
 import { useSketchEditorStore, setSketchCallback, useSketchUiStore } from '@/stores/sketchEditorStore'
 import type { DialogState } from '@/stores/sketchEditorStore'
 import type { ConstraintDef } from '@/registry'
@@ -755,12 +755,31 @@ describe('apply_offset data command and its dialog front end', () => {
     expect(captured).toBeDefined()
     expect(captured!.label).toMatch(/offset/i)
     expect(captured!.defaultValue).toBe('5')
-    // validator rejects non-numbers, accepts numbers
+    // The validator refuses trailing junk and accepts a real expression; the
+    // confirm evaluates exactly what the validator accepted.
     expect(captured!.validate!('not a number')).toBeTruthy()
+    expect(captured!.validate!('5abc')).toBeTruthy()
+    expect(captured!.validate!('2+1')).toBeNull()
     expect(captured!.validate!('2.5')).toBeNull()
 
-    captured!.onConfirm('3.5')
-    expect(onDistance).toHaveBeenCalledWith(3.5)
+    captured!.onConfirm('2+1')
+    expect(onDistance).toHaveBeenCalledWith(3)
+    expect(closeDialog).toHaveBeenCalledOnce()
+  })
+
+  it('the fillet dialog front end validates and evaluates the same way', () => {
+    let captured: DialogState | undefined
+    vi.spyOn(useSketchUiStore.getState(), 'openDialog').mockImplementation((opts) => { captured = opts })
+    const closeDialog = vi.spyOn(useSketchUiStore.getState(), 'closeDialog').mockImplementation(noop)
+    const onRadius = vi.fn()
+
+    openFilletDialog(onRadius)
+
+    expect(captured!.label).toMatch(/fillet/i)
+    expect(captured!.validate!('5abc')).toBeTruthy()
+    expect(captured!.validate!('3*2')).toBeNull()
+    captured!.onConfirm('3*2')
+    expect(onRadius).toHaveBeenCalledWith(6)
     expect(closeDialog).toHaveBeenCalledOnce()
   })
 

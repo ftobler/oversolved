@@ -97,6 +97,12 @@ export function useDimInteraction(
     if (consumeClick()) return
     if (!interaction) return
     ev.stopPropagation()
+    // A placement whose prompt is still up owns the one dialog slot: resolve it
+    // as an accepted placement before the edit editor takes that slot, or the
+    // open transaction would outlive its prompt and a later tool switch would
+    // cancel the wrong dimension.
+    const store = useSketchEditorStore.getState()
+    if (store.pendingPlacementConstraintId !== null) store.commitPlacementGesture()
     // The same editor a fresh placement opens: the label, the expression input,
     // the kind's value rule and Flip side are one implementation, so the two
     // entry points cannot drift apart.

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { useSketchEditorStore, setSketchCallback, useSketchUiStore } from '@/stores/sketchEditorStore'
+import { useSketchEditorStore, setSketchCallback, useSketchUiStore, getSketchCallback } from '@/stores/sketchEditorStore'
 import type { Mutation } from '@/types/cad'
 import { installSketchStoreSetup } from './helpers/sketchEditorStoreTestSetup'
 import { useEditorState } from '@/hooks/useEditorState'
@@ -104,6 +104,28 @@ describe('sketchEditorStore', () => {
       useSketchEditorStore.getState().addBrepDimensionPick('?b1/edge:3', { isVertexPick: false })
       expect(handler).not.toHaveBeenCalled()
       expect(useSketchEditorStore.getState().dimensionPicks).toEqual([])
+    })
+
+    it('opens the editor for the id the applier actually created', () => {
+      // A caller id that collided with a live row is substituted by the
+      // applier; the editor must address the row that landed, not the one it
+      // asked for, or every edit would hit an id that does not exist.
+      const handler = vi.fn(() => ({ ok: true, createdIds: ['c_substituted'] }))
+      setSketchCallback('onMutation', handler)
+      setSketchCallback('getSketch', () => ({
+        L1: { start: [0, 0], end: [10, 0] },
+      } as never))
+      useEditorState.setState({
+        dimensionPicks: [{ isVertex: false, target: 'entity:S1:L1', entityKind: 'line' }],
+      })
+      useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
+
+      expect(useSketchEditorStore.getState().pendingPlacementConstraintId).toBe('c_substituted')
+      useSketchUiStore.getState().pendingDialog!.onConfirm('20')
+      expect(handler).toHaveBeenLastCalledWith({
+        type: 'set_constraint_value', featureId: 'S1', constraintId: 'c_substituted', value: 20,
+      })
+      setSketchCallback('getSketch', null)
     })
 
     it('evaluates a variable expression on confirm and sets the inserted row', () => {
@@ -608,8 +630,36 @@ describe('sketchEditorStore', () => {
       expect(handler).not.toHaveBeenCalled()
     })
 
-    it('finalizeDimensionPlacement: empty picks is a no-op', () => {
+    it('finalizeDimensionPlacement: refuses to insert without the dialog port', () => {
+      // The prompt is the gesture's other half; without it the insert would
+      // leave a dimension nobody can edit behind an open placement.
       const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      const beginPlacement = vi.fn()
+      setSketchCallback('beginPlacement', beginPlacement)
+      const openDialog = getSketchCallback('openDialog')
+      setSketchCallback('openDialog', null)
+      useEditorState.setState({
+        dimensionPicks: [{ isVertex: false, target: 'entity:S1:L1', entityKind: 'line' }],
+        pendingPlacementConstraintId: null,
+      })
+      try {
+        // The loud refusal is dev/test only; in every build the insert and the
+        // placement begin are behind it.
+        expect(() => useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0]))
+          .toThrow(/dialog port/)
+
+        expect(handler).not.toHaveBeenCalled()
+        expect(beginPlacement).not.toHaveBeenCalled()
+        expect(useSketchUiStore.getState().pendingDialog).toBeNull()
+        expect(useSketchEditorStore.getState().pendingPlacementConstraintId).toBeNull()
+      } finally {
+        setSketchCallback('openDialog', openDialog)
+        setSketchCallback('beginPlacement', null)
+      }
+    })
+
+    it('finalizeDimensionPlacement: empty picks is a no-op', () => {      const handler = vi.fn()
       setSketchCallback('onMutation', handler)
       useEditorState.setState({
     dimensionPicks: [],

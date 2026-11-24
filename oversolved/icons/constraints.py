@@ -89,7 +89,10 @@ def constraint_dimension(ctx):
     _draw_arrow(ctx, x0, y_dim, x1, y_dim, arr)
 
 
-@icon("frontend/src/assets/icons/dimension-angle.svg")
+# The drawn bbox (legs, arc and both heads) centres on (0.55, 0.553); the
+# offset lands it on (0.5, 0.5) so the pair with constraint-dimension fills the
+# same 20px slot.
+@icon("frontend/src/assets/icons/dimension-angle.svg", offset_x=-0.05, offset_y=-0.053)
 def dimension_angle(ctx):
     # The angular sibling of constraint_dimension: the two measured legs meet at
     # a vertex, and the dimension line is an arc between them carrying the same

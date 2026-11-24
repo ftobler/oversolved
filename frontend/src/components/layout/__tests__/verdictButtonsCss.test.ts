@@ -28,4 +28,12 @@ describe('the shared verdict buttons', () => {
       expect(new RegExp(`(?:^|\\n)${escaped}\\s*\\{`).test(PART_CSS), selector).toBe(false)
     }
   })
+
+  it('keeps the field primitives the dialog uses out of Part.css too', () => {
+    for (const selector of ['.feature-icon', '.feature-field-label', '.feature-field-input', '.field-unit-box', '.field-unit']) {
+      expect(GLASS_CSS, selector).toContain(`${selector} {`)
+      const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      expect(new RegExp(`(?:^|\\n)${escaped}\\s*\\{`).test(PART_CSS), selector).toBe(false)
+    }
+  })
 })

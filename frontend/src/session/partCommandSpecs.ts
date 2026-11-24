@@ -82,6 +82,9 @@ export interface PartCommandState {
   activeTool: ActiveTool
   drawPoints: readonly [number, number][]
   dimensionPicks: readonly unknown[]
+  // The constraint id a placement prompt is open for (null when no placement
+  // editor is up). Undo resolves that gesture before it pops history.
+  pendingPlacementConstraintId: string | null
   activePickField: unknown
   pendingDialog: unknown
   setActiveTool(tool: ActiveTool): void
@@ -89,6 +92,7 @@ export interface PartCommandState {
   clearDraw(): void
   finishDraw(): boolean
   cancelPlacementGesture(): void
+  commitPlacementGesture(): void
   clearDimensionPicks(): void
   toggleConstruction(): void
   mirrorSelection(): string | null
@@ -182,8 +186,13 @@ const undoSpec: PartCommandSpec = {
   undoable: false,
   // The session owns the floor: inside a sketch with nothing of its own left to
   // revert this reads unavailable, so the toolbar and the shortcut grey out
-  // instead of offering a keystroke that resolves to nothing.
-  enabled: ctx => (!ctx.session || !ctx.session.canUndo() ? 'nothing to undo' : true),
+  // instead of offering a keystroke that resolves to nothing. An open placement
+  // is always undoable: the press cancels it even when no entry sits above the
+  // session floor.
+  enabled: ctx => {
+    if (ctx.state().pendingPlacementConstraintId !== null) return true
+    return !ctx.session || !ctx.session.canUndo() ? 'nothing to undo' : true
+  },
   run: ctx => {
     const st = ctx.state()
     // Undo shares Escape's cancel_gesture first stage: a half-placed draw
@@ -198,6 +207,14 @@ const undoSpec: PartCommandSpec = {
     // there is "commit the open work, then pop" -- Part.addFeatureCancel
     // pins Ctrl+Z removing the feature that armed the field. Escape's 'pick'
     // arm is about abandoning a gesture, so it stays with cancel_draw only.
+    // A placement whose prompt is open owns the gesture: undo cancels it and
+    // stops there, exactly as the keyboard path would. Without this the toolbar
+    // undo would cancel the transaction in the session while the store's
+    // pending id and the dialog survived against a constraint the rewind removed.
+    if (st.pendingPlacementConstraintId !== null) {
+      st.cancelPlacementGesture()
+      return okResult()
+    }
     if (st.drawPoints.length > 0 || st.dimensionPicks.length > 0) {
       cancelInProgressGesture(st)
       return okResult()
@@ -215,6 +232,14 @@ const redoSpec: PartCommandSpec = {
   undoable: false,
   enabled: ctx => (!ctx.session || !ctx.session.canRedo() ? 'nothing to redo' : true),
   run: ctx => {
+    const st = ctx.state()
+    // Redo resolves a placement the way the session does: the finished
+    // dimension is kept by committing it. Clearing only in the session would
+    // leave the store believing a prompt is still up.
+    if (st.pendingPlacementConstraintId !== null) {
+      st.commitPlacementGesture()
+      return okResult()
+    }
     ctx.redo()
     return okResult()
   },

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="24" height="24" viewBox="0 0 24 24">
-<path fill="none" stroke-width="0.0625" stroke-linecap="butt" stroke-linejoin="round" stroke="rgb(0%, 0%, 0%)" stroke-opacity="1" stroke-miterlimit="10" d="M 0.900065 0.799967 L 0.200033 0.799967 L 0.694987 0.305013 " transform="matrix(24, 0, 0, 24, 0, 0)"/>
-<path fill="none" stroke-width="0.0625" stroke-linecap="butt" stroke-linejoin="round" stroke="rgb(0%, 0%, 0%)" stroke-opacity="1" stroke-miterlimit="10" d="M 0.44043 0.55957 C 0.504232 0.623372 0.540039 0.709798 0.540039 0.799967 " transform="matrix(24, 0, 0, 24, 0, 0)"/>
-<path fill-rule="nonzero" fill="rgb(0%, 0%, 0%)" fill-opacity="1" d="M 10.570312 13.429688 L 16.367188 14.984375 L 12.121094 19.226562 Z M 10.570312 13.429688 "/>
-<path fill-rule="nonzero" fill="rgb(0%, 0%, 0%)" fill-opacity="1" d="M 12.960938 19.199219 L 9.960938 14.003906 L 15.960938 14.003906 Z M 12.960938 19.199219 "/>
+<path fill="none" stroke-width="0.0625" stroke-linecap="butt" stroke-linejoin="round" stroke="rgb(0%, 0%, 0%)" stroke-opacity="1" stroke-miterlimit="10" d="M 0.899935 0.80007 L 0.200065 0.80007 L 0.69502 0.304953 " transform="matrix(24, 0, 0, 24, -1.2, -1.272)"/>
+<path fill="none" stroke-width="0.0625" stroke-linecap="butt" stroke-linejoin="round" stroke="rgb(0%, 0%, 0%)" stroke-opacity="1" stroke-miterlimit="10" d="M 0.440462 0.55951 C 0.504102 0.623313 0.540072 0.709901 0.540072 0.80007 " transform="matrix(24, 0, 0, 24, -1.2, -1.272)"/>
+<path fill-rule="nonzero" fill="rgb(0%, 0%, 0%)" fill-opacity="1" d="M 9.371094 12.15625 L 15.164062 13.710938 L 10.921875 17.953125 Z M 9.371094 12.15625 "/>
+<path fill-rule="nonzero" fill="rgb(0%, 0%, 0%)" fill-opacity="1" d="M 11.761719 17.929688 L 8.761719 12.730469 L 14.761719 12.730469 Z M 11.761719 17.929688 "/>
 </svg>

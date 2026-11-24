@@ -186,6 +186,27 @@ describe('useDimInteraction click / double-click', () => {
     })
   })
 
+  it('resolves an open placement before a label edit takes the dialog', () => {
+    const commitPlacement = vi.fn()
+    setSketchCallback('commitPlacement', commitPlacement)
+    useEditorState.setState({ pendingPlacementConstraintId: 'c_placed' })
+    try {
+      const { result } = renderHook(() => useDimInteraction('c1', 10, INTERACTION))
+      act(() => result.current.onDoubleClick({ stopPropagation: vi.fn(), clientX: 5, clientY: 6 }))
+
+      // The finished placement banks its entry first; the edit editor then owns
+      // the slot for its own label.
+      expect(commitPlacement).toHaveBeenCalledTimes(1)
+      expect(useSketchEditorStore.getState().pendingPlacementConstraintId).toBeNull()
+      const dialog = useSketchUiStore.getState().pendingDialog
+      expect(dialog).not.toBeNull()
+      expect(dialog!.defaultValue).toBe('10')
+    } finally {
+      useEditorState.setState({ pendingPlacementConstraintId: null })
+      setSketchCallback('commitPlacement', null)
+    }
+  })
+
   it('pre-fills the five-decimal form and an unchanged confirm dispatches nothing', () => {    const onMutation = vi.fn()
     setSketchCallback('onMutation', onMutation)
     const { result } = renderHook(() => useDimInteraction('c1', 2.459687246427, INTERACTION))
@@ -209,7 +230,7 @@ describe('useDimInteraction click / double-click', () => {
     expect(useSketchUiStore.getState().pendingDialog!.icon).toBe(dimensionEditorIcon('length'))
     act(() => { useSketchUiStore.setState({ pendingDialog: null }) })
 
-    const angular = renderHook(() => useDimInteraction('c1', 45, INTERACTION, false, undefined, 'angle'))
+    const angular = renderHook(() => useDimInteraction('c1', 45, INTERACTION, false, undefined, 'angle', 'angle'))
     act(() => angular.result.current.onDoubleClick({ stopPropagation: vi.fn(), clientX: 0, clientY: 0 }))
     expect(useSketchUiStore.getState().pendingDialog!.icon).toBe(dimensionEditorIcon('angle'))
   })

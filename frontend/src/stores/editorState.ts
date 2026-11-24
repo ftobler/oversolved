@@ -41,7 +41,7 @@ import { samePoint, validateWithRepair, prunePickClaims } from './sketchEditorHe
 import { activateTool, deactivateTool } from './sketchEditorToolLifecycle'
 import { clampRollbackPosition } from '@/session/DocSession'
 import { useSectionStore } from './sectionStore'
-import { openDimensionEditor } from './dimensionEditor'
+import { dimensionEditorAvailable, openDimensionEditor } from './dimensionEditor'
 
 export { filletSelectionPlan, mirrorSelectionPlan, patternSelectionPlan } from '@/utils/geometry/selectionPlans'
 export type { FilletSelectionPlan, MirrorSelectionPlan } from '@/utils/geometry/selectionPlans'
@@ -1122,6 +1122,13 @@ export const editorState = createStore<EditorState>((set, get) => ({
     }
     const onMutation = requireMutation('finalizeDimensionPlacement')
     if (!onMutation) return
+    // The editor is the gesture's other half: without the dialog port the insert
+    // would commit a dimension nobody can edit, behind a placement transaction
+    // that would never close. Refuse before anything is written.
+    if (!dimensionEditorAvailable()) {
+      failLoud('[editorState] finalizeDimensionPlacement: no dialog port registered, the value dialog cannot open (import stores/sketchEditorStore in the editor build)')
+      return
+    }
     const featureId = activeFeatureId
     let constraintKind = resolved.constraintKind
     // Canonicalise before the natural value, the sign and the placement all
@@ -1244,8 +1251,11 @@ export const editorState = createStore<EditorState>((set, get) => ({
 
     // The id is minted here so the editor can address the row it is about to
     // open for: the insert and the prompt are one gesture, and the prompt must
-    // name the exact constraint the insert created.
-    const cid = uniqueConstraintId([], constraintKind)
+    // name the exact constraint the insert created. Mint against the live
+    // sketch's rows, which the solved sketch map does not carry.
+    const liveFeature = sketchCallbacks.getDoc?.()?.features?.find(f => f.id === featureId)
+    const liveConstraints = liveFeature?.kind === 'sketch' ? liveFeature.constraints ?? [] : []
+    const cid = uniqueConstraintId(liveConstraints, constraintKind)
     // A brep pick began the placement at its projection; a sketch-only
     // placement begins here. Both share the baseline-restoring cancel and the
     // single-entry commit.
@@ -1264,13 +1274,15 @@ export const editorState = createStore<EditorState>((set, get) => ({
     set({ dimensionPicks: [], dimensionCursorWorld: null })
     // A refused insert (a duplicate the probe could not see, a stale operand)
     // reports no created id; the gesture goes back to the baseline rather than
-    // opening an editor for a row that does not exist.
+    // opening an editor for a row that does not exist. If the applier minted a
+    // different id on a collision, the editor addresses the row that landed.
     const created = createdIdsOfResult(result)
-    if (created !== null && !created.includes(cid)) {
+    if (created !== null && created.length === 0) {
       get().cancelPlacementGesture()
       return
     }
-    set({ pendingPlacementConstraintId: cid })
+    const effectiveCid = created !== null && !created.includes(cid) ? (created[0] ?? cid) : cid
+    set({ pendingPlacementConstraintId: effectiveCid })
 
     // A directional dimension's Flip side swaps the side the value pins, then
     // commits the placement: the prompt closes on the click, so the gesture
@@ -1281,14 +1293,14 @@ export const editorState = createStore<EditorState>((set, get) => ({
       || constraintKind === 'angle'
     const onFlip = directional && sign !== null
       ? () => {
-        onMutation({ type: 'set_constraint_sign', featureId, constraintId: cid, sign: -sign })
+        onMutation({ type: 'set_constraint_sign', featureId, constraintId: effectiveCid, sign: -sign })
         get().commitPlacementGesture()
       }
       : undefined
 
     openDimensionEditor({
       featureId,
-      cid,
+      cid: effectiveCid,
       clientPos,
       value: displayedNatural,
       kind: constraintKind,

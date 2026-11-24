@@ -27,8 +27,8 @@ export type TranscriptStep =
   | { kind: 'sessionStart'; suppressed: boolean; featureId?: string }
   | { kind: 'sessionCommit' }
   | { kind: 'sessionCancel' }
-  | { kind: 'brepArm' }
-  | { kind: 'brepCancel' }
+  | { kind: 'placementArm' }
+  | { kind: 'placementCancel' }
   // A save landing: publishes the moved save count without a content
   // fingerprint, the shape a caller that cannot say what it wrote produces.
   | { kind: 'save' }
@@ -103,10 +103,10 @@ function applyStep(hook: ReturnType<typeof usePartDoc>, step: TranscriptStep): v
       exitEditCleanup()
       hook.cancelEditSession()
       return
-    case 'brepArm':
+    case 'placementArm':
       hook.beginPlacement()
       return
-    case 'brepCancel':
+    case 'placementCancel':
       hook.cancelPlacement()
       return
     case 'save':

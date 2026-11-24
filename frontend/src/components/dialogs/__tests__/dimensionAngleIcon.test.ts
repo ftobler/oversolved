@@ -18,8 +18,11 @@ describe('dimension-angle icon', () => {
 
   it('draws two legs and an arc with an arrowhead at each end', () => {
     const angleDim = read('dimension-angle.svg')
-    // Two stroked paths (legs, arc) plus the two filled arrowhead triangles.
-    expect(angleDim.match(/<path/g)?.length).toBe(4)
-    expect(angleDim.match(/fill="rgb\(0%, 0%, 0%\)"/g)?.length).toBe(2)
+    // The measured legs are one polyline; the dimension line is the cubic arc;
+    // the two filled triangles are the heads. Assert the parts rather than a
+    // path count, so a later second stroke on a leg does not break the test.
+    expect(angleDim).toMatch(/fill="none"[^>]*d="M [^"]+ L [^"]+ L [^"]+"/)
+    expect(angleDim).toMatch(/fill="none"[^>]*d="M [^"]+ C /)
+    expect(angleDim.match(/fill="rgb\(0%, 0%, 0%\)"/g)).toHaveLength(2)
   })
 })

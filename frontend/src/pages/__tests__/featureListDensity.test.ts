@@ -8,6 +8,7 @@ import { join } from 'node:path'
 
 const SRC = join(__dirname, '../..')
 const PART_CSS = readFileSync(join(SRC, 'pages/Part.css'), 'utf8')
+const GLASS_CSS = readFileSync(join(SRC, 'components/layout/Glass.css'), 'utf8')
 
 // The declarations of the first rule whose selector is exactly `selector`.
 function rulePart(selector: string): string {
@@ -67,8 +68,9 @@ describe('feature list density', () => {
   it('keeps the action buttons and icons legible on a denser row', () => {
     const buttons = /\.feature-edit-btn,[\s\S]*?\.part-context-btn\s*\{([^}]*)\}/.exec(PART_CSS)![1]
     expect(buttons).toMatch(/height:\s*28px/)
-    expect(rulePart('.feature-icon')).toMatch(/width:\s*20px/)
-    expect(rulePart('.feature-icon')).toMatch(/height:\s*20px/)
+    // The icon size is a shared primitive now (dialogs use it too).
+    expect(GLASS_CSS).toMatch(/\.feature-icon\s*\{[^}]*width:\s*20px/)
+    expect(GLASS_CSS).toMatch(/\.feature-icon\s*\{[^}]*height:\s*20px/)
   })
 })
 

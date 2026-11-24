@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, act } from '@testing-library/react'
 import { useSketchEditorStore, setSketchCallback, useSketchUiStore } from '@/stores/sketchEditorStore'
+import { dimensionEditorIcon } from '@/stores/dimensionEditor'
 import type { DragState } from '@/stores/sketchEditorStore'
 
 /**
@@ -170,6 +171,9 @@ describe('AngleDimension supplement label', () => {
     act(() => lastDispatch().onDoubleClick({ stopPropagation: () => {}, clientX: 0, clientY: 0 }))
     const dialog = useSketchUiStore.getState().pendingDialog
     expect(dialog?.defaultValue).toBe('60')
+    // Production passes the kind in the slot that selects the editor glyph: the
+    // angle's editor carries dimension-angle, not the dimension tool's icon.
+    expect(dialog?.icon).toBe(dimensionEditorIcon('angle'))
 
     // Accepting the shown number changes nothing: the stored theta stays exact.
     act(() => dialog!.onConfirm('60'))

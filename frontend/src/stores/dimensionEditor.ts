@@ -79,6 +79,13 @@ function expressionScope(featureId: string): {
   return { context, later: laterVariablesAt(features, index, context) }
 }
 
+/** Whether the shared dialog port is live. The placement checks this before it
+ *  inserts anything, so a headless abort cannot leave a committed dimension
+ *  behind an open placement transaction. */
+export function dimensionEditorAvailable(): boolean {
+  return getSketchCallback('openDialog') !== null
+}
+
 export function openDimensionEditor(opts: DimensionEditorOptions): void {
   const { kind, placement } = opts
   const rule = opts.validatePositive === false

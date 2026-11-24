@@ -37,6 +37,9 @@ class RecordingCtx:
     def line_to(self, x: float, y: float) -> None:
         self.ops.append(("line_to", (x, y)))
 
+    def arc(self, cx: float, cy: float, r: float, a0: float, a1: float) -> None:
+        self.ops.append(("arc", (cx, cy, r, a0, a1)))
+
     def close_path(self) -> None:
         self.ops.append(("close_path", ()))
 
@@ -125,6 +128,61 @@ def test_arrowhead_puts_its_tip_at_the_given_point_and_points_along_angle(monkey
     # A solid arrowhead: the outline is closed and filled.
     assert ctx.ops[-2] == ("close_path", ())
     assert ctx.ops[-1] == ("fill", ())
+
+
+def test_draw_arc_arrow_strokes_the_arc_and_points_both_heads_outward(monkeypatch):
+    icons = _load(monkeypatch)
+    ctx = RecordingCtx()
+    cx, cy, r = 0.2, 0.8, 0.34
+    arr = 6 / 24
+    start_deg, end_deg = -100, 10
+
+    icons._draw_arc_arrow(ctx, cx, cy, r, start_deg, end_deg, arr)
+
+    arcs = [coords for name, coords in ctx.ops if name == "arc"]
+    assert len(arcs) == 1
+    acx, acy, ar, a0, a1 = arcs[0]
+    assert (acx, acy, ar) == pytest.approx((cx, cy, r))
+    # The stroke is shortened by half an arrowhead at each end.
+    inset = (arr / 2) / r
+    assert a0 == pytest.approx(math.radians(start_deg) + inset)
+    assert a1 == pytest.approx(math.radians(end_deg) - inset)
+    # Same secondary stroke weight as the straight dimension arrow.
+    widths = [coords[0] for name, coords in ctx.ops if name == "set_line_width"]
+    assert widths == [pytest.approx(1.5 / 24)]
+
+    # Each head starts at its arc endpoint: the start's tip points out of the
+    # arc (reverse travel tangent), the end's along the travel tangent.
+    tips = ctx.points("move_to")
+    assert len(tips) == 2
+    start_tip = (cx + r * math.cos(math.radians(start_deg)), cy + r * math.sin(math.radians(start_deg)))
+    end_tip = (cx + r * math.cos(math.radians(end_deg)), cy + r * math.sin(math.radians(end_deg)))
+    assert tips[0] == pytest.approx(start_tip)
+    assert tips[1] == pytest.approx(end_tip)
+
+    lefts = ctx.points("line_to")
+    for tip, base_a, base_b, expected_deg in (
+        (tips[0], lefts[0], lefts[1], start_deg - 90),
+        (tips[1], lefts[2], lefts[3], end_deg + 90),
+    ):
+        mid_x = (base_a[0] + base_b[0]) / 2
+        mid_y = (base_a[1] + base_b[1]) / 2
+        axis = (tip[0] - mid_x, tip[1] - mid_y)
+        actual = math.degrees(math.atan2(axis[1], axis[0]))
+        # Compare modulo a full turn: atan2 reports -190 as 170.
+        assert (actual - expected_deg + 180) % 360 - 180 == pytest.approx(0, abs=1e-6)
+
+
+def test_draw_arc_arrow_does_not_eat_a_short_arc(monkeypatch):
+    icons = _load(monkeypatch)
+    ctx = RecordingCtx()
+    # A 20 degree span has no room for two half-head insets; the arc is drawn tip
+    # to tip rather than collapsed to a sliver.
+    icons._draw_arc_arrow(ctx, 0.5, 0.5, 0.3, -10, 10, 6 / 24)
+
+    _name, (_cx, _cy, _r, a0, a1) = next(op for op in ctx.ops if op[0] == "arc")
+    assert a0 == pytest.approx(math.radians(-10))
+    assert a1 == pytest.approx(math.radians(10))
 
 
 def test_draw_plane_grid_traces_the_perimeter_and_keeps_internal_lines_inside(monkeypatch):

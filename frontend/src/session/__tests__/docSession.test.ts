@@ -1034,6 +1034,14 @@ describe('the placement transaction', () => {
 
   const openId = (session: DocSession): string => session.transactions()[0].id
 
+  const twoLineSketchDoc = () => makeDoc(makeSketch('sk1', {
+    entities: [{ id: 'l1', kind: 'line' }, { id: 'l2', kind: 'line' }],
+    initial: { l1: [0, 0, 10, 0], l2: [0, 1, 10, 1] },
+  }))
+
+  const transactionId = (session: DocSession, kind: 'edit' | 'placement'): string =>
+    session.transactions().find(txn => txn.kind === kind)!.id
+
   it('banks the insert and its value edit as one entry, and undo returns the baseline', () => {
     const h = makeSession(lineSketchDoc())
     const baseline = structuredClone(h.doc.current)
@@ -1131,6 +1139,136 @@ describe('the placement transaction', () => {
 
     expect(h.session.historyEntries().undo.map(e => e.label))
       .toEqual(['add length constraint in sk1', 'set other_dim value in sk1'])
+    expect(h.session.transactions()).toEqual([])
+  })
+
+  it('a constraint command commits the placement first and lands on its own entry', () => {
+    const h = makeSession(twoLineSketchDoc())
+    h.session.begin('placement')
+    h.session.execute(addLength(10))
+
+    h.session.execute({
+      type: 'add_constraint', featureId: 'sk1', kind: 'horizontal',
+      targets: ['entity:sk1:l2'],
+    })
+
+    expect(h.session.historyEntries().undo.map(e => e.label))
+      .toEqual(['add length constraint in sk1', 'add horizontal constraint in sk1'])
+    expect(h.session.transactions()).toEqual([])
+  })
+
+  it('a Delete of an ordinary selected entity commits the placement first', () => {
+    const h = makeSession(twoLineSketchDoc())
+    h.session.begin('placement')
+    h.session.execute(addLength(10))
+
+    h.session.execute({ type: 'delete', targets: ['entity:sk1:l1'] })
+
+    expect(h.session.historyEntries().undo.map(e => e.label))
+      .toEqual(['add length constraint in sk1', 'delete 1 element(s)'])
+    expect(h.session.transactions()).toEqual([])
+  })
+
+  it('withholds a delete that targets only the gesture projection', () => {
+    const h = makeSession(twoLineSketchDoc())
+    h.session.begin('placement')
+    h.session.execute({
+      type: 'add_projected_entity', featureId: 'sk1', kind: 'line',
+      source: '?b1/edge:3', entityId: 'proj1',
+    })
+    h.session.execute({ type: 'delete', targets: ['entity:sk1:proj1'] })
+
+    // The projection and its scratch cleanup are both withheld: the gesture is
+    // still one unresolved placement with no entry.
+    expect(h.session.historyEntries().undo).toHaveLength(0)
+    expect(h.session.transactions().map(txn => txn.kind)).toEqual(['placement'])
+  })
+
+  it('redo while open commits the placement and spends the redo branch', () => {
+    const h = makeSession(lineSketchDoc())
+    h.session.execute({ type: 'rename_feature', featureId: 'sk1', label: 'renamed' })
+    expect(h.session.undo()).toBe(true)
+    expect(h.session.historyEntries().redo).toHaveLength(1)
+    h.session.begin('placement')
+    h.session.execute(addLength(10))
+
+    expect(h.session.redo()).toBe(false)
+
+    // Committing the placement pushed a new entry, which clears the branch the
+    // redo wanted to reach.
+    expect(h.session.historyEntries().redo).toHaveLength(0)
+    expect(h.session.historyEntries().undo.map(e => e.label)).toEqual(['add length constraint in sk1'])
+    expect(h.session.transactions()).toEqual([])
+  })
+
+  it('banks an open placement before a sketch session commit', () => {
+    const h = makeSession(lineSketchDoc())
+    h.session.begin('edit', { suppressed: false })
+    h.session.begin('placement')
+    h.session.execute(addLength(10))
+
+    h.session.commit(transactionId(h.session, 'edit'))
+
+    expect(h.session.transactions()).toEqual([])
+    expect(h.session.historyEntries().undo.map(e => e.label)).toEqual(['add length constraint in sk1'])
+  })
+
+  it('drops an open placement with the sketch session cancel', () => {
+    const h = makeSession(lineSketchDoc())
+    const baseline = structuredClone(h.doc.current)
+    h.session.begin('edit', { suppressed: false })
+    h.session.begin('placement')
+    h.session.execute(addLength(10))
+
+    h.session.cancel(transactionId(h.session, 'edit'))
+
+    expect(h.session.transactions()).toEqual([])
+    expect(h.session.historyEntries().undo).toHaveLength(0)
+    expect(h.doc.current).toEqual(baseline)
+  })
+
+  it('withholds edits on the substituted id when the caller id collided', () => {
+    const h = makeSession(makeDoc(makeSketch('sk1', {
+      entities: [{ id: 'l1', kind: 'line' }],
+      initial: { l1: [0, 0, 10, 0] },
+      constraints: [{ id: 'c_taken', kind: 'horizontal', target: '$l1' }],
+    })))
+    h.session.begin('placement')
+    const inserted = h.session.execute({
+      type: 'add_constraint', id: 'c_taken', featureId: 'sk1', kind: 'length',
+      targets: ['entity:sk1:l1'], value: 10,
+    })
+    if (!inserted.ok || inserted.createdIds.length === 0) throw new Error('insert refused')
+    const actual = inserted.createdIds[0]
+    expect(actual).not.toBe('c_taken')
+
+    // The applier minted a different id; the editor's edit on that real id is
+    // still part of the gesture.
+    h.session.execute({
+      type: 'set_constraint_value', featureId: 'sk1', constraintId: actual, value: 20,
+    })
+    expect(h.session.historyEntries().undo).toHaveLength(0)
+
+    h.session.commit(openId(h.session))
+    expect(h.session.historyEntries().undo.map(e => e.label)).toEqual(['add length constraint in sk1'])
+  })
+
+  it('a second placement click banks the unresolved insert and starts a fresh baseline', () => {
+    const h = makeSession(lineSketchDoc())
+    h.session.begin('placement')
+    h.session.execute(addLength(10))
+    const first = transactionId(h.session, 'placement')
+
+    const second = h.session.begin('placement')
+
+    if (!second.ok) throw new Error(second.message)
+    expect(second.id).not.toBe(first)
+    // The first gesture is banked by the new click, and the new one cancels back
+    // to the doc that includes it.
+    expect(h.session.historyEntries().undo.map(e => e.label)).toEqual(['add length constraint in sk1'])
+
+    h.session.cancel(second.id)
+    expect(constraintsOf(h.doc.current)).toMatchObject([{ id: 'c_len_1', value: 10 }])
     expect(h.session.transactions()).toEqual([])
   })
 })
