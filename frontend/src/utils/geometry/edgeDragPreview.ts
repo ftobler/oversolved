@@ -2,7 +2,7 @@
 // Produces a live-preview sketch during an edge (whole-entity) drag or a group
 // drag. Every moved member's points are translated by the drag delta.
 // No constraint resolution -- the real solver handles that on pointer-up.
-import type { Sketch } from '@/types/cad'
+import type { Entity, Sketch } from '@/types/cad'
 import type { VertexOrEdgeDrag } from '@/types/drag'
 import { fitPointIndex } from '@/types/vertexKeys'
 
@@ -59,62 +59,51 @@ interface VertexRef {
   set: (value: [number, number]) => void
 }
 
-function vertexRef(entity: Sketch[string], vertexKey: string): VertexRef | null {
-  const e = entity as unknown as Record<string, unknown>
-  const pair = (prop: string): VertexRef => ({
-    get: () => e[prop] as [number, number],
-    set: (value) => { e[prop] = value },
-  })
-  if ('start' in e && 'end' in e && 'radius' in e) return null
-  if ('start' in e && 'end' in e) {
-    if (vertexKey === 'start' || vertexKey === 'end') return pair(vertexKey)
+function vertexRef(entity: Entity, vertexKey: string): VertexRef | null {
+  if ('start' in entity && 'end' in entity && 'radius' in entity) return null
+  if ('start' in entity && 'end' in entity) {
+    if (vertexKey === 'start') return { get: () => entity.start, set: (v) => { entity.start = v } }
+    if (vertexKey === 'end') return { get: () => entity.end, set: (v) => { entity.end = v } }
     return null
   }
-  if ('p1' in e) {
+  if ('p1' in entity) {
     const prop = vertexKey === 'start' ? 'p1'
       : vertexKey === 'c1' ? 'p2'
         : vertexKey === 'c2' ? 'p3'
           : vertexKey === 'end' ? 'p4'
             : null
-    return prop === null ? null : pair(prop)
+    if (prop === null) return null
+    return { get: () => entity[prop], set: (v) => { entity[prop] = v } }
   }
-  if ('points' in e) {
-    const fit = e as unknown as {
-      points: [number, number][]
-      handleStart?: [number, number]
-      handleEnd?: [number, number]
-    }
+  if ('points' in entity) {
     if (vertexKey === 'c1') {
-      return fit.handleStart === undefined ? null : {
-        get: () => fit.handleStart as [number, number],
-        set: (value) => { fit.handleStart = value },
-      }
+      if (entity.handleStart === undefined) return null
+      return { get: () => entity.handleStart!, set: (v) => { entity.handleStart = v } }
     }
     if (vertexKey === 'c2') {
-      return fit.handleEnd === undefined ? null : {
-        get: () => fit.handleEnd as [number, number],
-        set: (value) => { fit.handleEnd = value },
-      }
+      if (entity.handleEnd === undefined) return null
+      return { get: () => entity.handleEnd!, set: (v) => { entity.handleEnd = v } }
     }
     if (vertexKey === 'start') {
-      return { get: () => fit.points[0], set: (value) => { fit.points[0] = value } }
+      return { get: () => entity.points[0], set: (v) => { entity.points[0] = v } }
     }
     if (vertexKey === 'end') {
-      const index = fit.points.length - 1
-      return { get: () => fit.points[index], set: (value) => { fit.points[index] = value } }
+      const index = entity.points.length - 1
+      return { get: () => entity.points[index], set: (v) => { entity.points[index] = v } }
     }
     const index = fitPointIndex(vertexKey)
     // fit<k> names the k-th interior fit point, which is points[k].
-    if (index === null || index < 1 || index >= fit.points.length - 1) return null
-    return { get: () => fit.points[index], set: (value) => { fit.points[index] = value } }
+    if (index === null || index < 1 || index >= entity.points.length - 1) return null
+    return { get: () => entity.points[index], set: (v) => { entity.points[index] = v } }
   }
-  if ('center' in e) {
-    return vertexKey === 'center' ? pair('center') : null
+  if ('center' in entity) {
+    return vertexKey === 'center'
+      ? { get: () => entity.center, set: (v) => { entity.center = v } }
+      : null
   }
-  if ('x' in e) {
+  if ('x' in entity) {
     if (vertexKey !== 'xy') return null
-    const pt = e as unknown as { x: number; y: number }
-    return { get: () => [pt.x, pt.y], set: ([x, y]) => { pt.x = x; pt.y = y } }
+    return { get: () => [entity.x, entity.y], set: ([x, y]) => { entity.x = x; entity.y = y } }
   }
   return null
 }

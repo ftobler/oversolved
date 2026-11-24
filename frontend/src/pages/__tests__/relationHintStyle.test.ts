@@ -20,18 +20,18 @@ function rulePart(selector: string): string {
 describe('relation hint styling', () => {
   for (const selector of ['.feature-item.related', '.part-item.related']) {
     it(`marks ${selector} with the background tint alone`, () => {
-      const body = rulePart(selector)
-      expect(body).toMatch(/background:\s*#122028/)
-      expect(body).not.toMatch(/\boutline\s*:/)
-      expect(body).not.toMatch(/(?:^|[\s;])color\s*:/)
+      const declarations = rulePart(selector)
+      expect(declarations).toMatch(/background:\s*#122028/)
+      expect(declarations).not.toMatch(/\boutline\s*:/)
+      expect(declarations).not.toMatch(/(?:^|[\s;])color\s*:/)
     })
   }
 
   for (const selector of ['.feature-item.selected.related', '.part-item.selected.related']) {
     it(`keeps the accepted selection look on ${selector}`, () => {
-      const body = rulePart(selector)
-      expect(body).toMatch(/outline:\s*1px solid #1e3a4a/)
-      expect(body).toMatch(/color:\s*white/)
+      const declarations = rulePart(selector)
+      expect(declarations).toMatch(/outline:\s*1px solid #1e3a4a/)
+      expect(declarations).toMatch(/color:\s*white/)
     })
   }
 })

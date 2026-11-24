@@ -329,7 +329,7 @@ describe('AssemblyEditor (Stage 6b)', () => {
     act(() => { executeCommand('insert_part_instance') })
     await waitFor(() => expect(session.held()).toBeGreaterThan(0))
 
-    expect(screen.getByText('Loading...')).toBeTruthy()
+    expect(await screen.findByText('Loading...')).toBeTruthy()
     expect(screen.queryByText('Bracket')).toBeNull()
     expect(screen.queryByText('Bolt')).toBeNull()
     expect(screen.getByRole('button', { name: 'Insert' })).toBeDisabled()
