@@ -103,6 +103,28 @@ def _draw_arrow(ctx, x0, y0, x1, y1, arr):
     _arrowhead(ctx, x1, y1, angle0, arr)
 
 
+def _draw_arc_arrow(ctx, cx, cy, r, start_deg, end_deg, arr):
+    """Draw an angular dimension arc from start_deg to end_deg (increasing angle)
+    with an arrowhead at each end, tangent to the arc and pointing outward at the
+    legs it measures."""
+    a0, a1 = math.radians(start_deg), math.radians(end_deg)
+    # Shorten the arc so the heads sit outside the stroke, as the straight arrow
+    # does, but never eat a short arc whole: a 45 degree span barely has room for
+    # the two heads, so it is drawn tip to tip.
+    inset = (arr / 2) / r
+    if a1 - a0 <= 4 * inset:
+        inset = 0
+    ctx.arc(cx, cy, r, a0 + inset, a1 - inset)
+    stroke(ctx, 1.5)
+
+    sx, sy = cx + r * math.cos(a0), cy + r * math.sin(a0)
+    ex, ey = cx + r * math.cos(a1), cy + r * math.sin(a1)
+    # Outward at the start is the reverse of the travel tangent; outward at the
+    # end is the travel tangent itself.
+    _arrowhead(ctx, sx, sy, math.degrees(a0) - 90, arr)
+    _arrowhead(ctx, ex, ey, math.degrees(a1) + 90, arr)
+
+
 def _draw_rect_outline(ctx, x0, x1, y0, y1):
     """Draw a rectangle outline from (x0, y0) to (x1, y1)."""
     ctx.move_to(x0, y0)

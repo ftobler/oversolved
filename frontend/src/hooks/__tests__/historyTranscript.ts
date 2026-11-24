@@ -104,10 +104,10 @@ function applyStep(hook: ReturnType<typeof usePartDoc>, step: TranscriptStep): v
       hook.cancelEditSession()
       return
     case 'brepArm':
-      hook.beginBrepProjection()
+      hook.beginPlacement()
       return
     case 'brepCancel':
-      hook.cancelBrepProjection()
+      hook.cancelPlacement()
       return
     case 'save':
       useUnsavedChangesStore.getState().markSaved()

@@ -55,6 +55,21 @@ describe('applyAddConstraint', () => {
     expect(added!.b).toEqual('$circ1')
   })
 
+  it('honours a caller-supplied constraint id and refuses to reuse a stored one', () => {
+    // The placement editor names the row it is about to open for, so the id has
+    // to be the caller's.
+    const doc = makeSampleDoc()
+    applyAddConstraint(doc, 'Sketch1', 'vertical', ['entity:Sketch1:line1'], undefined, undefined, undefined, 'c_placed')
+    expect(constraints0(doc).at(-1)!.id).toBe('c_placed')
+
+    // A collision with a stored row would conflate two constraints in every
+    // document-wide lookup, so the applier mints a fresh id instead.
+    applyAddConstraint(doc, 'Sketch1', 'fixed', ['entity:Sketch1:line1'], undefined, undefined, undefined, 'c_placed')
+    const ids = constraints0(doc).map(c => c.id)
+    expect(ids.filter(id => id === 'c_placed')).toHaveLength(1)
+    expect(ids.at(-1)).toMatch(/^c_fixed_/)
+  })
+
   it('leaves a sketch unchanged when a pair kind is picked with one line', () => {
     // The bugreport document, trimmed to its two free lines: pressing [e] with
     // one line selected stored `equal_length` with a lone `target`, which the

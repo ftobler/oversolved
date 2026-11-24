@@ -158,10 +158,14 @@ export function createMatrixHarness(spec: PartDoc, solver: MatrixSolver): Matrix
     }
     return out
   })
-  setSketchCallback('beginBrepProjection', () => { session.begin('brep') })
-  setSketchCallback('cancelBrepProjection', () => {
-    const brep = session.transactions().find(txn => txn.kind === 'brep')
-    if (brep) session.cancel(brep.id)
+  setSketchCallback('beginPlacement', () => { session.begin('placement') })
+  setSketchCallback('commitPlacement', () => {
+    const placement = session.transactions().find(txn => txn.kind === 'placement')
+    if (placement) session.commit(placement.id)
+  })
+  setSketchCallback('cancelPlacement', () => {
+    const placement = session.transactions().find(txn => txn.kind === 'placement')
+    if (placement) session.cancel(placement.id)
   })
 
   const messages: ShowMessagePayload[] = []

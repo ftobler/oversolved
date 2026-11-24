@@ -25,7 +25,7 @@ export function createHeadlessCommandState(): PartCommandState {
     setActivePickField: () => {},
     clearDraw: () => {},
     finishDraw: () => false,
-    cancelBrepProjectionGesture: () => {},
+    cancelPlacementGesture: () => {},
     clearDimensionPicks: () => {},
     toggleConstruction: () => {},
     mirrorSelection: () => 'mirror is an editor action',

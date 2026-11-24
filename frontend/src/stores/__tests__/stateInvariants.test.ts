@@ -34,6 +34,7 @@ function defaultState(): SketchEditorInvariantState {
     dragPending: null,
     dragSnap: null,
     pendingBrepProjectionIds: [],
+    pendingPlacementConstraintId: null,
   }
 }
 
@@ -684,6 +685,16 @@ describe('validateSketchEditorState', () => {
 
     it('passes when pendingBrepProjectionIds is empty while a drawing tool is active', () => {
       const state = { ...defaultState(), pendingBrepProjectionIds: [], ...withTool('line') }
+      expect(() => validateSketchEditorState(state)).not.toThrow()
+    })
+
+    it('throws when a placement editor is pending outside the dimension tool', () => {
+      const state = { ...defaultState(), ...withTool('drag'), pendingPlacementConstraintId: 'c_len_1' }
+      expect(() => validateSketchEditorState(state)).toThrow('[invariant] pendingPlacementConstraintId')
+    })
+
+    it('passes when a placement editor is pending during the dimension tool', () => {
+      const state = { ...defaultState(), ...withTool('dimension'), pendingPlacementConstraintId: 'c_len_1' }
       expect(() => validateSketchEditorState(state)).not.toThrow()
     })
   })

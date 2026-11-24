@@ -43,6 +43,14 @@ export interface ConstraintDef {
   hasValue: boolean
 
   /**
+   * The dimension editor's leading icon when it differs from the dimension
+   * tool's. Only the angular dimension sets it: the toolbar's dimension glyph
+   * stands for every linear size. `undefined` falls back to
+   * `TOOL_DEFS.dimension.icon` (stores/dimensionEditor `dimensionEditorIcon`).
+   */
+  dimensionIcon?: string
+
+  /**
    * How selection targets map to PartConstraint fields:
    *   - "target"   → single entity/vertex → `target`
    *   - "a_b"      → two entities/vertices → `a`, `b`
@@ -411,6 +419,7 @@ export const CONSTRAINTS: readonly ConstraintDef[] = [
     operands: 'pair',
     renderKind: 'dim_angle',
     symbolIcon: 'constraint-angle',
+    dimensionIcon: 'dimension-angle',
     showInToolbar: false,
   },
   {
@@ -503,6 +512,19 @@ export const CONSTRAINT_BY_KIND: ReadonlyMap<string, ConstraintDef> =
 // dimension, so it must not match.
 export function isDimensionKind(kind: string): boolean {
   return CONSTRAINT_BY_KIND.get(kind)?.category === 'dimensional'
+}
+
+/** The label a dimension's value editor shows, keyed by the render kind the
+ *  label draws: the same words a double-clicked label uses, so a placement and
+ *  an edit of the same dimension read alike. A future angular glyph that shares
+ *  `dim_angle` inherits the angle wording without a second list. */
+export function dimensionPromptLabel(renderKind: string): string {
+  switch (renderKind) {
+    case 'dim_radius': return 'radius'
+    case 'dim_diameter': return 'diameter'
+    case 'dim_angle': return 'angle in degrees'
+    default: return 'dimension'
+  }
 }
 
 /** The operand arity a registry kind declares, or null for a kind the registry

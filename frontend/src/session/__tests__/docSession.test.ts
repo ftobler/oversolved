@@ -1014,6 +1014,127 @@ describe('unknown mutation boundary', () => {
   })
 })
 
+describe('the placement transaction', () => {
+  const lineSketchDoc = () => makeDoc(makeSketch('sk1', {
+    entities: [{ id: 'l1', kind: 'line' }],
+    initial: { l1: [0, 0, 10, 0] },
+  }))
+
+  const addLength = (value: number, id = 'c_len_1'): Mutation => ({
+    type: 'add_constraint', id, featureId: 'sk1', kind: 'length',
+    targets: ['entity:sk1:l1'], value,
+  })
+
+  const setValue = (value: number, constraintId = 'c_len_1'): Mutation => ({
+    type: 'set_constraint_value', featureId: 'sk1', constraintId, value,
+  })
+
+  const constraintsOf = (doc: PartDoc | null) =>
+    (doc?.features?.find(f => f.id === 'sk1') as { constraints?: { id: string; value?: number }[] }).constraints ?? []
+
+  const openId = (session: DocSession): string => session.transactions()[0].id
+
+  it('banks the insert and its value edit as one entry, and undo returns the baseline', () => {
+    const h = makeSession(lineSketchDoc())
+    const baseline = structuredClone(h.doc.current)
+
+    h.session.begin('placement')
+    const inserted = h.session.execute(addLength(10))
+    expect(inserted).toMatchObject({ ok: true, createdIds: ['c_len_1'] })
+    h.session.execute(setValue(12))
+
+    // Both applied and re-solved, neither recorded: the dimension is live and
+    // the sketch reacts before the editor commits.
+    expect(constraintsOf(h.doc.current)).toMatchObject([{ id: 'c_len_1', value: 12 }])
+    expect(h.session.historyEntries().undo).toHaveLength(0)
+    expect(h.solve.calls.length).toBeGreaterThanOrEqual(2)
+
+    h.session.commit(openId(h.session))
+    expect(h.session.historyEntries().undo.map(e => e.label)).toEqual(['add length constraint in sk1'])
+    expect(h.session.transactions()).toEqual([])
+
+    expect(h.session.undo()).toBe(true)
+    expect(h.doc.current).toEqual(baseline)
+  })
+
+  it('cancels back to the baseline with no entry and no leftover transaction', () => {
+    const h = makeSession(lineSketchDoc())
+    const baseline = structuredClone(h.doc.current)
+    h.session.begin('placement')
+    h.session.execute({
+      type: 'add_projected_entity', featureId: 'sk1', kind: 'line',
+      source: '?b1/edge:3', entityId: 'proj1',
+    })
+    h.session.execute(addLength(10))
+    h.session.execute(setValue(12))
+
+    h.session.cancel(openId(h.session))
+
+    expect(h.session.historyEntries().undo).toHaveLength(0)
+    expect(h.session.historyEntries().redo).toHaveLength(0)
+    expect(h.doc.current).toEqual(baseline)
+    expect(constraintsOf(h.doc.current)).toEqual([])
+    // The scratch projection is gone with the same rewind.
+    const entities = (h.doc.current?.features?.find(f => f.id === 'sk1') as { entities?: { id: string }[] }).entities ?? []
+    expect(entities.map(e => e.id)).toEqual(['l1'])
+    expect(h.session.transactions()).toEqual([])
+    // The cancel rewinds the doc, so the viewport is re-solved from the
+    // baseline rather than left on the discarded dimension.
+    expect(h.solve.calls.at(-1)?.doc).toEqual(baseline)
+  })
+
+  it('a brep projection followed by the insert still commits as one entry', () => {
+    const h = makeSession(lineSketchDoc())
+    const baseline = structuredClone(h.doc.current)
+    h.session.begin('placement')
+    h.session.execute({
+      type: 'add_projected_entity', featureId: 'sk1', kind: 'line',
+      source: '?b1/edge:3', entityId: 'proj1',
+    })
+    h.session.execute({
+      type: 'add_constraint', id: 'c_len_1', featureId: 'sk1', kind: 'length',
+      targets: ['entity:sk1:proj1'], value: 10,
+    })
+    expect(h.session.historyEntries().undo).toHaveLength(0)
+
+    h.session.commit(openId(h.session))
+
+    expect(h.session.historyEntries().undo).toHaveLength(1)
+    expect(h.session.undo()).toBe(true)
+    expect(h.doc.current).toEqual(baseline)
+  })
+
+  it('an unrelated mutation commits the placement first and then lands on its own entry', () => {
+    const h = makeSession(lineSketchDoc())
+    h.session.begin('placement')
+    h.session.execute(addLength(10))
+
+    h.session.execute({ type: 'rename_feature', featureId: 'sk1', label: 'Renamed' })
+
+    expect(h.session.historyEntries().undo.map(e => e.label))
+      .toEqual(['add length constraint in sk1', 'rename sk1 to Renamed'])
+    expect(h.session.transactions()).toEqual([])
+    // The dimension survived the steal: its entry is below the rename's.
+    expect(constraintsOf(h.doc.current)).toMatchObject([{ id: 'c_len_1', value: 10 }])
+  })
+
+  it('a value edit on another constraint commits the placement first', () => {
+    const h = makeSession(makeDoc(makeSketch('sk1', {
+      entities: [{ id: 'l1', kind: 'line' }, { id: 'l2', kind: 'line' }],
+      initial: { l1: [0, 0, 10, 0], l2: [0, 1, 10, 1] },
+      constraints: [{ id: 'other_dim', kind: 'length', target: '$l2', value: 10 }],
+    })))
+    h.session.begin('placement')
+    h.session.execute(addLength(10))
+
+    h.session.execute(setValue(20, 'other_dim'))
+
+    expect(h.session.historyEntries().undo.map(e => e.label))
+      .toEqual(['add length constraint in sk1', 'set other_dim value in sk1'])
+    expect(h.session.transactions()).toEqual([])
+  })
+})
+
 describe('add_three_point_arc reply', () => {
   const arcSketchDoc = () => makeDoc(makeSketch('sk1', { entities: [], initial: {} }))
 

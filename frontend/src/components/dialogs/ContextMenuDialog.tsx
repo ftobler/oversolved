@@ -8,6 +8,7 @@ import { lengthUnitOf } from '@/utils/lengthUnit'
 import { acquireModalEscape } from '@/utils/core/modalEscape'
 import okIcon from '@/assets/icons/dialog-ok.svg'
 import cancelIcon from '@/assets/icons/dialog-cancel.svg'
+import '@/components/layout/Glass.css'
 import '@/components/dialogs/ContextMenuDialog.css'
 
 export default function ContextMenuDialog() {
@@ -101,31 +102,35 @@ export default function ContextMenuDialog() {
 
   return (
     <div
-      className="context-menu-dialog"
+      className="context-menu-dialog glass-panel"
       style={{ left: x + 12, top: y + 8 }}
       // Prevent clicks from propagating to canvas
       onPointerDown={e => e.stopPropagation()}
       onClick={e => e.stopPropagation()}
     >
-      <span className="context-menu-label">{dialog.label}</span>
+      {dialog.icon && <img className="feature-icon" src={dialog.icon} alt="" />}
+      <span className="feature-field-label context-menu-label">{dialog.label}</span>
       <UnitBox quantity={dialog.quantity ?? 'none'} lengthUnit={lengthUnit} grow={false}>
         <input
           key={dialog.defaultValue}
           ref={wheelRef}
-          type="number"
+          type="text"
+          inputMode="decimal"
           defaultValue={dialog.defaultValue ?? ''}
           onKeyDown={handleKeyDown}
           onChange={() => { if (error) setError(null) }}
-          className={error ? 'context-menu-input invalid' : 'context-menu-input'}
+          className={error
+            ? 'feature-field-input context-menu-input feature-field-input--error'
+            : 'feature-field-input context-menu-input'}
           aria-label={fieldAccessibleName(dialog.label, dialog.quantity ?? 'none', lengthUnit)}
         />
       </UnitBox>
-      <button className="context-menu-btn context-menu-btn-ok" onClick={handleConfirm}><img src={okIcon} alt="OK" /></button>
-      <button className="context-menu-btn context-menu-btn-cancel" onClick={() => { dialog.onCancel?.(); closeDialog() }}><img src={cancelIcon} alt="Cancel" /></button>
+      <button className="feature-ok-btn" onClick={handleConfirm} title="OK"><img src={okIcon} alt="OK" /></button>
+      <button className="feature-cancel-btn" onClick={() => { dialog.onCancel?.(); closeDialog() }} title="Cancel"><img src={cancelIcon} alt="Cancel" /></button>
       {dialog.extraAction && (
         <button
           type="button"
-          className="context-menu-btn context-menu-btn-extra"
+          className="feature-neutral-btn feature-neutral-btn--text context-menu-btn-extra"
           onClick={() => { dialog.extraAction!.onClick(); closeDialog() }}
         >
           {dialog.extraAction.label}

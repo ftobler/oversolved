@@ -34,3 +34,83 @@
      gaps between them still orbit and pick in the viewport. */
   pointer-events: auto;
 }
+
+/* The verdict pair (and the neutral third button beside it) is shared by the
+   feature edit card and the dialogs opened through the value-dialog shell: a
+   dialog must not depend on Part.css, which only the part and assembly pages
+   import. Green accepts, red cancels, and the neutral variant reads as a third
+   action rather than a verdict. */
+.feature-ok-btn,
+.feature-cancel-btn,
+.feature-rename-btn,
+.feature-neutral-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  cursor: pointer;
+  padding: 2px 4px;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+}
+
+.feature-ok-btn img,
+.feature-cancel-btn img,
+.feature-rename-btn img,
+.feature-neutral-btn img {
+  width: 20px;
+  height: 20px;
+  filter: invert(0.8);
+  display: block;
+}
+
+.feature-ok-btn {
+  background: #1a3a1a;
+  border-radius: 4px;
+  color: #4caf50;
+}
+
+.feature-ok-btn:hover {
+  background: #1e4a1e;
+}
+
+.feature-cancel-btn {
+  background: #3a1a1a;
+  border-radius: 4px;
+  color: #f44336;
+}
+
+.feature-cancel-btn:hover {
+  background: #4a1e1e;
+}
+
+/* Neutral, so a third action beside the verdict pair does not read as one. */
+.feature-rename-btn,
+.feature-neutral-btn {
+  background: none;
+  border-radius: 4px;
+  color: #555;
+}
+
+.feature-rename-btn:hover,
+.feature-neutral-btn:hover {
+  background: var(--glass-hover-bg);
+  color: #777;
+}
+
+/* A text action (a dimension's Flip side) keeps the neutral button's palette
+   without the 28px icon-button box. */
+.feature-neutral-btn--text {
+  display: inline-flex;
+  width: auto;
+  height: 24px;
+  padding: 0 8px;
+  font-size: 12px;
+  color: #999;
+  white-space: nowrap;
+}
+
+.feature-neutral-btn--text:hover {
+  color: #fff;
+}

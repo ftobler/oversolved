@@ -171,11 +171,15 @@ describe('AngleDimension supplement label', () => {
     const dialog = useSketchUiStore.getState().pendingDialog
     expect(dialog?.defaultValue).toBe('60')
 
-    // The label shows 60, so the edit carries 60; the applier reads the
-    // constraint's stored pos and stores the 120 theta those directions need.
+    // Accepting the shown number changes nothing: the stored theta stays exact.
     act(() => dialog!.onConfirm('60'))
+    expect(onMutation).not.toHaveBeenCalled()
+
+    // An edited label shows 50, so the edit carries 50; the applier reads the
+    // constraint's stored pos and stores the supplement those directions need.
+    act(() => dialog!.onConfirm('50'))
     expect(onMutation).toHaveBeenCalledWith({
-      type: 'set_constraint_value', featureId: 'S1', constraintId: 'c1', value: 60,
+      type: 'set_constraint_value', featureId: 'S1', constraintId: 'c1', value: 50,
     })
   })
 })

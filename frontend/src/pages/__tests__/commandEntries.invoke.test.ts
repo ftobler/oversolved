@@ -413,13 +413,13 @@ describe('cancel_draw staged disarm', () => {
   })
 
     const store = useSketchEditorStore.getState()
-    const cancelBrep = vi.spyOn(store, 'cancelBrepProjectionGesture').mockImplementation(noop)
+    const cancelPlacement = vi.spyOn(store, 'cancelPlacementGesture').mockImplementation(noop)
     const clearDimensionPicks = vi.spyOn(store, 'clearDimensionPicks').mockImplementation(noop)
     const setActiveTool = vi.spyOn(store, 'setActiveTool').mockImplementation(noop)
 
     execute('cancel_draw')
 
-    expect(cancelBrep).toHaveBeenCalledOnce()
+    expect(cancelPlacement).toHaveBeenCalledOnce()
     expect(clearDimensionPicks).toHaveBeenCalledOnce()
     expect(setActiveTool).not.toHaveBeenCalled()
     expect(useSketchEditorStore.getState().activeTool).toBe('dimension')
@@ -552,13 +552,13 @@ describe('undo cancels an in-progress gesture before touching history', () => {
     useEditorState.setState({
     dimensionPicks: [{ isVertex: false, target: 'entity:S1:L1', entityKind: 'line' }],
   })
-    const cancelBrep = vi.spyOn(useSketchEditorStore.getState(), 'cancelBrepProjectionGesture').mockImplementation(noop)
+    const cancelPlacement = vi.spyOn(useSketchEditorStore.getState(), 'cancelPlacementGesture').mockImplementation(noop)
     const undo = vi.fn()
 
     execute('undo', partContext({ undo }))
 
     expect(undo).not.toHaveBeenCalled()
-    expect(cancelBrep).toHaveBeenCalledOnce()
+    expect(cancelPlacement).toHaveBeenCalledOnce()
     expect(useSketchEditorStore.getState().dimensionPicks).toEqual([])
     expect(useSketchEditorStore.getState().activeTool).toBe('dimension')
   })

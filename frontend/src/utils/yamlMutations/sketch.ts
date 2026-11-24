@@ -413,6 +413,9 @@ export function applyAddConstraint(
   value?: number,
   pos?: [number, number],
   sign?: number,
+  // A caller-supplied id, so the UI can open the value editor for the row it is
+  // about to insert. Absent (every script and command path) mints a unique one.
+  id?: string,
 ): AddConstraintOutcome {
   // A missing feature is a stale id, not a refusal: nothing can be authored.
   // The containers are deliberately not materialized here, so every refusal
@@ -490,7 +493,11 @@ export function applyAddConstraint(
     if (ref.point !== undefined || isPointLikeEntityKind(ek)) return 'point'
     return ek === 'line' ? 'line' : undefined
   })
-  const cid = uniqueConstraintId(feature.constraints ?? [], kind)
+  // A caller id is honoured only when it cannot collide with a stored row: a
+  // duplicate id would make a document-wide lookup conflate two constraints.
+  const cid = id !== undefined && !(feature.constraints ?? []).some(c => c.id === id)
+    ? id
+    : uniqueConstraintId(feature.constraints ?? [], kind)
   const c: PartConstraint = { id: cid, kind }
   const pt = (t: string) => parseTarget(t, featureId)
   if (kind === 'midpoint') {

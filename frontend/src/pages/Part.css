@@ -555,9 +555,6 @@
 }
 
 .feature-edit-btn,
-.feature-ok-btn,
-.feature-cancel-btn,
-.feature-rename-btn,
 .feature-visibility-btn,
 .feature-context-btn,
 .part-visibility-btn,
@@ -574,9 +571,6 @@
 }
 
 .feature-edit-btn img,
-.feature-ok-btn img,
-.feature-cancel-btn img,
-.feature-rename-btn img,
 .feature-visibility-btn img,
 .feature-context-btn img,
 .part-visibility-btn img,
@@ -608,36 +602,6 @@
 
 .feature-edit-btn .material-icons-outlined {
   font-size: 20px;
-}
-
-.feature-ok-btn {
-  background: #1a3a1a;
-  border-radius: 4px;
-  color: #4caf50;
-}
-
-.feature-ok-btn:hover {
-  background: #1e4a1e;
-}
-
-.feature-cancel-btn {
-  background: #3a1a1a;
-  border-radius: 4px;
-  color: #f44336;
-}
-
-.feature-cancel-btn:hover {
-  background: #4a1e1e;
-}
-
-/* Neutral, so a third icon beside the verdict pair does not read as one. */
-.feature-rename-btn {
-  background: none;
-  border-radius: 4px;
-}
-
-.feature-rename-btn:hover {
-  background: var(--glass-hover-bg);
 }
 
 .feature-item.editing {

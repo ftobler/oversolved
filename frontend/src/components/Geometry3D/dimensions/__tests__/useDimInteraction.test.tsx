@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { useSketchEditorStore, setSketchCallback, useSketchUiStore } from '@/stores/sketchEditorStore'
 import { useDimInteraction, useDimLabelPointerDown, type DimInteraction } from '../useDimInteraction'
+import { dimensionEditorIcon } from '@/stores/dimensionEditor'
 import { COLOR_CONSTRAINT, COLOR_CONSTRAINT_DIM } from '@/utils/geometry/sketchHelpers'
 import { COLOR_ERROR_DEEP, COLOR_CONSTRAINT_WEAK } from '@/components/Geometry3D/constants'
 import type { DragState } from '@/stores/sketchEditorStore'
@@ -183,6 +184,34 @@ describe('useDimInteraction click / double-click', () => {
       constraintId: 'c1',
       value: 30,
     })
+  })
+
+  it('pre-fills the five-decimal form and an unchanged confirm dispatches nothing', () => {    const onMutation = vi.fn()
+    setSketchCallback('onMutation', onMutation)
+    const { result } = renderHook(() => useDimInteraction('c1', 2.459687246427, INTERACTION))
+    act(() => result.current.onDoubleClick({ stopPropagation: vi.fn(), clientX: 0, clientY: 0 }))
+
+    const dialog = useSketchUiStore.getState().pendingDialog!
+    // The box never shows the full double; the five decimals are what it can
+    // show with room to spare.
+    expect(dialog.defaultValue).toBe('2.45969')
+
+    act(() => dialog.onConfirm('2.45969'))
+
+    // Accepting the shown number keeps the exact stored value: no nudge by
+    // rounding.
+    expect(onMutation).not.toHaveBeenCalled()
+  })
+
+  it('opens with the kind icon: the tool glyph for a linear size, dimension-angle for an angle', () => {
+    const linear = renderHook(() => useDimInteraction('c1', 10, INTERACTION, true, undefined, 'length'))
+    act(() => linear.result.current.onDoubleClick({ stopPropagation: vi.fn(), clientX: 0, clientY: 0 }))
+    expect(useSketchUiStore.getState().pendingDialog!.icon).toBe(dimensionEditorIcon('length'))
+    act(() => { useSketchUiStore.setState({ pendingDialog: null }) })
+
+    const angular = renderHook(() => useDimInteraction('c1', 45, INTERACTION, false, undefined, 'angle'))
+    act(() => angular.result.current.onDoubleClick({ stopPropagation: vi.fn(), clientX: 0, clientY: 0 }))
+    expect(useSketchUiStore.getState().pendingDialog!.icon).toBe(dimensionEditorIcon('angle'))
   })
 })
 

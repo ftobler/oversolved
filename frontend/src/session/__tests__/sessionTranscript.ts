@@ -134,10 +134,10 @@ export function runSessionTranscript(
         return
       }
       case 'brepArm':
-        session.begin('brep')
+        session.begin('placement')
         return
       case 'brepCancel': {
-        const id = findId('brep')
+        const id = findId('placement')
         if (id) session.cancel(id)
         return
       }

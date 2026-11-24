@@ -90,8 +90,8 @@ describe('undo labels for the label-only resolution entries', () => {
     const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
     const store = useSketchEditorStore.getState()
     setSketchCallback('onMutation', result.current.handleMutation)
-    setSketchCallback('beginBrepProjection', result.current.beginBrepProjection)
-    setSketchCallback('cancelBrepProjection', result.current.cancelBrepProjection)
+    setSketchCallback('beginPlacement', result.current.beginPlacement)
+    setSketchCallback('cancelPlacement', result.current.cancelPlacement)
     setSketchCallback('getSketch', () => null)
     useEditorState.setState({
     activeFeatureId: 'sk1',
@@ -112,8 +112,8 @@ describe('undo labels for the label-only resolution entries', () => {
     } finally {
       result.current.registerUndoTeardown(null)
       setSketchCallback('onMutation', null)
-      setSketchCallback('beginBrepProjection', null)
-      setSketchCallback('cancelBrepProjection', null)
+      setSketchCallback('beginPlacement', null)
+      setSketchCallback('cancelPlacement', null)
       setSketchCallback('getSketch', null)
     }
   })

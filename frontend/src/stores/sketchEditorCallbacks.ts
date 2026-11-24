@@ -51,8 +51,9 @@ export const sketchCallbacks: {
   // session-port effect; null in a headless store use, where a delete freezes
   // nothing.
   getProjectionMembers: ((featureId: string) => Record<string, ProjectionMemberReportData> | null) | null
-  beginBrepProjection: (() => void) | null
-  cancelBrepProjection: (() => void) | null
+  beginPlacement: (() => void) | null
+  commitPlacement: (() => void) | null
+  cancelPlacement: (() => void) | null
   // The authoring gate for a new constraint: true when the add would make the
   // constraint set redundant, null when the mutation layer would drop it (the
   // caller emits nothing, planned projections included), false to author.
@@ -79,8 +80,9 @@ export const sketchCallbacks: {
   getProjectionMembers: null,
   resolveEdgeKind: null,
   isEditSessionOpen: null,
-  beginBrepProjection: null,
-  cancelBrepProjection: null,
+  beginPlacement: null,
+  commitPlacement: null,
+  cancelPlacement: null,
   checkRedundantAdd: null,
   showMessage: null,
   openDialog: null,
@@ -122,7 +124,7 @@ export function setSketchCallback(key: 'getProjectedSources', cb: ((featureId: s
 export function setSketchCallback(key: 'getProjectionMembers', cb: ((featureId: string) => Record<string, ProjectionMemberReportData> | null) | null): void
 export function setSketchCallback(key: 'resolveEdgeKind', cb: ((query: string) => string | null) | null): void
 export function setSketchCallback(key: 'isEditSessionOpen', cb: (() => boolean) | null): void
-export function setSketchCallback(key: 'beginBrepProjection' | 'cancelBrepProjection', cb: (() => void) | null): void
+export function setSketchCallback(key: 'beginPlacement' | 'commitPlacement' | 'cancelPlacement', cb: (() => void) | null): void
 export function setSketchCallback(key: 'checkRedundantAdd', cb: ((pending: PendingConstraint) => boolean | null) | null): void
 export function setSketchCallback(key: 'showMessage', cb: ((payload: SketchMessage) => void) | null): void
 export function setSketchCallback(key: 'openDialog', cb: ((dialog: DialogState) => void) | null): void
@@ -149,8 +151,9 @@ const SESSION_CALLBACK_KEYS = [
   'getProjectionMembers',
   'resolveEdgeKind',
   'isEditSessionOpen',
-  'beginBrepProjection',
-  'cancelBrepProjection',
+  'beginPlacement',
+  'commitPlacement',
+  'cancelPlacement',
   'checkRedundantAdd',
   'showMessage',
 ] as const satisfies readonly (keyof typeof sketchCallbacks)[]
@@ -171,16 +174,16 @@ export function requireMutation(name: string): ((m: Mutation) => void) | null {
 }
 
 // Deletes the given sketch entities with no undo entry. Used when a dimension
-// gesture is aborted or a pick replaced: the projection was scratch work, so
-// neither it nor the delete that removes it may appear in the history. The
-// delete rides the brep withhold so it applies without pushing. No trailing
-// cancelBrepProjection here: the replace path needs the withhold's captured doc
-// to survive for the gesture's eventual commit, and the abort path nulls it
+// gesture replaces a pick: the projection was scratch work, so neither it nor
+// the delete that removes it may appear in the history. The delete joins the
+// open placement, which records no entry until the editor commits. No trailing
+// cancelPlacement here: the replace path needs the placement baseline to
+// survive for the gesture's eventual commit, and the abort path cancels it
 // explicitly after this returns.
 export function dispatchWithheldDelete(targets: string[]): void {
   const onMutation = sketchCallbacks.onMutation
   if (!onMutation || targets.length === 0) return
-  sketchCallbacks.beginBrepProjection?.()
+  sketchCallbacks.beginPlacement?.()
   onMutation({ type: 'delete', targets })
 }
 

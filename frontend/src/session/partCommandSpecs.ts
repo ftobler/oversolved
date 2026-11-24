@@ -54,12 +54,12 @@ export function escapeStage(fields: {
 export function cancelInProgressGesture(st: {
   clearDraw: () => void
   dimensionPicks: { length: number }
-  cancelBrepProjectionGesture: () => void
+  cancelPlacementGesture: () => void
   clearDimensionPicks: () => void
 }) {
   st.clearDraw()
   if (st.dimensionPicks.length > 0) {
-    st.cancelBrepProjectionGesture()
+    st.cancelPlacementGesture()
     st.clearDimensionPicks()
   }
 }
@@ -88,7 +88,7 @@ export interface PartCommandState {
   setActivePickField(field: unknown): void
   clearDraw(): void
   finishDraw(): boolean
-  cancelBrepProjectionGesture(): void
+  cancelPlacementGesture(): void
   clearDimensionPicks(): void
   toggleConstruction(): void
   mirrorSelection(): string | null

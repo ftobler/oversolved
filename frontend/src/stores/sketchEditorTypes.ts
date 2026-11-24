@@ -26,6 +26,10 @@ export interface DialogState {
   // name says it. Omitted for a compound entry (the pattern's "count pitch"),
   // which measures two different things.
   quantity?: Quantity
+  // The dialog's leading glyph, resolved to an asset URL by the caller (the
+  // dimension editor picks it per kind). Absent keeps the plain look the other
+  // dialogs opened through this shell have always had.
+  icon?: string
   onConfirm: (val: string) => void
   onCancel?: () => void
   // Return an error message to reject the input (dialog stays open and shows
@@ -239,7 +243,7 @@ export interface SketchEditorState {
   // handle) and its pointer/alignment residue WITHOUT touching the doc: used
   // where the doc is already being replaced (undo), so a pointer-up that
   // arrives afterward finds no drag to commit onto the new doc. Mirrors
-  // clearBrepProjectionState's rationale, and the assembly editor's equivalent
+  // clearPlacementState's rationale, and the assembly editor's equivalent
   // guard in resetTransientAssemblyState/applyUndoRedo.
   clearDragState: () => void
 
@@ -303,16 +307,24 @@ export interface SketchEditorState {
   // or after the placement dialog closes.
   dimensionPicks: DimensionPick[]
   // Entity ids of projections this dimension gesture created on the active
-  // sketch, so an aborted gesture or a replaced pick can delete them without
-  // leaving orphans in the doc or the undo history.
+  // sketch, so an aborted gesture can be recognised before the placement
+  // transaction rewinds it, and so a replaced pick can drop its orphan.
   pendingBrepProjectionIds: string[]
-  // Abandons the brep dimension gesture: deletes every projection it created
-  // (withheld, so no undo entries) and drops the pick/commit pair. Used when
-  // the gesture ends without a commit (dialog cancel, tool switch, sketch exit).
-  cancelBrepProjectionGesture: () => void
-  // Drops the brep gesture bookkeeping without touching the doc. Used where the
-  // doc is already being replaced (undo), so no compensating delete is wanted.
-  clearBrepProjectionState: () => void
+  // The constraint id of the dimension the placement click just inserted, while
+  // its editor is open. Guards that abandon a gesture (a tool switch, leaving
+  // the sketch, arming a pick) read it together with the projection ids, since
+  // a sketch-only placement has no projection to notice.
+  pendingPlacementConstraintId: string | null
+  // Abandons the open placement: rewinds the transaction (its constraint and
+  // every scratch projection go with no undo entries), drops the pick/commit
+  // bookkeeping and closes the editor. Used when the gesture ends without a
+  // commit (dialog cancel, tool switch, sketch exit).
+  cancelPlacementGesture: () => void
+  // Commits the open placement as one undo entry, then drops the bookkeeping.
+  commitPlacementGesture: () => void
+  // Drops the placement bookkeeping without touching the doc. Used where the
+  // doc is already being replaced (undo), so a compensating rewind is unwanted.
+  clearPlacementState: () => void
   // Latest cursor position in sketch-local world coords during dim placement.
   // Written by the R3F-side pointer projection on both pointermove and
   // pointerdown (see Drawing.tsx); read by finalizeDimensionPlacement to fill

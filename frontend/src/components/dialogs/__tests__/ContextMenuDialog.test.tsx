@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, act } from '@testing-library/react'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import ContextMenuDialog from '@/components/dialogs/ContextMenuDialog'
 import { useSketchUiStore } from '@/stores/sketchEditorStore'
 import { registerCommand, clearAllHandlers, dispatchKey } from '@/hooks/commandRegistry'
@@ -106,7 +108,7 @@ describe('ContextMenuDialog validation', () => {
       },
   })
     const { unmount } = render(<ContextMenuDialog />)
-    const lengthInput = screen.getByRole('spinbutton', { name: 'Dimension value, millimetres' })
+    const lengthInput = screen.getByRole('textbox', { name: 'Dimension value, millimetres' })
     expect(lengthInput.closest('.field-unit-box')?.querySelector('.field-unit')?.textContent).toBe('mm')
     unmount()
 
@@ -120,7 +122,7 @@ describe('ContextMenuDialog validation', () => {
       },
   })
     render(<ContextMenuDialog />)
-    const angleInput = screen.getByRole('spinbutton', { name: 'Dimension value, degrees' })
+    const angleInput = screen.getByRole('textbox', { name: 'Dimension value, degrees' })
     expect(angleInput.closest('.field-unit-box')?.querySelector('.field-unit')?.textContent).toBe('deg')
   })
 })
@@ -132,8 +134,7 @@ describe('ContextMenuDialog validation', () => {
 // the pending work, tore the editor state down and nulled pendingDialog, so the
 // dialog vanished mid-gesture with onCancel never called and the typed value
 // lost.
-describe('ContextMenuDialog claims the modal stand-down', () => {
-  beforeEach(() => {
+describe('ContextMenuDialog claims the modal stand-down', () => {  beforeEach(() => {
     clearAllHandlers()
     resetModalEscape()
     // A still-mounted dialog from the previous test subscribes to the store, so
@@ -246,5 +247,88 @@ describe('ContextMenuDialog claims the modal stand-down', () => {
     detach()
 
     expect(undo).toHaveBeenCalledOnce()
+  })
+})
+
+// The dialog takes the feature card's look: the same frost surface and verdict
+// buttons, the card's field label, and a leading glyph the caller resolves.
+// jsdom applies no stylesheet, so the sizing rules are read from the files.
+describe('ContextMenuDialog looks like the sketch property card', () => {
+  const css = (file: string) => readFileSync(join(__dirname, file), 'utf8')
+
+  beforeEach(() => {
+    act(() => { useSketchUiStore.setState({ pendingDialog: null }) })
+  })
+
+  function open(over: Record<string, unknown> = {}) {
+    act(() => {
+      useSketchUiStore.setState({
+        pendingDialog: {
+          position: [0, 0],
+          label: 'dimension',
+          defaultValue: '2.45969',
+          quantity: 'length',
+          onConfirm: vi.fn(),
+          ...over,
+        },
+      })
+    })
+  }
+
+  it('carries the shared frost surface and verdict buttons', () => {
+    open()
+    render(<ContextMenuDialog />)
+
+    const root = document.querySelector('.context-menu-dialog')!
+    expect(root).toHaveClass('glass-panel')
+    expect(screen.getByRole('button', { name: 'OK' })).toHaveClass('feature-ok-btn')
+    expect(screen.getByRole('button', { name: 'Cancel' })).toHaveClass('feature-cancel-btn')
+  })
+
+  it('renders the state icon as the leading glyph, and none when absent', () => {
+    open({ icon: '/icons/dimension-angle.svg' })
+    const withIcon = render(<ContextMenuDialog />)
+    const img = document.querySelector('.context-menu-dialog img.feature-icon') as HTMLImageElement
+    expect(img).not.toBeNull()
+    expect(img.getAttribute('src')).toBe('/icons/dimension-angle.svg')
+    withIcon.unmount()
+
+    open()
+    render(<ContextMenuDialog />)
+    expect(document.querySelector('.context-menu-dialog img.feature-icon')).toBeNull()
+  })
+
+  it('accepts an expression: a text box, not a number spinner', () => {
+    open()
+    render(<ContextMenuDialog />)
+    const input = screen.getByRole('textbox', { name: 'dimension, millimetres' }) as HTMLInputElement
+    expect(input.getAttribute('inputmode')).toBe('decimal')
+    fireEvent.change(input, { target: { value: '2*w' } })
+    expect(input.value).toBe('2*w')
+  })
+
+  it('sizes the input for -12345.12345 with the unit suffix reserved', () => {
+    // The widest formatted default is `-12345.12345`, twelve monospace chars;
+    // 14ch holds it with two to spare, and the extra 34px is the input's left
+    // padding plus the unit slot's right padding.
+    const dialogCss = css('../ContextMenuDialog.css')
+    const inputRule = /\.context-menu-dialog \.context-menu-input\s*\{([^}]*)\}/.exec(dialogCss)![1]
+    expect(inputRule).toMatch(/min-width:\s*calc\(14ch \+ 34px\)/)
+    expect(inputRule).toMatch(/width:\s*calc\(14ch \+ 34px\)/)
+    expect(inputRule).toMatch(/ui-monospace/)
+    expect(inputRule).toMatch(/background:\s*var\(--glass-field-bg\)/)
+
+    // The suffix's own reservation is the shared UnitBox rule: a box with a
+    // unit keeps a 26px right padding, so the digits never run under `mm`.
+    const partCss = css('../../../pages/Part.css')
+    const unitRule = /\.field-unit-box--with-unit > input\s*\{([^}]*)\}/.exec(partCss)![1]
+    expect(unitRule).toMatch(/padding-right:\s*var\(--field-unit-slot\)/)
+    expect(partCss).toMatch(/--field-unit-slot:\s*26px/)
+
+    open()
+    render(<ContextMenuDialog />)
+    const input = screen.getByRole('textbox', { name: 'dimension, millimetres' })
+    expect(input).toHaveClass('feature-field-input')
+    expect(input.closest('.field-unit-box')).toHaveClass('field-unit-box--with-unit')
   })
 })

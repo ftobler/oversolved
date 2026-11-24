@@ -222,7 +222,7 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
     mirrorDirty()
   }, [session, setSolveError, reportFailure, mirrorDirty, onRefusal])
 
-  const findTransaction = useCallback((kind: 'preview' | 'edit' | 'brep'): string | null =>
+  const findTransaction = useCallback((kind: 'preview' | 'edit' | 'placement'): string | null =>
     session.transactions().find(txn => txn.kind === kind)?.id ?? null, [session])
 
   const startPreviewMode = useCallback((originalDoc: PartDoc) => {
@@ -275,12 +275,18 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
     mirrorDirty()
   }, [session, findTransaction, mirrorDirty])
 
-  const beginBrepProjection = useCallback(() => {
-    session.begin('brep')
+  const beginPlacement = useCallback(() => {
+    session.begin('placement')
   }, [session])
 
-  const cancelBrepProjection = useCallback(() => {
-    const id = findTransaction('brep')
+  const commitPlacement = useCallback(() => {
+    const id = findTransaction('placement')
+    if (id) session.commit(id)
+    mirrorDirty()
+  }, [session, findTransaction, mirrorDirty])
+
+  const cancelPlacement = useCallback(() => {
+    const id = findTransaction('placement')
     if (id) session.cancel(id)
   }, [session, findTransaction])
 
@@ -355,8 +361,9 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
     validation,
     handleMutation,
     commitMutationGroup,
-    beginBrepProjection,
-    cancelBrepProjection,
+    beginPlacement,
+    commitPlacement,
+    cancelPlacement,
     handleUndo,
     handleRedo,
     saveDoc,
