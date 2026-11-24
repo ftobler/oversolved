@@ -222,9 +222,9 @@ export default function BugReportPanel({ canPick = false, placement = 'overlay' 
               onClick={rememberCaret}
               disabled={submitting}
             />
-            {unknown.map(name => (
-              <div key={name} className="bug-report-warning">
-                #{name} names no selection set
+            {unknown.map(entry => (
+              <div key={entry.name} className="bug-report-warning">
+                {entry.token} names no selection set
               </div>
             ))}
             {error && <div className="bug-report-error">{error}</div>}

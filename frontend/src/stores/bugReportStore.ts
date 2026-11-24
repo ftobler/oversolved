@@ -3,7 +3,7 @@ import type { PartFeature } from '@/types/cad'
 import { editorState } from '@/stores/editorState'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { queryLabel } from '@/utils/query/queryLabel'
-import { renameReference, SET_NAME_PATTERN } from '@/utils/core/reportReferences'
+import { renameReference } from '@/utils/core/reportReferences'
 
 // The bug-report draft is interaction state, not document state: it outlives the
 // floating panel, follows the user between part editors and into an assembly,
@@ -54,7 +54,9 @@ export interface PickContext {
 
 const DEFAULT_ATTACHMENTS: ReportAttachments = {
   doc: true,
-  history: true,
+  // Off by default: the history is bulky and the usual report does not need it.
+  // The count stays at five, so ticking the box attaches the usual slice.
+  history: false,
   historyCount: 5,
 }
 
@@ -131,8 +133,10 @@ interface BugReportState extends BugReportDraft {
   // when the draft is not empty.
   discard: () => void
   addSet: () => string
-  // Returns null on success, or the reason the name was refused. A refusal
-  // leaves the whole draft untouched, description references included.
+  // Returns null on success, or the reason the name was refused. A name is free
+  // text once trimmed and its whitespace runs are collapsed; only an empty one
+  // is refused, plus a name another set already holds. A refusal leaves the
+  // whole draft untouched, description references included.
   renameSet: (id: string, name: string) => string | null
   removeSet: (id: string) => void
   addPick: (setId: string, pick: ReportPick) => void
@@ -184,16 +188,21 @@ export const useBugReportStore = create<BugReportState>((set, get) => ({
     const state = get()
     const target = state.sets.find(s => s.id === id)
     if (!target) return null
-    if (!SET_NAME_PATTERN.test(name)) return 'use letters, digits, - and _ only (no spaces)'
-    if (state.sets.some(s => s.id !== id && s.name === name)) return 'name already used'
-    if (target.name === name) return null
+    // A name is one line: trimming drops the ends and any interior whitespace
+    // run (a pasted newline, a tab) becomes one space, so a name cannot break
+    // the exported heading or the one-line reference token.
+    const normalized = name.trim().replace(/\s+/gu, ' ')
+    if (normalized === '') return 'a set needs a name'
+    if (state.sets.some(s => s.id !== id && s.name === normalized)) return 'name already used'
+    if (target.name === normalized) return null
     const oldName = target.name
     set(s => ({
-      sets: s.sets.map(entry => entry.id === id ? { ...entry, name } : entry),
+      sets: s.sets.map(entry => entry.id === id ? { ...entry, name: normalized } : entry),
       // The description is the only place a set name is written down, so a
       // rename rewrites it in the same action; a reference never dangles
-      // merely because the name changed.
-      description: renameReference(s.description, oldName, name),
+      // merely because the name changed. The token form follows the name, so
+      // `#set1` becomes `#[set 1]` and back.
+      description: renameReference(s.description, oldName, normalized),
     }))
     return null
   },

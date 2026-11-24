@@ -199,6 +199,61 @@ describe('telemetry adapter', () => {
       expect(md).toContain('<h2 id="selection-set-foo-2">Selection set: foo</h2>')
     })
 
+    // The report is read on GitHub, so the free-text token's CommonMark is
+    // pinned: the link text escapes its inner brackets and the heading keeps
+    // the name as typed.
+    it('renders a free-text set name as one explicit escaped link', () => {
+      const md = formatBugReportMarkdown({
+        title: 'boom',
+        description: 'see #[set 1]',
+        selectionSets: [{ name: 'set 1', picks: [] }],
+      })
+      expect(md).toBe([
+        '# boom',
+        '',
+        'see [#\\[set 1\\]](#selection-set-set-1)',
+        '',
+        '<h2 id="selection-set-set-1">Selection set: set 1</h2>',
+        '',
+        '0 picks',
+        '',
+        '```json',
+        '{',
+        '  "name": "set 1",',
+        '  "picks": []',
+        '}',
+        '```',
+        '',
+      ].join('\n'))
+    })
+
+    // A free-text name must not inject a tag, a comment or an entity into the
+    // link text of the report a maintainer opens.
+    it('escapes markup in a free-text link text', () => {
+      const md = formatBugReportMarkdown({
+        title: 'boom',
+        description: 'see #[a <b> & c]',
+        selectionSets: [{ name: 'a <b> & c', picks: [] }],
+      })
+      expect(md).toBe([
+        '# boom',
+        '',
+        'see [#\\[a &lt;b&gt; &amp; c\\]](#selection-set-a-b-c)',
+        '',
+        '<h2 id="selection-set-a-b-c">Selection set: a &lt;b&gt; &amp; c</h2>',
+        '',
+        '0 picks',
+        '',
+        '```json',
+        '{',
+        '  "name": "a <b> & c",',
+        '  "picks": []',
+        '}',
+        '```',
+        '',
+      ].join('\n'))
+    })
+
     it('keeps a shapeless selectionSets attachment rather than dropping it', () => {
       const md = formatBugReportMarkdown({ title: 'boom', selectionSets: 'raw' })
       expect(md).toContain('## Selection sets\n\n```json\n"raw"\n```')

@@ -57,8 +57,8 @@ function selectionSetName(set: unknown, index: number): string {
   return typeof name === 'string' && name.trim() ? name : `set${index + 1}`
 }
 
-// The name is validated to letters, digits, marks, `_` and `-`, but a report
-// built elsewhere still must not inject markup into the raw heading.
+// The name is free text, but a report built elsewhere still must not inject
+// markup into the raw heading.
 function escapeHeadingText(text: string): string {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
