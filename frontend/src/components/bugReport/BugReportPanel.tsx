@@ -180,11 +180,14 @@ export default function BugReportPanel({ canPick = false, placement = 'overlay' 
               <>
                 {/* The report's own verdicts: submit is the green tick, discard
                     is the red bin (it destroys the draft, so it is not the
-                    feature card's cross), and close is the neutral cross. */}
+                    feature card's cross), and close is the neutral cross. The
+                    names ride on aria-label as well as title: a disabled button
+                    never shows its tooltip, and the name must survive that. */}
                 <button
                   type="button"
                   className="feature-ok-btn"
                   title={submitting ? 'Submitting...' : 'Submit'}
+                  aria-label={submitting ? 'Submitting...' : 'Submit'}
                   onClick={handleSubmit}
                   disabled={submitting}
                 >
@@ -194,6 +197,7 @@ export default function BugReportPanel({ canPick = false, placement = 'overlay' 
                   type="button"
                   className="feature-cancel-btn"
                   title="Discard"
+                  aria-label="Discard"
                   onClick={requestDiscard}
                   disabled={submitting}
                 >

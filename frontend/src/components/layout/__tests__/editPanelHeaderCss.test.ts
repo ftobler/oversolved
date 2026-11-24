@@ -10,6 +10,7 @@ import { join } from 'node:path'
 const PART_CSS = readFileSync(join(__dirname, '../../../pages/Part.css'), 'utf8')
 const GLASS_CSS = readFileSync(join(__dirname, '../Glass.css'), 'utf8')
 const CARD_HEADER_CSS = readFileSync(join(__dirname, '../CardHeader.css'), 'utf8')
+const SECTION_CSS = readFileSync(join(__dirname, '../../Viewport/SectionPanel.css'), 'utf8')
 
 describe('edit card header buttons', () => {
   it('keeps the tree row on the shared 28px icon-button rule', () => {
@@ -51,7 +52,19 @@ describe('edit card header buttons', () => {
     }
   })
 
-  it('keeps a disabled verdict at its size and colour', () => {
-    expect(GLASS_CSS).toMatch(/\.feature-ok-btn:disabled[\s\S]*?\{[^}]*cursor:\s*not-allowed/)
+  it('keeps every disabled verdict at its size and colour', () => {
+    const disabled = /\.feature-ok-btn:disabled,[\s\S]*?\.feature-neutral-btn:disabled\s*\{([^}]*)\}/.exec(GLASS_CSS)![0]
+    expect(disabled).toContain('.feature-cancel-btn:disabled')
+    expect(disabled).toContain('.feature-neutral-btn:disabled')
+    expect(disabled).toMatch(/opacity:\s*0\.5/)
+    expect(disabled).toMatch(/cursor:\s*not-allowed/)
+  })
+
+  it('lets the section card keep its neutral title over the shared pink', () => {
+    // The compound selector is the whole point: two classes beat the shared
+    // title's one, whatever order the sheets load in.
+    expect(SECTION_CSS).toMatch(
+      /\.card-header-title\.section-panel-title\s*\{[^}]*color:\s*#cfcfcf/,
+    )
   })
 })
