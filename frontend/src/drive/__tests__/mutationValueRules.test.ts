@@ -1283,7 +1283,7 @@ describe('one profile and path ref grammar', () => {
     })
     expect(() => collectExtrudeLoops(
       null as never, null as never, null as never, 'entity:sk1:l1', repo, {},
-    )).toThrow(/bounds no closed area/)
+    )).toThrow(/has no area of its own/)
   })
 
   it('refuses malformed forms with every accepted spelling', () => {

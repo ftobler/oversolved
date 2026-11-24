@@ -51,7 +51,7 @@ describe('solveRevolve guard paths', () => {
         repo,
         partStore,
       ),
-    ).toThrow(/sketch not found: missing/)
+    ).toThrow(/profile's sketch was not found/)
   })
 
   it('reads sketch/angle from the nested revolve sub-dict and fails on the no-profile branch', () => {

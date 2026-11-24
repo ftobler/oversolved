@@ -333,11 +333,10 @@ export function solveExtrude(
   partStore: Record<string, PartSolid>,
   // The dispatch contract's two trailing slots: `featuresById` for the leaves
   // that resolve other features, and the variable context for the ones that
-  // re-solve them. extrude reads neither (the slot is typed `unknown` so the
-  // ignored record does not re-add a loose feature shape to the ratchet), but
-  // the through_all tool build uses the context slot, so the arity stays the
-  // registry's.
-  _featuresById?: unknown,
+  // re-solve them. extrude reads `featuresById` only to name a sketch by its
+  // tree label in a profile refusal, and uses the context slot for the
+  // through_all tool build, so the arity stays the registry's.
+  featuresById: Record<string, Dict> = {},
   solveContext?: ExtrudeSolveContext,
 ): ExtrudeResult {
   const throughAllSource = solveContext?.throughAllSource
@@ -455,6 +454,7 @@ export function solveExtrude(
         sketchRef,
         globalRepo,
         partStore,
+        featuresById,
       )
     } catch (exc) {
       swallowUnlessTrap(exc)

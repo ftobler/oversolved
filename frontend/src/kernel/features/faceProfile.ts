@@ -15,7 +15,7 @@ import { Repository, parseAncestry, makeAncestryQuery, ref, constructionUuidToke
 import { canonicalFaces, canonicalIndex, assertAligned } from '../occ/partNames'
 import { extractOccFace, extractFaceLoops, sortedFacesOf, faceLoopsOfFace, computeFaceDatumFrame } from '../occ/faceLoops'
 import { extractProfileLoops, type ProfileLoopDiag } from './shared/profileLoops'
-import { parseSketchEntityRef, sketchIdFromQuery, surfaceEntityIds } from './shared/partRef'
+import { parseSketchEntityRef, sketchIdFromQuery, surfaceEntityIds, entityDisplayName, noAreaReason } from './shared/partRef'
 import type { PlaneLike } from './shared/planes'
 import { stripRefSigil } from '@/utils/refSigil'
 import { resolveLegacyCapQuery } from './shared/legacyCapHandoff'
@@ -189,7 +189,7 @@ export function resolveFaceProfile(
     const refId = slash[1]
     let faceIndex = parseInt(slash[2], 10)
     const part = findPartForRef(partStore, refId)
-    if (part === null) throw new Error(`No part found for '${refId}'`)
+    if (part === null) throw new Error('the part this pick names is missing or has no shape; pick the face again')
     const shape = partShape(table, part)
     // One sorted traversal serves both the index resolution and the loop
     // extraction. Both index the same shape with the same sort, so the two
@@ -197,20 +197,20 @@ export function resolveFaceProfile(
     // index than the literal one it resolved (M45).
     const faces = sortedFacesOf(oc, scope, shape)
     faceIndex = remapFaceIndex(oc, scope, shape, faceIndex, globalRepo, partStore, part, faces, sketchRef)
-    if (faceIndex >= faces.length) throw new Error(`face_index ${faceIndex} out of range`)
+    if (faceIndex >= faces.length) throw new Error('the picked face no longer exists; pick it again')
     return faceLoopsOfFace(oc, scope, faces[faceIndex])
   }
 
   const faceEntry = (resolveLegacyCapQuery(globalRepo, sketchRef) ??
     globalRepo.query(sketchRef, null, partStore)) as Dict | null
-  if (faceEntry === null) throw new Error(`Profile face not found: ${sketchRef}`)
+  if (faceEntry === null) throw new Error('the picked face no longer resolves; pick it again')
 
   const partId = faceEntry.body_id as string | undefined
   const faceIndex = faceEntry.face_index as number | undefined
   if (partId !== undefined && faceIndex !== undefined) {
     const part = partStore[partId]
     if (part === undefined || part.shape === null) {
-      throw new Error(`Part '${partId}' not found or has no shape`)
+      throw new Error('the part this pick names is missing or has no shape; pick the face again')
     }
     return extractLoopsFromOccFace(oc, scope, partShape(table, part), faceIndex)
   }
@@ -218,7 +218,7 @@ export function resolveFaceProfile(
   if (sketchRef.startsWith('@')) {
     const refId = sketchRef.slice(1).split('/')[0]
     const part = findPartForRef(partStore, refId)
-    if (part === null) throw new Error(`No part found for '${refId}'`)
+    if (part === null) throw new Error('the part this pick names is missing or has no shape; pick the face again')
     const topo = (globalRepo.elements.get('_topo_' + part.sketch_id) as Dict | undefined) ?? {}
     const surfaces = (topo.surfaces as Dict[]) ?? []
     const effectivePlane: PlaneLike = {
@@ -237,10 +237,10 @@ export function resolveFaceProfile(
     const [targetIds] = parseAncestry(sketchRef)
     const sketchId = sketchIdFromQuery(sketchRef, globalRepo)
     if (sketchId === null) {
-      throw new Error(`Cannot find parent sketch for surface query: ${sketchRef}`)
+      throw new Error('the picked area is not on a sketch; pick the area again')
     }
     const surfacePt = globalRepo.elements.get('_pt_' + sketchId) as PlaneLike | undefined
-    if (surfacePt === undefined) throw new Error(`Sketch plane not found for: ${sketchId}`)
+    if (surfacePt === undefined) throw new Error('the sketch this pick was drawn on no longer exists; pick the profile again')
     const topo = (globalRepo.elements.get('_topo_' + sketchId) as Dict | undefined) ?? {}
     const allSurfaces = (topo.surfaces as Dict[]) ?? []
     const matched = allSurfaces.filter((s) => {
@@ -268,7 +268,7 @@ export function resolveFaceProfile(
     }
   }
 
-  throw new Error(`Cannot resolve profile from: ${sketchRef}`)
+  throw new Error('this profile pick cannot be resolved; pick the profile again')
 }
 
 /**
@@ -290,13 +290,13 @@ export function resolveFaceSlashFace(
   const refId = slash[1]
   let faceIndex = parseInt(slash[2], 10)
   const part = findPartForRef(partStore, refId)
-  if (part === null) throw new Error(`No part found for '${refId}'`)
+  if (part === null) throw new Error('the part this pick names is missing or has no shape; pick the face again')
   const shape = partShape(table, part)
   // Same one-traversal-per-pick deal as resolveFaceProfile's slash branch: the
   // remap and the final pick both index the same sorted list (M45).
   const faces = sortedFacesOf(oc, scope, shape)
   faceIndex = remapFaceIndex(oc, scope, shape, faceIndex, globalRepo, partStore, part, faces, ref)
-  if (faceIndex >= faces.length) throw new Error(`face_index ${faceIndex} out of range`)
+  if (faceIndex >= faces.length) throw new Error('the picked face no longer exists; pick it again')
   return { face: faces[faceIndex], partId: part.id }
 }
 
@@ -370,9 +370,11 @@ function collectEntityProfileLoops(
   sketchId: string,
   eid: string,
   globalRepo: Repository,
+  featuresById: Record<string, Dict>,
 ): ExtrudeLoops {
+  const sketch = featuresById[sketchId]
   const plane = globalRepo.elements.get('_pt_' + sketchId) as PlaneLike | undefined
-  if (plane === undefined) throw new Error(`sketch not found: ${sketchId}`)
+  if (plane === undefined) throw new Error("the profile's sketch was not found; pick the profile again")
   const topo = (globalRepo.elements.get('_topo_' + sketchId) as Dict | undefined) ?? {}
 
   const token = ref(sketchId + '/' + eid)
@@ -390,10 +392,16 @@ function collectEntityProfileLoops(
   const built: number[] = []
   const loops = boundary.length > 0 ? extractProfileLoops(referenced, diags, built) : []
   if (loops.length === 0) {
-    throw new Error(
-      `profile entity '${eid}' of sketch ${sketchId} bounds no closed area; ` +
-      'pick the area itself, or a closed entity such as a circle',
-    )
+    // Name the curve the user picked without the document ids: a kind and a
+    // per-kind ordinal ("line 12"), qualified by the sketch's tree label when
+    // it has one. A dangling id or a kind the registry does not know leaves the
+    // name out rather than printing the id.
+    const name = entityDisplayName(sketch, eid)
+    const label = typeof sketch?.label === 'string' && sketch.label.trim() !== '' ? sketch.label.trim() : null
+    const subject = name !== null
+      ? (label === null ? name : `${name} of '${label}'`)
+      : (label === null ? 'the picked entity' : `the picked entity in '${label}'`)
+    throw new Error(noAreaReason(subject))
   }
   return { loops, plane, sketchId, face: null, loopDiags: diags, profileSurfaces: referenced, builtSurfaces: built }
 }
@@ -407,7 +415,7 @@ function collectEntityProfileLoops(
  */
 function collectWholeSketchLoops(sketchId: string, globalRepo: Repository): ExtrudeLoops {
   const pt = globalRepo.elements.get('_pt_' + sketchId) as PlaneLike | undefined
-  if (pt === undefined) throw new Error(`sketch not found: ${sketchId}`)
+  if (pt === undefined) throw new Error("the profile's sketch was not found; pick the profile again")
   const topo = (globalRepo.elements.get('_topo_' + sketchId) as Dict | undefined) ?? {}
   const surfaces = (topo.surfaces as Dict[]) ?? []
   const diags: ProfileLoopDiag[] = []
@@ -433,10 +441,13 @@ export function collectExtrudeLoops(
   sketchRef: string,
   globalRepo: Repository,
   partStore: Record<string, PartSolid>,
+  // The build's feature records in document order. Only the entity-pick refusal
+  // reads it, for the sketch's tree label; absent means the label is left out.
+  featuresById: Record<string, Dict> = {},
 ): ExtrudeLoops {
   const picked = parseSketchEntityRef(sketchRef)
   if (picked !== null) {
-    return collectEntityProfileLoops(picked.sketchId, picked.eid, globalRepo)
+    return collectEntityProfileLoops(picked.sketchId, picked.eid, globalRepo, featuresById)
   }
 
   // A bare feature-level ref names a whole sketch. `@<sketchId>` is canonical

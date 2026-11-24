@@ -323,6 +323,14 @@ describe('entityRegistry', () => {
     expect(new Set(kinds).size).toBe(kinds.length)
   })
 
+  it('every entity declares whether it closes an area on its own', () => {
+    // A profile pick reads this fact: a `never` kind is refused at the chip so
+    // the build cannot be the first to reject it. A new kind has to state it.
+    for (const e of ENTITIES) {
+      expect(['always', 'never', 'maybe'], e.kind).toContain(e.closesAlone)
+    }
+  })
+
   it('ENTITY_BY_KIND contains all entities', () => {
     for (const e of ENTITIES) {
       expect(ENTITY_BY_KIND.get(e.kind)).toBe(e)

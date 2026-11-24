@@ -132,7 +132,7 @@ describe('solveExtrude guard paths', () => {
         repo,
         partStore,
       ),
-    ).toThrow(/sketch not found: missing/)
+    ).toThrow(/profile's sketch was not found/)
   })
 
   it('reads sketch/distance from the nested extrude sub-dict', () => {

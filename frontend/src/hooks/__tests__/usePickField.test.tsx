@@ -15,6 +15,9 @@ import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { DEFAULT_SECTION_STATE, useSectionStore } from '@/stores/sectionStore'
 import { useEditorState } from '@/hooks/useEditorState'
 import { partsWantKey, type WantKeyOf } from '@/utils/query/pickIntake'
+import { EXTRUDE_SCHEMA } from '@/components/editors/featureEditorSchemas'
+import type { PickFieldDef } from '@/components/editors/widgets/fieldTypes'
+import { makeAncestryQuery } from '@/kernel/query'
 import type { PartFeature, PartResult } from '@/types/cad'
 
 const part = (id: string, createdBy: string): PartResult => ({ id, created_by: createdBy, modified_by: [] })
@@ -422,6 +425,57 @@ describe('usePickField  -  refusal reason', () => {
     expect(onPick).toHaveBeenCalledTimes(1)
     expect(onPick).toHaveBeenCalledWith('@builtin_plane_top')
     expect(useSketchEditorStore.getState().activePickField).toBeNull()
+  })
+})
+
+describe('usePickField  -  profile pick rule', () => {
+  const SKETCH = {
+    id: 'sk1',
+    kind: 'sketch',
+    label: 'Sketch 1',
+    entities: [
+      { id: 'l1', kind: 'line' },
+      { id: 'l2', kind: 'line' },
+      { id: 'l3', kind: 'line' },
+      { id: 'l4', kind: 'line' },
+    ],
+  } as unknown as PartFeature
+  const FEATURES: PartFeature[] = [SKETCH]
+  const profileField = EXTRUDE_SCHEMA.fields.find(
+    (field): field is PickFieldDef => field.type === 'pick' && field.key === 'sketch',
+  )!
+
+  it('a line click dispatches nothing, keeps the field armed and shows the sentence', () => {
+    // The reported bug: the extrude profile accepted a line, then the build
+    // refused it. The rule now refuses it at the chip, where the user can go
+    // straight for the area fill beside it.
+    const onPick = vi.fn()
+    act(() => {
+      useSketchEditorStore.getState().setActivePickField({ featureId: 'ex1', field: 'sketch', multi: true })
+    })
+    const spy = mountPickField('ex1', 'sketch', onPick, {
+      multi: true,
+      features: FEATURES,
+      validatePick: profileField.validatePick,
+    })
+
+    act(() => {
+      useSketchEditorStore.getState().setNormalSelection(new Set(['entity:sk1:l1']))
+    })
+
+    expect(onPick).not.toHaveBeenCalled()
+    expect(spy.isPicking).toBe(true)
+    expect(spy.refusal).toBe(
+      'Pick refused: a line has no area of its own; pick the area beside it, or a closed curve such as a circle',
+    )
+    expect(useSketchEditorStore.getState().normalSelection.size).toBe(0)
+
+    // The area fill the line borders is the very next click, and it lands.
+    const area = makeAncestryQuery(['@sk1/l1', '@sk1/l2', '@sk1/l3', '@sk1/l4', 'surface:0', '@sk1'], 'flatface')
+    act(() => {
+      useSketchEditorStore.getState().setNormalSelection(new Set([area]))
+    })
+    expect(onPick).toHaveBeenCalledWith(area)
   })
 })
 

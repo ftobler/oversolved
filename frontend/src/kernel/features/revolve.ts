@@ -222,6 +222,9 @@ export function solveRevolve(
   feature: Dict,
   globalRepo: Repository,
   partStore: Record<string, PartSolid>,
+  // The registry's featuresById slot, read only for the sketch label in a
+  // profile refusal.
+  featuresById: Record<string, Dict> = {},
 ): RevolveResult {
   const featureId = (feature.id as string) ?? ''
   const sub = (feature.revolve as Dict) ?? {}
@@ -260,7 +263,7 @@ export function solveRevolve(
   for (const sketchRef of sketchRefs) {
     let resolved
     try {
-      resolved = collectExtrudeLoops(oc, scope, table, sketchRef, globalRepo, partStore)
+      resolved = collectExtrudeLoops(oc, scope, table, sketchRef, globalRepo, partStore, featuresById)
     } catch (exc) {
       swallowUnlessTrap(exc)
       profileErrors.push(extractErrorMessage(exc))

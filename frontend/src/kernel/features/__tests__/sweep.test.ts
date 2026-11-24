@@ -307,7 +307,7 @@ describe('solveSweep guard paths', () => {
         new Repository(),
         partStore,
       ),
-    ).toThrow(/sketch not found: missing/)
+    ).toThrow(/profile's sketch was not found/)
   })
 
   it('names the reorder fix for a later whole-sketch profile', () => {
@@ -342,7 +342,7 @@ describe('solveSweep guard paths', () => {
           {},
           featuresById,
         ),
-      ).toThrow(/sketch not found: s6/)
+      ).toThrow(/profile's sketch was not found/)
     }
   })
 
@@ -373,7 +373,7 @@ describe('solveSweep guard paths', () => {
         {},
         { sw1: { id: 'sw1', kind: 'sweep' } },
       ),
-    ).toThrow(/sketch not found: s6/)
+    ).toThrow(/profile's sketch was not found/)
   })
 
   it('names the reorder fix for a later path sketch', () => {
@@ -467,8 +467,9 @@ describe('solveSweep guard paths', () => {
     } catch (e) {
       msg = (e as Error).message
     }
-    expect(msg).toContain(`sketch not found: ${sketchId}`)
+    expect(msg).toContain("the profile's sketch was not found")
     expect(msg).not.toContain('entity:')
+    expect(msg).not.toContain(sketchId)
   })
 
   it('reports a picked entity whose edges do not close a loop', () => {

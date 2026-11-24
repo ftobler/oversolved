@@ -278,8 +278,9 @@ export function solveWrap(
   feature: Dict,
   globalRepo: Repository,
   partStore: Record<string, PartSolid>,
-  // The registry's featuresById slot; a wrap reads no other feature.
-  _featuresById?: unknown,
+  // The registry's featuresById slot, read only for the sketch label in a
+  // profile refusal.
+  featuresById: Record<string, Dict> = {},
   solveContext?: WrapSolveContext,
 ): WrapResult {
   const rebuild = solveContext?.rebuild
@@ -312,7 +313,7 @@ export function solveWrap(
   for (const sketchRef of sketchRefs) {
     let resolved
     try {
-      resolved = collectExtrudeLoops(oc, scope, table, sketchRef, globalRepo, partStore)
+      resolved = collectExtrudeLoops(oc, scope, table, sketchRef, globalRepo, partStore, featuresById)
     } catch (exc) {
       swallowUnlessTrap(exc)
       profileErrors.push(extractErrorMessage(exc))

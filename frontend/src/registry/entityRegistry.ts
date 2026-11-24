@@ -38,6 +38,16 @@ export interface EntityDef {
   // One-line description for documentation.
   description: string
 
+  /**
+   * Whether the entity closes an area on its own: `always` for a circle and an
+   * ellipse, `never` for a line, an arc and a point, and `maybe` where closure
+   * is a solve fact (a spline closes only when its ends are coincident). A
+   * profile pick reads this: a `never` kind is refused at the chip, because a
+   * curve pick means "what this curve encloses" and the build can only reject
+   * it later. Every row states it so a new kind cannot inherit a guess.
+   */
+  closesAlone: 'always' | 'never' | 'maybe'
+
   // Number of scalar parameters in the flat array. For a variable-size kind
   // this is the MINIMUM (`fit_spline`: two points, no handles); the layout
   // helper computes the real count from the authored points and handles.
@@ -86,6 +96,7 @@ export const ENTITIES: readonly EntityDef[] = [
     kind: 'line',
     label: 'Line',
     description: 'A straight line segment defined by two endpoints.',
+    closesAlone: 'never',
     paramCount: 4,
     defaultParams: [0, 0, 0, 0],
     vertices: [
@@ -102,6 +113,7 @@ export const ENTITIES: readonly EntityDef[] = [
     kind: 'circle',
     label: 'Circle',
     description: 'A full circle defined by center and radius.',
+    closesAlone: 'always',
     paramCount: 3,
     defaultParams: [0, 0, 0],
     vertices: [
@@ -117,6 +129,7 @@ export const ENTITIES: readonly EntityDef[] = [
     kind: 'arc',
     label: 'Arc',
     description: 'A circular arc defined by center, radius, start angle, and end angle (in degrees).',
+    closesAlone: 'never',
     paramCount: 5,
     defaultParams: [0, 0, 0, 0, 0],
     vertices: [
@@ -132,6 +145,7 @@ export const ENTITIES: readonly EntityDef[] = [
     kind: 'ellipse',
     label: 'Ellipse',
     description: 'An ellipse defined by center, semi-major and semi-minor radii, and rotation.',
+    closesAlone: 'always',
     paramCount: 5,
     defaultParams: [0, 0, 0, 0, 0],
     vertices: [
@@ -148,6 +162,7 @@ export const ENTITIES: readonly EntityDef[] = [
     kind: 'spline',
     label: 'Bezier',
     description: 'A cubic Bezier spline defined by four control points.',
+    closesAlone: 'maybe',
     paramCount: 8,
     defaultParams: [0, 0, 0, 0, 0, 0, 0, 0],
     vertices: [
@@ -165,6 +180,7 @@ export const ENTITIES: readonly EntityDef[] = [
     kind: 'fit_spline',
     label: 'Spline',
     description: 'An interpolating spline through N fit points, with optional end handles. Click fit points, then press Enter, right-click or double-click to finish, or click the first point to close.',
+    closesAlone: 'maybe',
     // Minimum block: two fit points, no handles. The real count is
     // `2 N + 2 h`; see `fitSplineVertices`.
     paramCount: 4,
@@ -181,6 +197,7 @@ export const ENTITIES: readonly EntityDef[] = [
     kind: 'point',
     label: 'Point',
     description: 'A free point in the sketch plane.',
+    closesAlone: 'never',
     paramCount: 2,
     defaultParams: [0, 0],
     vertices: [
@@ -198,6 +215,9 @@ export const ENTITIES: readonly EntityDef[] = [
     kind: 'project',
     label: 'Project',
     description: 'Project geometry from another sketch onto this sketch plane.',
+    // A tool registration, not an entity kind: the entity it produces is a
+    // base kind and carries that row's answer.
+    closesAlone: 'maybe',
     paramCount: 4,
     defaultParams: [0, 0, 0, 0],
     vertices: [],
