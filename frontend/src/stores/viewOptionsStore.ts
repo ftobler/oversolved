@@ -29,6 +29,10 @@ export interface ViewOptionsState extends ViewPreferences {
   // The ID-buffer debug renderpass. Deliberately NOT persisted: a debug overlay
   // returning after a reload would look like a rendering fault.
   collisionDebug: boolean
+  // The per-frame shader compile probe. Same kind of viewer debug as the ID
+  // buffer: a console logger coming back on every reload would be noise, so it
+  // lives here in memory beside its sibling and not in the preferences port.
+  shaderProbe: boolean
   // The auto range the live scene produced, published by the viewport that
   // computed it so the dropdown's legend can name the numbers the bodies are
   // actually painted with. Transient, never persisted.
@@ -47,6 +51,7 @@ export interface ViewOptionsState extends ViewPreferences {
   setCurvatureAutoRange: (range: [number, number] | null) => void
   setAmbientOcclusion: (on: boolean) => void
   setCollisionDebug: (on: boolean) => void
+  setShaderProbe: (on: boolean) => void
   setOrbitAroundCursor: (on: boolean) => void
 }
 
@@ -116,6 +121,7 @@ export const useViewOptionsStore = create<ViewOptionsState>((set, get) => {
   return {
     ...DEFAULT_VIEW_PREFERENCES,
     collisionDebug: false,
+    shaderProbe: false,
     curvatureAutoRange: null,
 
     setShading: (on) => {
@@ -198,6 +204,10 @@ export const useViewOptionsStore = create<ViewOptionsState>((set, get) => {
     // The public exception to "options follow the layers": this flag exists
     // only to debug the ID buffer, so it is kept even while shading is off.
     setCollisionDebug: (on) => set({ collisionDebug: on }),
+
+    // Same "options follow the layers" exception as collisionDebug: the probe
+    // is a debug tool, so it stays armed regardless of what is drawn.
+    setShaderProbe: (on) => set({ shaderProbe: on }),
   }
 })
 

@@ -22,6 +22,7 @@ import ReferencePlane from '@/components/Viewport/ReferencePlane'
 import SceneController from '@/components/Viewport/SceneController'
 import { RenderOnChange, RenderOnce } from '@/components/Viewport/RenderOnChange'
 import { useSceneExposure } from '@/components/Viewport/SceneExposure'
+import { useShaderProbe } from '@/components/Viewport/shaderProbe'
 import { useLayerPipelineEffects } from '@/components/Viewport/viewOptionsEffects'
 import { useSectionPipelineEffects } from '@/viewport/useSection'
 import { autoRangeFromMeshes } from '@/components/Geometry3D/curvature'
@@ -234,6 +235,10 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
     createdLiveRef.current = true
     setSceneTick(t => t + 1)
   }, [])
+
+  // The renderer only exists after onCreated; sceneTick is the readiness signal
+  // the probe hook waits for. The label ties each console line to this pane.
+  useShaderProbe(glRef, sceneTick, 'part')
 
   const captureScreenshotForSaving = useCallback(
     (): Promise<string | null> => captureThumbnail(glRef.current, sceneRef.current, cameraRef.current),

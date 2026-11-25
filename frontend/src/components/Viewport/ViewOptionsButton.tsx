@@ -19,7 +19,7 @@
 //              Edges are the drawn layers, Brightness is the global exposure,
 //              Zebra and Curvature replace the body material, Camera decides
 //              whether an orbit turns about the cursor point, and Debug holds
-//              the ID-buffer overlay.
+//              the ID-buffer overlay and the shader compile probe.
 import { useCallback, useEffect, useRef, useState } from 'react'
 import iconEyeIcon from '@/assets/icons/icon-eye.svg'
 import {
@@ -109,6 +109,7 @@ export default function ViewOptionsButton({ show, onToggleShow, allowAmbientOccl
   const curvatureAutoRange = useViewOptionsStore(s => s.curvatureAutoRange)
   const ambientOcclusion = useViewOptionsStore(s => s.ambient_occlusion)
   const collisionDebug = useViewOptionsStore(s => s.collisionDebug)
+  const shaderProbe = useViewOptionsStore(s => s.shaderProbe)
   const orbitAroundCursor = useViewOptionsStore(s => s.orbit_around_cursor)
   const sectionEnabled = useSectionStore(s => s.enabled)
   const sectionReason = useSectionStore(s => s.disabledReason)
@@ -126,6 +127,7 @@ export default function ViewOptionsButton({ show, onToggleShow, allowAmbientOccl
   const setCurvatureRange = useViewOptionsStore(s => s.setCurvatureRange)
   const setAmbientOcclusion = useViewOptionsStore(s => s.setAmbientOcclusion)
   const setCollisionDebug = useViewOptionsStore(s => s.setCollisionDebug)
+  const setShaderProbe = useViewOptionsStore(s => s.setShaderProbe)
   const setOrbitAroundCursor = useViewOptionsStore(s => s.setOrbitAroundCursor)
   const setSectionEnabled = useSectionStore(s => s.setEnabled)
 
@@ -444,6 +446,12 @@ export default function ViewOptionsButton({ show, onToggleShow, allowAmbientOccl
             checked={collisionDebug}
             title="Draw the ID buffer the pick pass reads"
             onToggle={() => setCollisionDebug(!collisionDebug)}
+          />
+          <CheckRow
+            label="Shader probe"
+            checked={shaderProbe}
+            title="Log each WebGL program that compiles on first use"
+            onToggle={() => setShaderProbe(!shaderProbe)}
           />
         </div>
       )}
