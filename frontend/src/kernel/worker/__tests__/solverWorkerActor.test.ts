@@ -4,8 +4,8 @@
  * move, a cursor sweep one measure per face) costs one run instead of N. A solve
  * additionally drops the queued measures, whose generation it is about to
  * replace; a measure never drops a solve. The job already running is never
- * dropped -- an OCC build is one synchronous WASM call and cannot be interrupted
- * from the outside; only the cancel button's Worker terminate can end it early.
+ * dropped; a running solve is only asked to stop at its next feature boundary
+ * (solverWorkerAbort.test.ts).
  */
 import { describe, it, expect, vi } from 'vitest'
 import { WorkerActor, type ActorJob, type ActorLane } from '../solverWorker'

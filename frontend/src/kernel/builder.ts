@@ -7,7 +7,9 @@
 // stays the orchestrator and re-exports the public surface those modules used to expose.
 
 import { extractErrorMessage, isKernelTrap } from './errors'
-import { clearConsumedPartAncestry, setCurrentFeatureId } from './query'
+import { clearConsumedPartAncestry, setCurrentFeatureId, type Repository } from './query'
+import { nextMacrotask } from './nextMacrotask'
+import { partialBuildState, type PartialBuild } from './builderPartial'
 import { BUILTIN_PLANE_RESULTS } from './solverConstants'
 import { markFeatureStart, clearFeatureProgress } from './featureProgress'
 import type { PartSolid, FeatureCheckpoint, BuildState } from './types3d'
@@ -162,11 +164,75 @@ export function validateIncremental(
 
 // ─── Build orchestration ───
 
+/** What `buildSteps` yields after each feature's checkpoint is stored. */
+export interface BuildStep {
+  /** Index (in the build's feature list) of the feature that just finished. */
+  featureIndex: number
+  /** The state a build stopped here leaves behind; computed on demand. */
+  partial: () => PartialBuild
+}
+
+/** A build `buildAbortable` stopped between two features. */
+export interface BuildAborted extends PartialBuild {
+  aborted: true
+}
+
+/** Run a build to completion synchronously: the entry every caller that needs
+ *  a result in one call uses (exports, validation, bundles, headless drive). */
 export function build(
   spec: Record<string, unknown>,
   options: BuildOptions,
   deps: BuildDeps,
 ): BuildResponse {
+  const steps = buildSteps(spec, options, deps)
+  for (;;) {
+    const step = steps.next()
+    if (step.done) return step.value
+  }
+}
+
+/**
+ * Run a build that yields a macrotask after each feature and stops there once
+ * `shouldAbort()` is true, so a request that obsoletes it can land and cut it
+ * short. A stop releases this build's restore copies and the retains of every
+ * solved checkpoint the partial state drops, and returns that state: a valid
+ * prevState for the next build, which resumes at the first missing checkpoint.
+ * A trap still throws out of the step that hit it, as in `build`.
+ */
+export async function buildAbortable(
+  spec: Record<string, unknown>,
+  options: BuildOptions,
+  deps: BuildDeps,
+  shouldAbort: () => boolean,
+  yieldNow: () => Promise<void> = nextMacrotask,
+): Promise<BuildResponse | BuildAborted> {
+  const steps = buildSteps(spec, options, deps)
+  for (;;) {
+    const step = steps.next()
+    if (step.done) return step.value
+    await yieldNow()
+    if (!shouldAbort()) continue
+    const partial = step.value.partial()
+    // The restore copies were the only extra owner of the live store's shapes;
+    // the kept checkpoints retain theirs under `cp:<fid>`.
+    deps.releaseRestoreCopies?.()
+    for (const fid of partial.dropped) deps.releaseCheckpoint?.(fid)
+    clearFeatureProgress()
+    return { aborted: true, ...partial }
+  }
+}
+
+/**
+ * The build as a stepper: it yields after each feature's checkpoint is stored
+ * and returns the response after the post-loop pass (`finishBuild`). Nothing
+ * outside one feature's solve is half-done at a yield, which is what makes the
+ * partial state of a stopped build coherent.
+ */
+export function* buildSteps(
+  spec: Record<string, unknown>,
+  options: BuildOptions,
+  deps: BuildDeps,
+): Generator<BuildStep, BuildResponse, void> {
   const t0 = performance.now()
 
   const allFeatures = (spec.features as Array<Record<string, unknown>> ?? [])
@@ -338,6 +404,20 @@ export function build(
     return (shape) => { retain(shape, 'cp:' + fid); return shape }
   }
 
+  const featureOrder = allFeatures.map((f) => String(f.id ?? ''))
+  const featureFids = features.map((f) => String(f.id ?? ''))
+  const stepAt = (featureIndex: number): BuildStep => ({
+    featureIndex,
+    partial: () => partialBuildState({
+      featureOrder,
+      fids: featureFids,
+      firstDirty,
+      builtThrough: featureIndex,
+      checkpoints: newCheckpoints,
+      registeredAtCheckpoint,
+    }),
+  })
+
   for (let featureIndex = firstDirty; featureIndex < features.length; featureIndex++) {
     const feature = features[featureIndex]
     const fid = String(feature.id ?? '')
@@ -353,6 +433,7 @@ export function build(
       }
       registeredAtCheckpoint.set(fid, new Map(registeredVersions))
       result[fid] = { status: 'suppressed' }
+      yield stepAt(featureIndex)
       continue
     }
 
@@ -449,8 +530,43 @@ export function build(
       bodies_snapshot: {},
     }
     registeredAtCheckpoint.set(fid, new Map(registeredVersions))
+    yield stepAt(featureIndex)
   }
 
+  return finishBuild({
+    spec, options, deps, t0, allFeatures, features, featureFids, firstDirty,
+    globalRepo, partStore, result, newCheckpoints, changes, registeredAtCheckpoint,
+    extractMetaCached,
+  })
+}
+
+/** Everything the solve loop hands the post-loop pass. */
+interface LoopOutcome {
+  spec: Record<string, unknown>
+  options: BuildOptions
+  deps: BuildDeps
+  t0: number
+  allFeatures: Array<Record<string, unknown>>
+  features: Array<Record<string, unknown>>
+  featureFids: string[]
+  firstDirty: number
+  globalRepo: Repository
+  partStore: Record<string, PartSolid>
+  result: Record<string, unknown>
+  newCheckpoints: Record<string, FeatureCheckpoint>
+  changes: PartChangeTracker
+  registeredAtCheckpoint: Map<string, Map<string, string>>
+  extractMetaCached: MetaExtractor
+}
+
+/** The post-loop pass: final render, checkpoint registration and meshes, the
+ *  pick world, and the response. A stopped build never reaches it. */
+function finishBuild(loop: LoopOutcome): BuildResponse {
+  const {
+    spec, options, deps, t0, allFeatures, features, featureFids, firstDirty,
+    globalRepo, partStore, result, newCheckpoints, changes, registeredAtCheckpoint,
+    extractMetaCached,
+  } = loop
   const activeFids = new Set(allFeatures.map((f) => String(f.id ?? '')))
   globalRepo.gc(activeFids)
 
@@ -472,7 +588,6 @@ export function build(
 
   // Reuse the previous build's mesh for every body the tail left unchanged
   // (the whole final mesh on a fully-clean rebuild) and tessellate the rest.
-  const featureFids = features.map((f) => String(f.id ?? ''))
   const finalRender = renderFinalParts({
     prevState: options.prevState,
     featureFids,

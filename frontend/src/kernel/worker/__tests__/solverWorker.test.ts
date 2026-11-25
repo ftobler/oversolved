@@ -8,7 +8,7 @@ import { solveLocally, exportLocally, exportAssemblyLocally } from '../../solveL
 import type { BuildResponse } from '../../builder'
 import type { BuildState } from '../../types3d'
 import type { Transform3D } from '../../../types/cad'
-import { KernelFault } from '../../errors'
+import { KernelFault, SolveSuperseded } from '../../errors'
 
 // The dispatcher binds the production engines directly (not via injection), so
 // the one-shot branches can only be driven without OCC if those engines are
@@ -406,6 +406,28 @@ describe('dispatcher', () => {
     expect(posted).toEqual([{ message: { id: 77, ok: false, error: SUPERSEDED_ERROR }, transfer: [] }])
   })
 
+  it('hands the running solve its superseded flag and answers a stop as superseded', async () => {
+    const probes: Array<(() => boolean) | undefined> = []
+    vi.mocked(solveLocally).mockImplementation(async (_spec, options) => {
+      probes.push(options?.shouldAbort)
+      throw new SolveSuperseded()
+    })
+    const actor = new WorkerActor()
+    const submitSpy = vi.spyOn(actor, 'submit').mockImplementation(() => {})
+    const posted: Array<{ message: SolveResponse | ExportResponse | BundleResponse | MeasureResponse | SplitStepResponse; transfer: Transferable[] }> = []
+    handleWorkerMessage(
+      { id: 78, kind: 'solve', spec: { id: 'doc1' }, options: {} },
+      (res, transfer) => { posted.push({ message: res, transfer }) },
+      actor,
+    )
+    const ctx = { superseded: false }
+    await submitSpy.mock.calls[0][0].run(ctx)
+    expect(probes[0]?.()).toBe(false)
+    ctx.superseded = true
+    expect(probes[0]?.()).toBe(true)
+    expect(posted).toEqual([{ message: { id: 78, ok: false, error: SUPERSEDED_ERROR }, transfer: [] }])
+  })
+
   it('replies with an error on an unknown message kind so the client settles', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     try {
@@ -463,7 +485,7 @@ describe('dispatcher', () => {
     const job = submitSpy.mock.calls[0][0]
     // Exports are distinct one-shot actions, never superseded by a newer solve.
     expect(job.lane).toBeNull()
-    await job.run()
+    await job.run({ superseded: false })
     expect(vi.mocked(exportLocally)).toHaveBeenCalledWith(
       { id: 'doc1' }, { format: 'step' }, fileCacheForTest())
     expect(posted).toEqual([{ message: { id: 21, ok: true, bytes }, transfer: [bytes.buffer] }])
@@ -487,7 +509,7 @@ describe('dispatcher', () => {
     expect(submitSpy).toHaveBeenCalledTimes(1)
     const job = submitSpy.mock.calls[0][0]
     expect(job.lane).toBeNull()
-    await job.run()
+    await job.run({ superseded: false })
     expect(vi.mocked(exportAssemblyLocally)).toHaveBeenCalledWith(parts, { format: 'step' }, fileCacheForTest())
     expect(posted).toEqual([{ message: { id: 22, ok: true, bytes }, transfer: [bytes.buffer] }])
   })
@@ -516,7 +538,8 @@ describe('dispatcher', () => {
     expect(submitSpy).toHaveBeenCalledTimes(1)
     const job = submitSpy.mock.calls[0][0]
     expect(job.lane).toBeNull()
-    await job.run()
+    // A bundle build is never asked to stop: its options carry no abort probe.
+    await job.run({ superseded: true })
     expect(vi.mocked(solveLocally)).toHaveBeenCalledWith({ id: 'doc1' }, { files: fileCacheForTest() })
     const bundle = posted[0].message as BundleResponse
     expect(bundle.ok).toBe(true)

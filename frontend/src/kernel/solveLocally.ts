@@ -7,11 +7,11 @@
  * When OCC.js is unavailable it returns ``null``.
  */
 
-import { build, RESTORE_OWNER, type BuildDeps, type BuildResponse } from './builder'
+import { build, buildAbortable, RESTORE_OWNER, type BuildDeps, type BuildResponse } from './builder'
 import { MeshReuseMismatchError } from './builderMeshReuse'
 import { featuresWithImportDigests, type ImportFeatureShape } from './importFileBytes'
 import { isDevBuild } from './isDevBuild'
-import { ExportSelectionError, extractErrorMessage, isKernelTrap, KernelFault } from './errors'
+import { ExportSelectionError, extractErrorMessage, isKernelTrap, KernelFault, SolveSuperseded } from './errors'
 import { initGlobalRepo } from './query'
 import { createFeatureSolver } from './solverRegistry'
 import { initSketchSolver, consumeSketchTrap, isSketchSolverReady, isSketchTopologyReady, resetSketchSolverAfterTrap } from './features/sketch'
@@ -234,6 +234,12 @@ export function setSolveLocalsForTest(
  *  tests can assert its live handle count stays bounded across solves. */
 export function persistentTableForTest(): HandleTable | null {
   return persistentTable
+}
+
+/** @internal test-only: the state the next solve takes as prevState, so tests
+ *  can inspect the partial state a stopped build left. */
+export function lastBuildStateForTest(): BuildState | null {
+  return lastBuildState
 }
 
 /** Load (or return the already-loaded) OCC module; a failed load retries on the
@@ -499,6 +505,12 @@ interface SolveLocalOptions {
   // Import file bytes by registry id, resolved on the main thread. Kept off the
   // wire options so runtime buffers never ride in a structured-cloneable option.
   files?: ReadonlyMap<string, Uint8Array>
+  // Asked at each feature boundary (the Worker: "a newer solve was submitted").
+  // When given, the build yields a macrotask per feature so that request can
+  // land; a true answer stops it, keeps the finished checkpoints as the next
+  // solve's prevState, and throws `SolveSuperseded`. Absent, the build is one
+  // synchronous call as before.
+  shouldAbort?: () => boolean
 }
 
 /**
@@ -632,12 +644,25 @@ async function solveLocallyGuarded(
       ? { ...digested, _validate: true }
       : digested
 
-    const response = build(specForBuild, {
+    const buildOptions = {
       prevState,
       pickBoundary: options.pickBoundary ?? null,
       rollbackPosition: options.rollbackPosition ?? null,
       verifyMeshReuse: options.verifyMeshReuse === true,
-    }, deps)
+    }
+    const outcome = options.shouldAbort
+      ? await buildAbortable(specForBuild, buildOptions, deps, options.shouldAbort)
+      : build(specForBuild, buildOptions, deps)
+    if ('aborted' in outcome) {
+      // The partial state is the cache now: the previous generation's tail was
+      // released at build start, so nothing a measurement named survives, and
+      // there is no pick world.
+      lastBuildState = outcome.state
+      bumpGeneration()
+      lastPickPartStore = null
+      throw new SolveSuperseded()
+    }
+    const response = outcome
     // Remember the state (and the live handles it points at) for the next solve.
     lastBuildState = response._build_state
     // The token moves with the state: the previous generation's geometry is now
