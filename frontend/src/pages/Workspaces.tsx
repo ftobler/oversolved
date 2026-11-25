@@ -20,7 +20,31 @@ import { importPickedFile } from '@/workspace/importFile'
 import { isStepFileName, type StepImportMode } from '@/workspace/stepImportMode'
 import StepImportDialog from '@/components/dialogs/StepImportDialog'
 import { canPickDirectory, canPickWorkspaceZip, pickLibraryDirectory, pickWorkspaceZip } from '@/adapters/fileSystemAccess'
+import { useUserPreferences } from '@/hooks/useUserPreferences'
+import { shouldActivateDrag } from '@/utils/geometry/dragLogic'
+import { gridSlotAt, type GridTileRect } from '@/pages/workspaceGridSlot'
 import '@/pages/Documents.css'
+
+// A press becomes a drag only after the click threshold (or a long press on
+// touch), so a plain click still opens the tile under it.
+const TOUCH_LONG_PRESS_MS = 350
+
+interface TileGesture {
+  workspace: string
+  pointerId: number
+  pointerType: string
+  startX: number
+  startY: number
+  lastX: number
+  lastY: number
+}
+
+interface TileDragView {
+  workspace: string
+  slot: number
+  dx: number
+  dy: number
+}
 
 // U1: one tile per workspace. It lists workspace summaries only (no document
 // text, no preview), so opening the grid is cheap however many entries a
@@ -37,6 +61,15 @@ export default function Workspaces() {
   const [trashView, setTrashView] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
+  const { preferences, updatePreference } = useUserPreferences()
+  const orderMode = preferences.workspace_sort
+  // A tile gesture is transient interaction state, not document data. The view
+  // is the live preview: the dragged tile keeps its slot in the local list but
+  // is translated to the pointer while the other tiles reflow around it.
+  const [gesture, setGesture] = useState<TileGesture | null>(null)
+  const [dragView, setDragView] = useState<TileDragView | null>(null)
+  const suppressClickRef = useRef(false)
+  const gridRef = useRef<HTMLDivElement>(null)
   const [showCreate, setShowCreate] = useState(false)
   const [newName, setNewName] = useState('')
   const [newKind, setNewKind] = useState<'part' | 'assembly'>('part')
@@ -83,7 +116,7 @@ export default function Workspaces() {
   const refresh = useCallback(async (includeTrashed: boolean, search: string) => {
     const seq = ++refreshSeq.current
     try {
-      const list = await store.list({ includeTrashed, sort: 'modified', search })
+      const list = await store.list({ includeTrashed, sort: orderMode === 'custom' ? 'custom' : 'modified', search })
       if (seq !== refreshSeq.current) return
       setSummaries(list)
       setError(null)
@@ -97,7 +130,7 @@ export default function Workspaces() {
     } finally {
       if (seq === refreshSeq.current) setLoading(false)
     }
-  }, [store])
+  }, [store, orderMode])
 
   useEffect(() => {
     void refresh(trashView, debouncedSearch)
@@ -250,6 +283,158 @@ export default function Workspaces() {
   }
 
   const visible = trashView ? summaries.filter(s => s.trashedAt) : summaries.filter(s => !s.trashedAt)
+  const visibleRef = useRef(visible)
+  visibleRef.current = visible
+
+  // Dragging maps a visible gap to a slot in the full custom list, because a
+  // search hides tiles and a trash keeps its slot while its tile is elsewhere.
+  const draggable = orderMode === 'custom' && !trashView && searchQuery.trim() === ''
+
+  const beginDrag = (e: React.PointerEvent<HTMLDivElement>, workspace: string) => {
+    if (e.button !== 0 || !e.isPrimary) return
+    // The row actions own their own clicks; a press on one is not a tile grab.
+    if ((e.target as HTMLElement).closest('button')) return
+    const next: TileGesture = {
+      workspace,
+      pointerId: e.pointerId,
+      // A synthetic pointer event may name no type; only touch uses the hold.
+      pointerType: e.pointerType || 'mouse',
+      startX: e.clientX,
+      startY: e.clientY,
+      lastX: e.clientX,
+      lastY: e.clientY,
+    }
+    setGesture(next)
+  }
+
+  useEffect(() => {
+    if (gesture === null) return
+    const { workspace, pointerId, pointerType } = gesture
+    let active = false
+    let timer: number | null = null
+    let blocker: ((e: TouchEvent) => void) | null = null
+    let rects: GridTileRect[] = []
+    let remaining: WorkspaceSummary[] = []
+    const ownsPointer = (e: PointerEvent) => e.pointerId === pointerId
+    const draggedTile = () => Array.from(gridRef.current?.querySelectorAll<HTMLElement>('.doc-tile') ?? [])
+      .find(el => el.dataset.workspace === workspace)
+
+    const updateView = (x: number, y: number) => setDragView({
+      workspace,
+      slot: gridSlotAt(rects, { x, y }),
+      dx: x - gesture.startX,
+      dy: y - gesture.startY,
+    })
+
+    const finish = () => {
+      active = false
+      if (timer !== null) window.clearTimeout(timer)
+      if (blocker !== null) window.removeEventListener('touchmove', blocker)
+      const tile = draggedTile()
+      if (tile?.hasPointerCapture?.(pointerId)) tile.releasePointerCapture(pointerId)
+      // The click from a released pointer arrives in the same task; clear the
+      // suppression on the next task so it cannot open the workspace.
+      window.setTimeout(() => { suppressClickRef.current = false }, 0)
+      setGesture(null)
+      setDragView(null)
+    }
+
+    const activate = () => {
+      if (active) return
+      const tiles = Array.from(gridRef.current?.querySelectorAll<HTMLElement>('.doc-tile') ?? [])
+      remaining = visibleRef.current.filter(summary => summary.workspace !== workspace)
+      // Measured once: a live reflow must not move the target slot mid-gesture.
+      rects = tiles
+        .filter(el => el.dataset.workspace !== workspace)
+        .map(el => {
+          const rect = el.getBoundingClientRect()
+          return { left: rect.left, top: rect.top, width: rect.width, height: rect.height }
+        })
+      active = true
+      if (pointerType === 'touch') {
+        // Only the activated hold blocks a touchmove, so a quick swipe still
+        // scrolls the grid instead of starting a reorder.
+        blocker = event => event.preventDefault()
+        window.addEventListener('touchmove', blocker, { passive: false })
+      }
+      const tile = draggedTile()
+      if (tile?.setPointerCapture) tile.setPointerCapture(pointerId)
+      suppressClickRef.current = true
+      updateView(gesture.lastX, gesture.lastY)
+    }
+
+    const onMove = (e: PointerEvent) => {
+      if (!ownsPointer(e)) return
+      gesture.lastX = e.clientX
+      gesture.lastY = e.clientY
+      if (!active) {
+        if (pointerType === 'touch') {
+          // A finger that travels before the hold is a scroll, not a reorder.
+          if (shouldActivateDrag([gesture.startX, gesture.startY], [e.clientX, e.clientY])) finish()
+          return
+        }
+        if (!shouldActivateDrag([gesture.startX, gesture.startY], [e.clientX, e.clientY])) return
+        activate()
+        return
+      }
+      updateView(e.clientX, e.clientY)
+    }
+
+    const onUp = (e: PointerEvent) => {
+      if (!ownsPointer(e)) return
+      const wasActive = active
+      const slot = wasActive ? gridSlotAt(rects, { x: e.clientX, y: e.clientY }) : 0
+      const remainingIds = remaining.map(summary => summary.workspace)
+      finish()
+      if (!wasActive) return
+      void (async () => {
+        try {
+          // The store's index is in the full order (trashed tiles included), so
+          // translate the visible slot through it before the one move write.
+          const full = await store.list({ includeTrashed: true, sort: 'custom' })
+          const target = remainingIds[slot]
+          const last = remainingIds[remainingIds.length - 1]
+          const lastIndex = last === undefined ? -1 : full.findIndex(summary => summary.workspace === last)
+          const toIndex = target === undefined
+            ? (lastIndex < 0 ? full.length : lastIndex + 1)
+            : full.findIndex(summary => summary.workspace === target)
+          await store.moveWorkspace(workspace, toIndex)
+          await refresh(trashView, debouncedSearch)
+        } catch (err) {
+          setError(errorMessage(err, 'Failed to reorder workspaces'))
+        }
+      })()
+    }
+
+    const onCancel = (e: PointerEvent) => { if (ownsPointer(e)) finish() }
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && active) {
+        e.preventDefault()
+        finish()
+      }
+    }
+
+    if (pointerType === 'touch') timer = window.setTimeout(activate, TOUCH_LONG_PRESS_MS)
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onCancel)
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      if (timer !== null) window.clearTimeout(timer)
+      if (blocker !== null) window.removeEventListener('touchmove', blocker)
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onCancel)
+      window.removeEventListener('keydown', onKeyDown)
+    }
+  }, [gesture, store, refresh, trashView, debouncedSearch])
+
+  const dragged = dragView === null ? undefined : visible.find(summary => summary.workspace === dragView.workspace)
+  const rendered = dragged === undefined || dragView === null ? visible : (() => {
+    const rest = visible.filter(summary => summary.workspace !== dragged.workspace)
+    const at = Math.min(dragView.slot, rest.length)
+    return [...rest.slice(0, at), dragged, ...rest.slice(at)]
+  })()
 
   const openImportMenu = () => {
     const rect = importButtonRef.current?.getBoundingClientRect()
@@ -292,6 +477,24 @@ export default function Workspaces() {
                 <span className="material-icons">close</span>
               </button>
             )}
+          </div>
+          <div className="workspace-sort" role="group" aria-label="Workspace order">
+            <button
+              className={`sort-option ${orderMode === 'date' ? 'active' : ''}`}
+              aria-pressed={orderMode === 'date'}
+              onClick={() => { void updatePreference('workspace_sort', 'date') }}
+              title="Sort by date, most recently changed first"
+            >
+              Date
+            </button>
+            <button
+              className={`sort-option ${orderMode === 'custom' ? 'active' : ''}`}
+              aria-pressed={orderMode === 'custom'}
+              onClick={() => { void updatePreference('workspace_sort', 'custom') }}
+              title="Use your own tile order; drag tiles to change it"
+            >
+              Custom
+            </button>
           </div>
           <button
             className="toolbar-btn"
@@ -422,10 +625,22 @@ export default function Workspaces() {
             </p>
           )}
 
+          {orderMode === 'custom' && searchQuery.trim() !== '' && !trashView && (
+            <p className="sort-hint">Drag is off while searching; clear the search to reorder tiles.</p>
+          )}
+
           {!loading && visible.length > 0 && (
-            <div className="doc-tiles">
-              {visible.map(summary => (
-                <div key={summary.workspace} className="doc-tile">
+            <div className="doc-tiles" ref={gridRef}>
+              {rendered.map(summary => (
+                <div
+                  key={summary.workspace}
+                  className={`doc-tile ${draggable ? 'draggable' : ''} ${dragView?.workspace === summary.workspace ? 'dragging' : ''}`}
+                  data-workspace={summary.workspace}
+                  style={dragView?.workspace === summary.workspace
+                    ? { transform: `translate(${dragView.dx}px, ${dragView.dy}px)`, zIndex: 5 }
+                    : undefined}
+                  onPointerDown={draggable ? e => beginDrag(e, summary.workspace) : undefined}
+                >
                   {trashView ? (
                     <div className="doc-tile-link">
                       <div className="doc-tile-preview">
@@ -458,7 +673,14 @@ export default function Workspaces() {
                       </div>
                     </div>
                   ) : (
-                    <Link to={`/workspaces/${summary.workspace}`} className="doc-tile-link">
+                    <Link
+                      to={`/workspaces/${summary.workspace}`}
+                      className="doc-tile-link"
+                      onClick={e => {
+                        if (!suppressClickRef.current) return
+                        e.preventDefault()
+                      }}
+                    >
                       <div className="doc-tile-preview">
                         <DocTilePreview
                           workspace={summary.workspace}

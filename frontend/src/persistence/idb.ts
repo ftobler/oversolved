@@ -44,11 +44,17 @@
 // records the error paths write. Neither is read by the save path: the journal
 // is cleared by an explicit save, and losing it costs at most the debounce
 // window, so it must never be able to corrupt the working copy.
+//
+// v9 adds `workspace_order`, one library-level row holding the browser's custom
+// tile order. It is deliberately not a field on a workspace's meta row: a
+// reorder must not stamp updatedAt or move the workspace in the Date view. A
+// pre-v9 database simply has no row, and the reader reconstructs an order from
+// the workspaces' createdAt values.
 import { entrySizeOf } from '@/utils/entrySize'
 import { sha256Hex, sha256HexBytes } from '@/kernel/sha256'
 
 export const DB_NAME = 'oversolved'
-export const DB_VERSION = 8
+export const DB_VERSION = 9
 export const STORE_DOCUMENTS = 'documents'
 // The `handles` store is legacy only. An upgrade keeps it so a library carried
 // over from before the workspace store existed still has its rows, but nothing
@@ -62,6 +68,7 @@ export const STORE_WORKSPACE_ENTRY_META = 'workspace_entry_meta'
 export const STORE_WORKSPACE_SAVED = 'workspace_saved'
 export const STORE_RECOVERY_JOURNAL = 'recovery_journal'
 export const STORE_CRASH_REPORTS = 'crash_reports'
+export const STORE_WORKSPACE_ORDER = 'workspace_order'
 
 let dbPromise: Promise<IDBDatabase> | null = null
 
@@ -160,6 +167,11 @@ function openDb(): Promise<IDBDatabase> {
       // same millisecond cannot overwrite each other.
       if (!db.objectStoreNames.contains(STORE_CRASH_REPORTS)) {
         db.createObjectStore(STORE_CRASH_REPORTS, { keyPath: 'id' })
+      }
+      // One key, one row: the library's custom order is a list of workspace ids
+      // rather than a rank on each workspace, so a move touches one record.
+      if (!db.objectStoreNames.contains(STORE_WORKSPACE_ORDER)) {
+        db.createObjectStore(STORE_WORKSPACE_ORDER, { keyPath: 'key' })
       }
       // Per-workspace indexes so a scoped read never opens another workspace's
       // rows. The compound (workspace, kind) one lets open() pull a workspace's

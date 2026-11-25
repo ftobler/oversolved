@@ -43,6 +43,16 @@ describe('preferences adapter', () => {
       expect(new LocalPreferences().read().document_sort).toBe('date_newest_first')
     })
 
+    it('defaults the workspace order to date and ignores an unknown value', () => {
+      expect(new LocalPreferences().read().workspace_sort).toBe('date')
+
+      localStorage.setItem('oversolved.preferences', JSON.stringify({ workspace_sort: 'random' }))
+      expect(new LocalPreferences().read().workspace_sort).toBe('date')
+
+      localStorage.setItem('oversolved.preferences', JSON.stringify({ workspace_sort: 'custom' }))
+      expect(new LocalPreferences().read().workspace_sort).toBe('custom')
+    })
+
     it('round-trips through localStorage', async () => {
       // Typed as the port, so the call sites here are the ones the hook makes.
       const adapter: PreferencesAdapter = new LocalPreferences()

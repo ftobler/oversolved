@@ -181,6 +181,37 @@
   color: #66bb6a;
 }
 
+.workspace-sort {
+  display: flex;
+  border: 1px solid #333;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.sort-option {
+  padding: 6px 12px;
+  border: 0;
+  background: transparent;
+  color: #aaa;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.sort-option + .sort-option {
+  border-left: 1px solid #333;
+}
+
+.sort-option.active {
+  background: #2a2a2a;
+  color: #eee;
+}
+
+.sort-hint {
+  color: #888;
+  font-size: 13px;
+  margin: 0 0 12px 0;
+}
+
 
 .dialog-component-overlay {
   position: fixed;
@@ -357,6 +388,19 @@
 
 .doc-tile:active {
   background: rgba(255, 255, 255, 0.06);
+}
+
+.doc-tile.draggable {
+  cursor: grab;
+  /* The pointer owns the gesture; a touch swipe outside it still scrolls. */
+  touch-action: none;
+}
+
+.doc-tile.dragging {
+  cursor: grabbing;
+  opacity: 0.9;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+  transition: none;
 }
 
 .doc-tile-link {

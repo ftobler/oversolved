@@ -1,17 +1,22 @@
 import { useState, useCallback, useRef } from 'react'
 import { backendBundle } from '@/adapters/backend'
-import type { DocumentSort, UserPreferences } from '@/adapters/preferences'
+import type { DocumentSort, UserPreferences, WorkspaceSort } from '@/adapters/preferences'
 
 // Types live with the adapter now; re-exported here so existing call sites
-// (Documents) keep importing them from the hook.
-export type { DocumentSort, UserPreferences }
+// keep importing them from the hook.
+export type { DocumentSort, UserPreferences, WorkspaceSort }
+
+// Only these two scalars go through this hook. `view` is owned by
+// viewOptionsStore, which applies its own cross-field normalization.
+export type ScalarPreferenceKey = 'document_sort' | 'workspace_sort'
 
 // Reads through the preferences port and writes back optimistically.
 //
 // There is no loading state and no effect: the port reads synchronously (see
 // PreferencesAdapter), so the very first render already has the stored value and
-// the documents grid paints the right sort arrow without a correcting second
-// pass. That is the whole reason preferences are not in the document database.
+// the documents grid and workspace browser paint their chosen order without a
+// correcting second pass. That is the whole reason preferences are not in the
+// document database.
 export function useUserPreferences() {
   const prefs = backendBundle.preferences
   const [preferences, setPreferences] = useState<UserPreferences>(() => prefs.read())
@@ -22,7 +27,7 @@ export function useUserPreferences() {
   // instead of racing on a stale closure.
   const preferencesRef = useRef(preferences)
 
-  const updatePreference = useCallback(async (key: 'document_sort', value: DocumentSort) => {
+  const updatePreference = useCallback(async <K extends ScalarPreferenceKey>(key: K, value: UserPreferences[K]) => {
     const previous = preferencesRef.current[key]
     const next = { ...preferencesRef.current, [key]: value } as UserPreferences
     preferencesRef.current = next

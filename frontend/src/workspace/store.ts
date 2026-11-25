@@ -40,6 +40,13 @@ import { fileIdsInSpec } from '@/persistence/fileRegistry/resolve'
 import { getPreviewStore } from '@/persistence/previewStore'
 import { copyPreview, copyWorkspacePreviews } from '@/persistence/previewStore/capture'
 import { bumpWorkspaceStoreRevision } from './storeEvents'
+import {
+  appendWorkspaceOrder,
+  moveWorkspaceOrder,
+  readWorkspaceOrderIds,
+  removeWorkspaceOrder,
+  resolveCustomOrder,
+} from './order'
 
 export interface WorkspaceSummary {
   workspace: string
@@ -68,7 +75,9 @@ export interface WorkspaceSummary {
 // (which only knows about trash), because the grid searches and sorts.
 export interface ListOptions {
   search?: string
-  sort?: 'name' | 'modified' | 'modified_asc'
+  // 'custom' is the browser's own order, stored as one id list; every other
+  // sort stays in memory over the summaries.
+  sort?: 'name' | 'modified' | 'modified_asc' | 'custom'
   includeTrashed?: boolean
 }
 
@@ -103,6 +112,9 @@ export interface WorkspaceStore {
   // checkpoint, so it never lights the dirty dot and Discard does not revert it.
   setCover(workspace: string, entry: string | null): Promise<void>
   duplicate(workspace: string, name?: string): Promise<{ workspace: string }>
+  // The only reorder API: remove the workspace from the custom list, then put
+  // it at `toIndex`. Does not touch any meta row, so Date order is unchanged.
+  moveWorkspace(workspace: string, toIndex: number): Promise<void>
   trash(workspace: string): Promise<void>
   recover(workspace: string): Promise<void>
   purge(workspace: string): Promise<void>
@@ -165,11 +177,19 @@ export class IdbWorkspaceStore implements WorkspaceStore {
       const needle = opts.search.toLowerCase()
       filtered = filtered.filter(summary => summary.name.toLowerCase().includes(needle))
     }
-    filtered.sort((a, b) => {
-      if (opts.sort === 'name') return a.name.localeCompare(b.name)
-      if (opts.sort === 'modified_asc') return a.updatedAt - b.updatedAt
-      return b.updatedAt - a.updatedAt
-    })
+    if (opts.sort === 'custom') {
+      // Trashed workspaces are filtered out of the view but keep their slot in
+      // the stored list, so the index comes from the reconciled full order.
+      const rank = new Map(resolveCustomOrder(await readWorkspaceOrderIds(), metas)
+        .map((id, index) => [id, index]))
+      filtered.sort((a, b) => (rank.get(a.workspace) ?? Number.MAX_SAFE_INTEGER) - (rank.get(b.workspace) ?? Number.MAX_SAFE_INTEGER))
+    } else {
+      filtered.sort((a, b) => {
+        if (opts.sort === 'name') return a.name.localeCompare(b.name)
+        if (opts.sort === 'modified_asc') return a.updatedAt - b.updatedAt
+        return b.updatedAt - a.updatedAt
+      })
+    }
     return filtered
   }
 
@@ -204,6 +224,7 @@ export class IdbWorkspaceStore implements WorkspaceStore {
     // A brand-new workspace is not a recovery: seed the checkpoint with its
     // empty body so `open().ahead` is false until something edits it.
     await this.carrier(workspace).checkpoint()
+    await appendWorkspaceOrder(workspace)
     bumpWorkspaceStoreRevision()
     return { workspace }
   }
@@ -332,8 +353,14 @@ export class IdbWorkspaceStore implements WorkspaceStore {
       if (mapped !== undefined) documentPreviews.set(id, mapped)
     }
     await copyWorkspacePreviews(workspace, nextWorkspace, documentPreviews)
+    await appendWorkspaceOrder(nextWorkspace)
     bumpWorkspaceStoreRevision()
     return { workspace: nextWorkspace }
+  }
+
+  async moveWorkspace(workspace: string, toIndex: number): Promise<void> {
+    await moveWorkspaceOrder(workspace, toIndex)
+    bumpWorkspaceStoreRevision()
   }
 
   // Trashing a workspace is the library-level tombstone documents already use;
@@ -354,6 +381,7 @@ export class IdbWorkspaceStore implements WorkspaceStore {
 
   async purge(workspace: string): Promise<void> {
     await purgeWorkspaceRows(workspace)
+    await removeWorkspaceOrder(workspace)
     this.carriers.delete(workspace)
     // Only this app's own rows. A workspace never held a handle to the user's
     // folder or zip, so there is nothing of theirs a purge could reach.

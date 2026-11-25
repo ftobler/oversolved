@@ -16,14 +16,22 @@
 // answer synchronously has to cache into memory at boot and serve from there.
 
 export type DocumentSort = 'alphabetical' | 'date_newest_first' | 'date_oldest_first'
+// The workspace browser's two orders. 'date' is today's modified-first view,
+// 'custom' is the tile order the user drags into place.
+export type WorkspaceSort = 'date' | 'custom'
 
 const DOCUMENT_SORTS: ReadonlySet<string> = new Set(['alphabetical', 'date_newest_first', 'date_oldest_first'])
+const WORKSPACE_SORTS: ReadonlySet<string> = new Set(['date', 'custom'])
 
 // A persisted value is untrusted: a stale or corrupted localStorage entry can
 // carry anything, and the read is the only place it can be caught before the
 // grid's sort switch sees a non-member.
 function isDocumentSort(value: unknown): value is DocumentSort {
   return typeof value === 'string' && DOCUMENT_SORTS.has(value)
+}
+
+function isWorkspaceSort(value: unknown): value is WorkspaceSort {
+  return typeof value === 'string' && WORKSPACE_SORTS.has(value)
 }
 
 // ─── viewer options ───
@@ -75,11 +83,15 @@ export const DEFAULT_VIEW_PREFERENCES: Readonly<ViewPreferences> = Object.freeze
 
 export interface UserPreferences {
   document_sort: DocumentSort
+  // Browser-local, like document_sort: a reordering preference is not document
+  // data and carries no undo entry. Defaulting to date keeps today's look.
+  workspace_sort: WorkspaceSort
   view: ViewPreferences
 }
 
 export const DEFAULT_PREFS: UserPreferences = {
   document_sort: 'date_newest_first',
+  workspace_sort: 'date',
   view: { ...DEFAULT_VIEW_PREFERENCES },
 }
 
@@ -195,6 +207,7 @@ export function readLocalPrefs(): UserPreferences {
     const parsed = JSON.parse(raw) as Partial<UserPreferences>
     return {
       document_sort: isDocumentSort(parsed.document_sort) ? parsed.document_sort : DEFAULT_PREFS.document_sort,
+      workspace_sort: isWorkspaceSort(parsed.workspace_sort) ? parsed.workspace_sort : DEFAULT_PREFS.workspace_sort,
       view: readView(parsed.view),
     }
   } catch {
