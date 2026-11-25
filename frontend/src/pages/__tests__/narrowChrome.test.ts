@@ -389,19 +389,6 @@ describe('phone-width chrome', () => {
     expect(pinned('pages/Part.css', 'width', editCard, TOP_LEVEL)).toBe('300px')
   })
 
-  it('steps the empty-assembly hint aside only while the phone drawer covers it', () => {
-    const hintOpen = chain('doc-container panels-open', 'doc-editor', 'viewport-stage', 'assembly-empty-hint')
-    expect(pinned('pages/Assembly.css', 'display', hintOpen, PORTRAIT)).toBe('none')
-
-    // Drawer closed on the same phone: no rule hides the hint, so it keeps the
-    // paragraph's default display. This is what tells "hidden while the drawer
-    // is open" apart from "hidden on every phone".
-    const hintClosed = chain('doc-container', 'doc-editor', 'viewport-stage', 'assembly-empty-hint')
-    expect(effective('pages/Assembly.css', 'display', hintClosed, PORTRAIT)).toBeNull()
-    // Above the breakpoint there is no drawer to cover it either.
-    expect(effective('pages/Assembly.css', 'display', hintClosed, TOP_LEVEL)).toBeNull()
-  })
-
   it('lets both right cards share the phone disclosure slot by scrolling the stack', () => {
     const stack = chain('doc-container', 'doc-editor', 'viewport-stage', 'floating-right', 'right-overlay-stack')
     expect(pinned('pages/Part.css', 'overflow-y', stack, PORTRAIT)).toBe('auto')

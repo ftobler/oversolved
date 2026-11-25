@@ -5,26 +5,6 @@
    assembly editor deliberately mirrors the part editor, floating glass cards
    included. Only what the assembly adds or must tint for the frost lives here. */
 
-/* The empty-assembly hint floats over the scene near the top edge. On a phone
-   the left drawer covers that edge when it is open, so the hint steps aside
-   rather than reading through the card. */
-.assembly-empty-hint {
-  position: absolute;
-  top: 1rem;
-  left: 50%;
-  transform: translateX(-50%);
-  margin: 0;
-  color: #9aa0a6;
-  pointer-events: none;
-  z-index: 1;
-}
-
-@media (max-width: 768px), (max-height: 480px) {
-  .doc-container.panels-open .assembly-empty-hint {
-    display: none;
-  }
-}
-
 /* A failed load is terminal: the error and a single way back, no editor behind
    it over a null document. */
 .assembly-load-failed {
