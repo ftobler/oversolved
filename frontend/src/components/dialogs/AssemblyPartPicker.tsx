@@ -1,16 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
-import Dialog from '@/components/dialogs/Dialog'
-import { LoadingState } from '@/components/shared/LoadingState'
-import DocTilePreview from '@/components/shared/DocTilePreview'
-import { formatRelativeDate } from '@/utils/core/relativeDate'
+import { useEffect, useMemo } from 'react'
+import TilePickerDialog, { type TilePickerGroup, type TilePickerItem } from '@/components/dialogs/TilePickerDialog'
 import type { WorkspaceSession } from '@/workspace/session'
 import type { EntryMeta } from '@/workspace/types'
 import { interpretEntry } from '@/workspace/kinds'
-// The tile grid and search box reuse the documents page's classes so a part
-// looks the same here as in the library; import its sheet explicitly rather
-// than relying on the page chunk having loaded it.
-import '@/pages/Documents.css'
-import '@/components/dialogs/AssemblyPartPicker.css'
 
 interface AssemblyPartPickerProps {
   isOpen: boolean
@@ -48,6 +40,11 @@ interface AssemblyPartPickerProps {
 
 type InsertableKind = 'part' | 'assembly'
 
+const GROUPS: readonly TilePickerGroup[] = [
+  { key: 'part', label: 'Parts' },
+  { key: 'assembly', label: 'Assemblies', icon: 'account_tree' },
+]
+
 // The pick source is parts and assemblies, through the same interpretation gate
 // the editor uses. A document whose kind is missing or unknown is refused
 // rather than coerced to a part.
@@ -58,8 +55,8 @@ function insertableKind(entry: EntryMeta): InsertableKind | null {
 }
 
 // Picks a PartDoc or an AssemblyDoc to instance into the assembly, presented as
-// a document browser (search + preview tiles) in the standardized dialog shell.
-// It browses the open workspace's documents, minus the assembly itself, and
+// a document browser (search + preview tiles) on the shared tile picker. It
+// browses the open workspace's documents, minus the assembly itself, and
 // carries no tile verbs (duplicate/export/delete): this dialog only browses and
 // picks.
 //
@@ -71,166 +68,57 @@ function insertableKind(entry: EntryMeta): InsertableKind | null {
 export default function AssemblyPartPicker({
   isOpen, selfUuid, session, entries, refreshing, listError, onRefresh, cycleReasonFor, onClose, onPick,
 }: AssemblyPartPickerProps) {
-  const [selected, setSelected] = useState<string | null>(null)
-  const [searchQuery, setSearchQuery] = useState('')
-  const [debouncedSearch, setDebouncedSearch] = useState('')
-
-  // Each open starts fresh: empty search, nothing selected. The reset runs on
-  // CLOSE (the dialog stays mounted, only isOpen toggles) so reopening never
-  // paints or double-click-inserts the previous session's stale selection.
-  // Deferred a microtask to satisfy the no-sync-setState-in-effect rule.
-  useEffect(() => {
-    if (isOpen) return
-    let cancelled = false
-    queueMicrotask(() => {
-      if (cancelled) return
-      setSearchQuery('')
-      setDebouncedSearch('')
-      setSelected(null)
-    })
-    return () => { cancelled = true }
-  }, [isOpen])
-
-  useEffect(() => {
-    const timer = setTimeout(() => setDebouncedSearch(searchQuery), 300)
-    return () => clearTimeout(timer)
-  }, [searchQuery])
-
   // The one fetch on this path is the editor's, freshened when the dialog
   // opens so the tiles and the guard both learn about a part added since mount.
   useEffect(() => {
     if (isOpen) onRefresh()
   }, [isOpen, onRefresh])
 
-  const docs = useMemo(() => {
-    const needle = debouncedSearch.toLowerCase()
-    return (entries ?? [])
-      .filter(entry => entry.id !== selfUuid && insertableKind(entry) !== null)
-      .filter(entry => !needle || entry.name.toLowerCase().includes(needle))
-      .sort((a, b) => a.name.localeCompare(b.name))
-  }, [entries, selfUuid, debouncedSearch])
+  const revs = useMemo(() => new Map((entries ?? []).map(entry => [entry.id, entry.rev ?? 0])), [entries])
+
+  const items = useMemo((): TilePickerItem[] => (entries ?? [])
+    .flatMap(entry => {
+      const kind = entry.id === selfUuid ? null : insertableKind(entry)
+      if (kind === null) return []
+      const item: TilePickerItem = {
+        id: entry.id,
+        name: entry.name,
+        group: kind,
+        preview: { workspace: session?.workspace ?? selfUuid, entry: entry.id },
+        updatedAt: entry.updatedAt,
+      }
+      const reason = kind === 'assembly' ? cycleReasonFor?.(entry.id) : undefined
+      if (reason !== undefined) item.disabledReason = reason
+      return [item]
+    })
+    .sort((a, b) => a.name.localeCompare(b.name)), [entries, selfUuid, session, cycleReasonFor])
 
   // A read in flight is a pending answer, so the grid is held back rather than
   // painted from the previous read. Null covers "no workspace bound" as well:
   // with nothing to list, the dialog settles into its empty state instead of
   // holding the spinner up.
-  const busy = session !== null && (refreshing || (entries === null && !listError))
-  const error = listError ?? null
-
-  const cycleReason = (entry: EntryMeta): string | undefined =>
-    insertableKind(entry) === 'assembly' ? cycleReasonFor?.(entry.id) : undefined
-
-  const pick = (entry: EntryMeta) => {
-    // A refusal is a listing state, not a value the dialog may confirm.
-    if (cycleReason(entry) !== undefined) return
-    // `rev` is recorded on the instance as placement provenance. The bundle
-    // cache no longer keys on it (C5), so this is informational.
-    onPick(entry.id, entry.rev ?? 0)
-    onClose()
-  }
-
-  const parts = docs.filter(entry => insertableKind(entry) === 'part')
-  const assemblies = docs.filter(entry => insertableKind(entry) === 'assembly')
-  // The selection is resolved against the VISIBLE rows on every render, so a
-  // tile a search (or a refresh) narrowed away cannot be confirmed: Insert
-  // disables itself instead. The id itself is kept, so clearing the search
-  // restores the highlight rather than silently dropping the pick.
-  const selectedEntry = docs.find(entry => entry.id === selected)
-  const selectedRefused = selectedEntry !== undefined && cycleReason(selectedEntry) !== undefined
-
-  const confirm = () => {
-    if (selectedEntry) pick(selectedEntry)
-  }
-
-  const tile = (entry: EntryMeta) => {
-    const reason = cycleReason(entry)
-    return (
-      <button
-        type="button"
-        key={entry.id}
-        className={`doc-tile doc-browser-tile${selected === entry.id ? ' selected' : ''}${reason !== undefined ? ' disabled' : ''}`}
-        onClick={() => { if (reason === undefined) setSelected(entry.id) }}
-        onDoubleClick={() => pick(entry)}
-        disabled={reason !== undefined}
-        title={reason}
-        aria-description={reason}
-      >
-        <div className="doc-tile-preview">
-          <DocTilePreview workspace={session?.workspace ?? selfUuid} entry={entry.id} name={entry.name} />
-        </div>
-        <div className="doc-tile-info">
-          <span className="doc-tile-name" title={entry.name}>
-            {entry.name || entry.id}
-          </span>
-        </div>
-        <div className="doc-tile-meta">
-          <span className="doc-tile-date">{formatRelativeDate(new Date(entry.updatedAt ?? 0).toISOString())}</span>
-        </div>
-      </button>
-    )
-  }
+  const loading = session !== null && (refreshing || (entries === null && !listError))
 
   return (
-    <Dialog
+    <TilePickerDialog
       isOpen={isOpen}
       title="Insert part"
       icon="library_add"
-      onClose={onClose}
-      onConfirm={confirm}
       confirmLabel="Insert"
-      confirmDisabled={busy || error !== null || !selectedEntry || selectedRefused}
-      className="doc-browser-dialog"
-    >
-      <div className="doc-browser">
-        <div className="doc-browser-main">
-          <div className="search-input-container doc-browser-search">
-            <span className="material-icons search-icon">search</span>
-            <input
-              type="text"
-              placeholder="Search documents..."
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              className="search-input"
-            />
-            {searchQuery && (
-              <button
-                className="btn btn-clear-search"
-                onClick={() => setSearchQuery('')}
-                title="Clear search"
-                type="button"
-              >
-                <span className="material-icons">close</span>
-              </button>
-            )}
-          </div>
-          {busy && <LoadingState label="Loading..." />}
-          {error && <p className="error-text">{error}</p>}
-          {!busy && !error && docs.length === 0 && (
-            <p className="doc-browser-status">
-              {debouncedSearch ? `No documents match "${debouncedSearch}"` : 'No parts or assemblies available.'}
-            </p>
-          )}
-          {!busy && docs.length > 0 && (
-            <div className="doc-browser-groups">
-              {parts.length > 0 && (
-                <section className="doc-browser-group" aria-label="Parts">
-                  <h3 className="doc-browser-group-title">Parts</h3>
-                  <div className="doc-tiles doc-browser-tiles">{parts.map(tile)}</div>
-                </section>
-              )}
-              {assemblies.length > 0 && (
-                <section className="doc-browser-group" aria-label="Assemblies">
-                  <h3 className="doc-browser-group-title">
-                    <span className="material-icons" aria-hidden="true">account_tree</span>
-                    Assemblies
-                  </h3>
-                  <div className="doc-tiles doc-browser-tiles">{assemblies.map(tile)}</div>
-                </section>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-    </Dialog>
+      searchPlaceholder="Search documents..."
+      emptyText="No parts or assemblies available."
+      itemNoun="documents"
+      items={items}
+      groups={GROUPS}
+      loading={loading}
+      error={listError ?? null}
+      onClose={onClose}
+      onPick={item => {
+        // `rev` is recorded on the instance as placement provenance. The bundle
+        // cache no longer keys on it (C5), so this is informational.
+        onPick(item.id, revs.get(item.id) ?? 0)
+        onClose()
+      }}
+    />
   )
 }

@@ -30,6 +30,8 @@ import { fileSizeOf, orphanFileIds, referrersOf } from '@/components/layout/file
 import { dropWorkerFileId } from '@/kernel/worker/workerFiles'
 import type { EntryMeta } from '@/workspace/types'
 import EntryRow from '@/pages/WorkspaceEntryRow'
+import WorkspaceEntryMove from '@/pages/WorkspaceEntryMove'
+import { entryMoveReportText } from '@/workspace/entryMove'
 import { downloadDocumentEntry, downloadFileEntry, entryExportFormats } from '@/pages/workspaceEntryExport'
 import '@/pages/Documents.css'
 import '@/pages/WorkspaceView.css'
@@ -131,6 +133,11 @@ export default function WorkspaceView() {
   // import leaves once it lands. Both are page state, not document state.
   const [stepImportFile, setStepImportFile] = useState<File | null>(null)
   const [stepImportNotice, setStepImportNotice] = useState<string | null>(null)
+  // The row whose "Move to workspace" flow is open, and the report a finished
+  // move leaves. No editor is open on this page, so a move never has to close
+  // one first, the same as Delete.
+  const [moveTarget, setMoveTarget] = useState<EntryMeta | null>(null)
+  const [moveNotice, setMoveNotice] = useState<string | null>(null)
 
   // The session is installed by the page above, whose effect runs AFTER this
   // one; and a same-route navigation (duplicate) swaps workspaceId while the
@@ -584,6 +591,7 @@ export default function WorkspaceView() {
                   onOpen={openEntry}
                   onRename={target => { setRenameTarget(target); setRenameName(target.name) }}
                   onDuplicate={target => { void handleDuplicate(target) }}
+                  onMove={setMoveTarget}
                   onExport={handleExportEntry}
                   onDelete={target => { void handleDelete(target) }}
                   onReplace={(target, chosen) => { void handleReplace(target, chosen) }}
@@ -637,6 +645,28 @@ export default function WorkspaceView() {
         title="STEP Imported"
         message={stepImportNotice ?? ''}
         onClose={() => setStepImportNotice(null)}
+      />
+
+      {workspaceId && (
+        <WorkspaceEntryMove
+          store={store}
+          workspace={workspaceId}
+          entry={moveTarget}
+          entries={entries}
+          onClose={() => setMoveTarget(null)}
+          onMoved={report => {
+            setMoveTarget(null)
+            setMoveNotice(entryMoveReportText(report))
+          }}
+        />
+      )}
+
+      <MessageDialog
+        isOpen={moveNotice !== null}
+        title="Entry Moved"
+        variant="success"
+        message={moveNotice ?? ''}
+        onClose={() => setMoveNotice(null)}
       />
 
       <Dialog
