@@ -265,10 +265,11 @@
   background: rgba(42, 36, 16, 0.55);
 }
 
-/* A sub-assembly is a directory row: one disclosure chevron, the assembly
-   glyph, and children indented under the parent's list. */
-.subassembly-chevron,
-.subassembly-chevron-spacer {
+/* A sub-assembly is a directory row: one disclosure chevron after the name,
+   the assembly glyph at the shared icon column, and children indented under
+   the parent's list. A leaf row has no disclosure slot at all, so every icon
+   starts at the same x as a part editor feature row. */
+.subassembly-chevron {
   display: inline-flex;
   align-items: center;
   justify-content: center;

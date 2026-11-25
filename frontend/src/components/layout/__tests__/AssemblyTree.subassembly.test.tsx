@@ -54,17 +54,26 @@ function rowByName(container: HTMLElement, name: string): HTMLElement {
   return span.closest('.feature-item') as HTMLElement
 }
 
+// The disclosure sits after the name now, so reach it by its accessible label
+// rather than by a position or a shared slot class.
+function chevronFor(container: HTMLElement, name: string, expanded: boolean): HTMLButtonElement {
+  const label = `${expanded ? 'Collapse' : 'Expand'} ${name}`
+  const button = container.querySelector(`[aria-label="${label}"]`) as HTMLButtonElement | null
+  if (!button) throw new Error(`chevron not found: ${label}`)
+  return button
+}
+
 describe('AssemblyTree sub-assemblies', () => {
   it('starts folded, then a chevron reveals indented child rows', () => {
     const { container } = renderTree()
     expect(rowByName(container, 'Gripper')).toBeTruthy()
     expect(container.querySelector('.assembly-subtree')).toBeNull()
 
-    const chevron = rowByName(container, 'Gripper').querySelector('.subassembly-chevron')!
-    fireEvent.click(chevron)
+    fireEvent.click(chevronFor(container, 'Gripper', false))
 
     const subtree = container.querySelector('.assembly-subtree')!
     expect(subtree).toBeTruthy()
+    expect(chevronFor(container, 'Gripper', true).getAttribute('aria-expanded')).toBe('true')
     expect([...subtree.querySelectorAll('.feature-name')].map(node => node.textContent)).toEqual(['Bolt', 'Nut'])
     // Child rows are read-only here: no edit or delete action at all.
     const bolt = rowByName(container, 'Bolt')
@@ -79,7 +88,7 @@ describe('AssemblyTree sub-assemblies', () => {
   it('selecting a child selects the top-level instance plus its leaf path', () => {
     const onSelectPart = vi.fn()
     const { container } = renderTree({ onSelectPart })
-    fireEvent.click(rowByName(container, 'Gripper').querySelector('.subassembly-chevron')!)
+    fireEvent.click(chevronFor(container, 'Gripper', false))
     fireEvent.click(rowByName(container, 'Bolt'))
     expect(onSelectPart).toHaveBeenCalledWith('sub', 'bolt')
   })
@@ -87,7 +96,7 @@ describe('AssemblyTree sub-assemblies', () => {
   it('the child eye is a view filter callback, not a document write', () => {
     const onSetLeafVisible = vi.fn()
     const { container } = renderTree({ onSetLeafVisible })
-    fireEvent.click(rowByName(container, 'Gripper').querySelector('.subassembly-chevron')!)
+    fireEvent.click(chevronFor(container, 'Gripper', false))
     const hide = rowByName(container, 'Bolt').querySelector('[aria-label="Hide Bolt"]')!
     fireEvent.click(hide)
     expect(onSetLeafVisible).toHaveBeenCalledWith('sub/bolt', false)
