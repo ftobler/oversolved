@@ -207,6 +207,20 @@
   font-size: 11px;
 }
 
+/* The Part field is a button into the shared picker: it keeps the select's box
+   but reads as a label of the current binding, with the dangling id in red. */
+.instance-part-chip {
+  text-align: left;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.instance-part-chip.missing {
+  color: #f44336;
+  border-color: #c0392b;
+}
+
 /* The 80px label column of the shared field grammar is more than the abbreviated
    captions need, and here every pixel of it comes out of the value boxes. */
 .instance-editor .feature-field-label {

@@ -107,69 +107,69 @@ describe('PartInstanceEditor rotation', () => {
   })
 })
 
-describe('PartInstanceEditor part picker', () => {
-  // The repair for an instance whose doc_id resolves to nothing: the row is
-  // failed and the editor is the one place to point it at a live part. The
-  // picker is presentational; the commit callback carries the picked id out.
-  it('lists the workspace parts and calls back with the picked id', () => {
-    const onSetPartDoc = vi.fn()
+describe('PartInstanceEditor part field', () => {
+  // The Part field is the one door into the shared picker: a second list in the
+  // card would drift from the one the insert guard and the tiles use.
+  it('shows the bound document name on a button that opens the repick dialog', () => {
+    const onOpenRepick = vi.fn()
     render(
       <PartInstanceEditor
         instance={instance()}
-        partOptions={[{ id: 'doc-A', name: 'Bracket' }, { id: 'doc-B', name: 'Pin' }]}
-        onSetPartDoc={onSetPartDoc}
+        partName="Bracket"
+        onOpenRepick={onOpenRepick}
         onSetFixed={vi.fn()}
         onSetPosition={vi.fn()}
         onSetRotation={vi.fn()}
       />
     )
-    const picker = screen.getByLabelText('Part document') as HTMLSelectElement
-    expect(picker.value).toBe('doc-A')
-    fireEvent.change(picker, { target: { value: 'doc-B' } })
-    expect(onSetPartDoc).toHaveBeenCalledWith('doc-B')
+    const field = screen.getByLabelText(/Part document/)
+    expect(field.tagName).toBe('BUTTON')
+    expect(field).toHaveTextContent('Bracket')
+    expect(document.querySelector('.instance-editor select')).toBeNull()
+    fireEvent.click(field)
+    expect(onOpenRepick).toHaveBeenCalledOnce()
   })
 
-  it('surfaces the picker when the doc_id names no live part', () => {
+  it('falls back to the doc id when the workspace has no name for it', () => {
+    render(
+      <PartInstanceEditor
+        instance={instance()}
+        onOpenRepick={vi.fn()}
+        onSetFixed={vi.fn()}
+        onSetPosition={vi.fn()}
+        onSetRotation={vi.fn()}
+      />
+    )
+    expect(screen.getByLabelText(/Part document/)).toHaveTextContent('doc-A')
+  })
+
+  it('marks a missing document on the same button and keeps its status line', () => {
     render(
       <PartInstanceEditor
         instance={instance({ doc_id: 'gone' })}
-        partOptions={[{ id: 'doc-A', name: 'Bracket' }]}
-        onSetPartDoc={vi.fn()}
+        partName="gone"
+        partMissing
+        onOpenRepick={vi.fn()}
         onSetFixed={vi.fn()}
         onSetPosition={vi.fn()}
         onSetRotation={vi.fn()}
       />
     )
-    const picker = screen.getByLabelText('Part document') as HTMLSelectElement
-    // The dangling id stays visible (it is what the document carries) but is
-    // not selectable: only a live pick can be committed.
-    expect(picker.value).toBe('')
+    expect(screen.getByLabelText(/Part document/)).toHaveTextContent('gone (missing)')
     expect(screen.getByRole('status').textContent).toMatch(/missing/i)
-    expect(screen.getByRole('option', { name: /gone/ })).toBeTruthy()
   })
 
-  it('stays quiet while the part list has not landed, and offers no picker without a callback', () => {
-    const { rerender } = render(
+  it('offers no Part field when no repick handler is supplied', () => {
+    render(
       <PartInstanceEditor
         instance={instance({ doc_id: 'gone' })}
-        onSetPartDoc={vi.fn()}
-        onSetFixed={vi.fn()}
-        onSetPosition={vi.fn()}
-        onSetRotation={vi.fn()}
-      />
-    )
-    expect(screen.getByLabelText('Part document')).toBeTruthy()
-    expect(screen.queryByRole('status')).toBeNull()
-
-    rerender(
-      <PartInstanceEditor
-        instance={instance()}
         onSetFixed={vi.fn()}
         onSetPosition={vi.fn()}
         onSetRotation={vi.fn()}
       />
     )
     expect(screen.queryByLabelText('Part document')).toBeNull()
+    expect(screen.queryByRole('status')).toBeNull()
   })
 })
 

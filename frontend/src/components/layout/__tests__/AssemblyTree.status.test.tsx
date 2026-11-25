@@ -29,7 +29,7 @@ function status(overrides: Partial<AssemblySolveStatus> = {}): AssemblySolveStat
 
 function renderTree(
   statusProp: AssemblySolveStatus,
-  onEditInstance: (handle: string) => void = noop,
+  onRebindInstance: (handle: string) => void = noop,
 ) {
   return render(
     <AssemblyTree
@@ -43,7 +43,8 @@ function renderTree(
       onToggleVisible={noop}
       onToggleFixed={noop}
       onToggleBuiltinVisible={noop}
-      onEditInstance={onEditInstance}
+      onEditInstance={noop}
+      onRebindInstance={onRebindInstance}
       onCommitInstance={noop}
       onCancelInstance={noop}
       onCommitMate={noop}
@@ -109,18 +110,18 @@ describe('AssemblyTree solve-status marks', () => {
     expect(nameByName(container, 'Fixed 1').className).not.toContain('feature-name-error')
   })
 
-  it('offers the rebind repair on a failed row and no such action on a healthy one', () => {
-    const onEditInstance = vi.fn()
+  it('offers the rebind repair on a failed row and opens the picker directly', () => {
+    const onRebindInstance = vi.fn()
     const failed = renderTree(
       status({ parts: { hBad: { failed: true, error: 'part doc not found: hBad' } } }),
-      onEditInstance,
+      onRebindInstance,
     )
     fireEvent.click(rowByName(failed.container, 'doc-hBad').querySelector('[aria-label="Part options"]')!)
     fireEvent.click(screen.getByRole('menuitem', { name: 'Rebind part' }))
-    expect(onEditInstance).toHaveBeenCalledWith('hBad')
+    expect(onRebindInstance).toHaveBeenCalledWith('hBad')
     failed.unmount()
 
-    const healthy = renderTree(status(), onEditInstance)
+    const healthy = renderTree(status(), onRebindInstance)
     fireEvent.click(rowByName(healthy.container, 'doc-hGood').querySelector('[aria-label="Part options"]')!)
     expect(screen.queryByRole('menuitem', { name: 'Rebind part' })).toBeNull()
   })

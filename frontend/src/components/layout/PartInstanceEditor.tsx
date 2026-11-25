@@ -6,9 +6,9 @@
 //
 // Presentational: the fixed flag, position and rotation edits leave through
 // callbacks, so the logic (assemblyMutations.ts) stays viewport-free and
-// unit-tested. The Part picker takes the same path: it only reports the picked
-// doc id, and set_part_doc does the rebind, so the repair for an instance whose
-// doc_id resolves to nothing stays testable without the Viewport.
+// unit-tested. The Part field is a button into the editor's one picker: this
+// card never keeps a second document list that could disagree with it, and the
+// picked doc reaches set_part_doc through the page's command funnel.
 //
 // The rotation row is the ONLY orientation control a fixed part has: the
 // triad gizmo is refused for a `fixed` instance (isManipulable,
@@ -31,27 +31,17 @@ interface PartInstanceEditorProps {
   // the bake. Optional so a pure-seed caller (a test, a future inline use) still
   // works.
   pose?: Transform3D
-  // The workspace's live part documents, so the instance can be rebound when
-  // its doc_id resolves to nothing. `undefined` means the list has not landed
-  // (or the caller does not offer a pick); an empty array is the real answer
-  // "no parts". Optional with onSetPartDoc so the rotation and pose callers stay
-  // a pure editor of the placement.
-  partOptions?: readonly PartOption[]
-  onSetPartDoc?: (docId: string) => void
+  // The bound document's workspace name, falling back to its id when missing.
+  partName?: string
+  // The doc_id names no live document. The card still shows it, marked, because
+  // that is what the document carries and the picker is its only repair.
+  partMissing?: boolean
+  // Open the editor's shared picker in rebind mode. Absent means this caller
+  // edits only the placement (a test, a future inline use).
+  onOpenRepick?: () => void
   onSetFixed: (fixed: boolean) => void
   onSetPosition: (pos: { tx: number; ty: number; tz: number }) => void
   onSetRotation: (euler: EulerDeg) => void
-}
-
-export interface PartOption {
-  id: string
-  name: string
-  // A sub-assembly is a legal rebind target but reads differently in the list.
-  kind?: 'part' | 'assembly'
-  // A cycle the rebind would close. The option stays listed, disabled, with the
-  // reason in its text so the native select (which cannot tooltip an option)
-  // still says why.
-  disabledReason?: string
 }
 
 type Axis = 'tx' | 'ty' | 'tz'
@@ -71,7 +61,7 @@ function round3(v: number): number {
 }
 
 export function PartInstanceEditor({
-  instance, pose, partOptions, onSetPartDoc, onSetFixed, onSetPosition, onSetRotation,
+  instance, pose, partName, partMissing = false, onOpenRepick, onSetFixed, onSetPosition, onSetRotation,
 }: PartInstanceEditorProps) {
   // The drawn pose is the basis, not the seed: the seed can sit where the part
   // was placed while the viewport draws it pulled onto its mates.
@@ -125,13 +115,6 @@ export function PartInstanceEditor({
     setRotText({ rx: String(round3(r.rx)), ry: String(round3(r.ry)), rz: String(round3(r.rz)) })
   }
 
-  // `undefined` is "the part list has not landed"; an empty array is the real
-  // answer "this workspace holds no parts", so only a landed list can call the
-  // current doc_id dangling.
-  const listedParts = partOptions ?? []
-  const partKnown = listedParts.some(option => option.id === instance.doc_id)
-  const partMissing = partOptions !== undefined && !partKnown
-
   const commitRot = (axis: RotAxis, raw: string) => {
     const nextText = { ...rotText, [axis]: raw }
     setRotText(nextText)
@@ -159,37 +142,26 @@ export function PartInstanceEditor({
   return (
     // Clicks inside the editor must not bubble to the row's select handler.
     <div className="instance-editor" onClick={e => e.stopPropagation()}>
-      {onSetPartDoc && (
+      {onOpenRepick && (
         <>
-          <label className="feature-field-row">
+          <div className="feature-field-row">
             <span className="feature-field-label instance-label--wide">Part</span>
-            {/* A dangling id stays visible as the placeholder, but it is not a
-                value the user can re-commit: only a live pick writes. */}
-            <select
-              className="feature-field-select"
-              aria-label="Part document"
-              value={partMissing ? '' : instance.doc_id}
-              autoFocus={partMissing}
-              onChange={e => {
-                const picked = e.target.value
-                if (picked !== '') onSetPartDoc(picked)
-              }}
+            {/* The chip is a door into the editor's one picker, not a second
+                list: a dangling id is still shown but only a pick writes. Its
+                accessible name carries the binding, not a static field label. */}
+            <button
+              type="button"
+              className={`feature-field-select instance-part-chip${partMissing ? ' missing' : ''}`}
+              aria-label={`Part document: ${partName ?? instance.doc_id}${partMissing ? ' (missing)' : ''}`}
+              title={partMissing ? 'Pick a part to replace the missing document' : 'Replace part'}
+              onClick={onOpenRepick}
             >
-              {partMissing && <option value="">{instance.doc_id} (missing)</option>}
-              {!partKnown && !partMissing && <option value={instance.doc_id}>{instance.doc_id}</option>}
-              {listedParts.map(option => (
-                <option key={option.id} value={option.id} disabled={option.disabledReason !== undefined}>
-                  {option.name}{option.kind === 'assembly' ? ' (assembly)' : ''}
-                  {option.disabledReason !== undefined ? ' - circular' : ''}
-                </option>
-              ))}
-            </select>
-          </label>
+              {`${partName ?? instance.doc_id}${partMissing ? ' (missing)' : ''}`}
+            </button>
+          </div>
           {partMissing && (
             <p className="instance-part-missing" role="status">
-              {listedParts.length === 0
-                ? 'This part is missing, and this workspace has no parts to rebind it to.'
-                : 'This part is missing. Pick a part to rebind the instance.'}
+              This part is missing. Pick a part to rebind the instance.
             </p>
           )}
         </>
