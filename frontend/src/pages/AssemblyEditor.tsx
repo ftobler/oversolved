@@ -57,9 +57,10 @@ import AssemblyExport, { type AssemblyExportHandle } from '@/pages/AssemblyExpor
 import { getAssemblyBuiltins } from '@/utils/assemblyRender'
 import { assemblyVerdict } from '@/utils/core/assemblyStatus'
 import { MATE_KINDS, MATE_KIND_LABELS } from '@/utils/mateKinds'
+import { instanceLabel } from '@/utils/instanceLabel'
 import AssemblyToolbar from '@/pages/AssemblyToolbar'
 import AssemblyMeasurementDisplay from '@/components/layout/AssemblyMeasurementDisplay'
-import type { AssemblyDoc, MateKind, MateFeatureDef, PartInstance, Transform3D } from '@/types/cad'
+import type { AssemblyDoc, MateKind, MateFeatureDef, MateRef, PartInstance, Transform3D } from '@/types/cad'
 import featurePartIcon from '@/assets/icons/feature-part.svg'
 import measurementIcon from '@/assets/icons/measurement.svg'
 import '@/pages/Part.css'
@@ -130,6 +131,8 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
   const selectedMateId = subject?.kind === 'mate' ? subject.id : null
   const activeMateField = useAssemblyStore(s => s.activeMateField)
   const solveStatus = useAssemblyStore(s => s.solveStatus)
+  const anchors = useAssemblyStore(s => s.anchors)
+  const anchorDescriptors = useAssemblyStore(s => s.anchorDescriptors)
   const hiddenLeafPaths = useAssemblyStore(s => s.hiddenLeafPaths)
   // The assembly solve mirrors its running flag into the solver store for the
   // shared LoadingOverlay; the Parts header's rebuild button reads the same flag,
@@ -868,14 +871,22 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
     useAssemblyStore.getState().setActiveMateField(target)
   }, [])
 
-  // A mate reference names a part handle; the tree shows the part's document name.
+  // The tree, the mate row and the chips share one name per handle. Two
+  // placements of one part document get an authored-order ordinal, which is the
+  // only way a fixed mate between them can name two distinct references.
   const labelFor = useCallback(
-    (handle: string) => {
-      const inst = instances.find(i => i.handle === handle)
-      if (!inst) return undefined
-      return docNames[inst.doc_id] || inst.doc_id
-    },
+    (handle: string) => instanceLabel(instances, docNames, handle),
     [instances, docNames],
+  )
+
+  // The raw anchor id is a hash; the solve's descriptor table (and the posed
+  // anchor table behind it) is where the geometry class lives. A ref just
+  // picked carries its own descriptor before the next solve publishes one.
+  const kindOf = useCallback(
+    (ref: MateRef) =>
+      anchorDescriptors?.[ref.part]?.[ref.anchor]?.kind ??
+      anchors?.[ref.part]?.[ref.anchor]?.kind ?? ref.anchor_descriptor?.kind,
+    [anchorDescriptors, anchors],
   )
 
   const builtins = useMemo(() => getAssemblyBuiltins(doc), [doc])
@@ -936,10 +947,11 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
       result={solveStatus?.mates[mate.id]}
       activeField={activeMateField}
       labelFor={labelFor}
+      kindOf={kindOf}
       onArmField={handleArmMateField}
       onUpdate={patch => runCommand('update_mate', { id: mate.id, patch })}
     />
-  ), [solveStatus, activeMateField, labelFor, handleArmMateField, runCommand])
+  ), [solveStatus, activeMateField, labelFor, kindOf, handleArmMateField, runCommand])
 
   // The banner names the unsatisfiable mates by their authored label when they
   // have one, falling back to the feature id.

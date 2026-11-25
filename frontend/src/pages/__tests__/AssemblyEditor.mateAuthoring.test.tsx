@@ -116,8 +116,11 @@ describe('AssemblyEditor mate authoring (Stage 8)', () => {
   function publishPickLookup() {
     act(() => {
       useAssemblyStore.getState().setSolveResult({
-        transforms: {}, parts: {}, edgeCurves: {}, anchors: {}, pickGeometry: [],
-        entityMateRefs: ENTITY_MATE_REFS, solveStatus: null,
+        transforms: {}, parts: {}, edgeCurves: {}, anchors: {},
+        anchorDescriptors: { hA: { a_v: {
+          geom_hash: '@u|vert-a', kind: 'point', created_by: 'box', point: [0, 0, 0],
+        } } },
+        pickGeometry: [], entityMateRefs: ENTITY_MATE_REFS, solveStatus: null,
       })
     })
   }
@@ -178,7 +181,7 @@ describe('AssemblyEditor mate authoring (Stage 8)', () => {
     expect(document.querySelector('.feature-edit-panel')!.contains(document.querySelector('.mate-editor'))).toBe(true)
     pick(VERT_A)
     await tick()
-    expect(screen.getByText('hA / a_v')).toBeTruthy()
+    expect(screen.getByText('Vertex of hA')).toBeTruthy()
   })
 
   it('a pick on an anchor-less entity commits nothing and leaves the slot empty', async () => {

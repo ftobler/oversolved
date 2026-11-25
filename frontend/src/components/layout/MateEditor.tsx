@@ -33,6 +33,9 @@ interface MateEditorProps {
   result?: MateResult
   activeField: MateFieldTarget | null
   labelFor?: (handle: string) => string | undefined
+  // The geometry class behind an anchor id, read from the solve's tables by the
+  // page. Without it a picked ref can only be labelled "missing".
+  kindOf?: (ref: MateRef) => string | undefined
   onArmField: (target: MateFieldTarget | null) => void
   onUpdate: (patch: MateParamPatch) => void
 }
@@ -86,7 +89,7 @@ function offsetFromText(text: Triple): MateOffsetVec | undefined {
 }
 
 export function MateEditor({
-  featureId, mate, result, activeField, labelFor, onArmField, onUpdate,
+  featureId, mate, result, activeField, labelFor, kindOf, onArmField, onUpdate,
 }: MateEditorProps) {
   const staleRefs = new Set(result?.staleRefs ?? [])
   // The box's own text, not `mate.angle` directly: a half-typed keystroke ('-',
@@ -428,12 +431,12 @@ export function MateEditor({
                   not divs, because the chip itself is a button here. */}
               {empty ? (
                 <span className="feature-pick-chip-empty-text">
-                  {mateRefLabel(mate[field], labelFor)}
+                  {mateRefLabel(mate[field], labelFor, kindOf)}
                 </span>
               ) : (
                 <span className="feature-pick-chip-item">
                   <span className="feature-pick-chip-item-text">
-                    {mateRefLabel(mate[field], labelFor)}
+                    {mateRefLabel(mate[field], labelFor, kindOf)}
                   </span>
                 </span>
               )}

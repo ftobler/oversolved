@@ -12,7 +12,11 @@
 // abs_roll_residual), a control no other mate kind reads.
 
 import type { MateKind, MateOffset, MateRef, NumberOrExpr } from '@/types/cad'
-import { ASSEMBLY_HANDLE } from '@/utils/assemblyBuiltins'
+import {
+  ASSEMBLY_HANDLE, ASSEMBLY_ORIGIN_ID, ASSEMBLY_TOP_ID, ASSEMBLY_FRONT_ID, ASSEMBLY_RIGHT_ID,
+} from '@/utils/assemblyBuiltins'
+import { partFrameAnchorId } from '@/kernel/partBundle'
+import { BUILTIN_FEATURE_DEFAULTS } from '@/utils/builtins'
 import type { Vec3 } from '@/utils/transform3d'
 
 /** Insert order in the UI: the workhorse first, the rare joints after. */
@@ -327,19 +331,66 @@ export function isMateRefEmpty(ref: MateRef | undefined): boolean {
   return !ref || ref.part === '' || ref.anchor === ''
 }
 
+// The assembly frame's anchors are static ids, so they name themselves: there
+// is no part instance to own them and no hash worth showing the user.
+const ASSEMBLY_FRAME_LABELS: Readonly<Record<string, string>> = {
+  [ASSEMBLY_ORIGIN_ID]: 'Origin',
+  [ASSEMBLY_TOP_ID]: 'Top plane',
+  [ASSEMBLY_FRONT_ID]: 'Front plane',
+  [ASSEMBLY_RIGHT_ID]: 'Right plane',
+}
+
+// A part's own frame is minted as planes at its origin, so the anchor kind alone
+// would call the Origin "Face of Part 1". Matching the deterministic id against
+// partFrameAnchorId is what distinguishes a built-in datum from a picked face.
+function partFrameName(anchor: string): string | undefined {
+  for (const feature of BUILTIN_FEATURE_DEFAULTS) {
+    if (partFrameAnchorId(feature.id) === anchor) return feature.id
+  }
+  return undefined
+}
+
+function frameLabel(name: string): string {
+  return name === 'Origin' ? name : `${name} plane`
+}
+
 /**
  * How a reference reads in a chip or a tree row. `labelFor` names a part handle
- * (its document name, say); the reserved assembly handle names the assembly's
- * own frame, which belongs to no part and so can never be looked up there.
+ * (the instance label, which disambiguates two placements of one document);
+ * `kindOf` reads the anchor's geometry class from the solve's descriptor or
+ * anchor table. Both stay optional so a caller with no solve in hand can still
+ * prompt for an empty ref, and no raw `a_<hex>` id ever reaches the string.
  */
 export function mateRefLabel(
   ref: MateRef | undefined,
   labelFor?: (handle: string) => string | undefined,
+  kindOf?: (ref: MateRef) => string | undefined,
 ): string {
   if (isMateRefEmpty(ref)) return 'Pick a reference'
   const { part, anchor } = ref!
-  const owner = part === ASSEMBLY_HANDLE ? 'Assembly' : labelFor?.(part) || part
-  return `${owner} / ${anchor}`
+  if (part === ASSEMBLY_HANDLE) {
+    return ASSEMBLY_FRAME_LABELS[anchor] ?? 'Missing reference of Assembly'
+  }
+  const owner = labelFor?.(part) || part
+  const frame = partFrameName(anchor)
+  if (frame !== undefined) return `${frameLabel(frame)} of ${owner}`
+  switch (kindOf?.(ref!)) {
+    case 'plane':
+    case 'cylinder':
+    case 'cone':
+    case 'sphere':
+    case 'torus':
+      return `Face of ${owner}`
+    case 'line':
+    case 'circle':
+      return `Edge of ${owner}`
+    case 'point':
+      return `Vertex of ${owner}`
+    default:
+      // The anchor id is stale or its kind unknown; keep the reference visible
+      // as missing rather than printing the hash a human cannot act on.
+      return `Missing reference of ${owner}`
+  }
 }
 
 /** The one-line summary a tree row shows for a mate. */
@@ -348,6 +399,7 @@ export function mateSummary(
   ref_a: MateRef,
   ref_b: MateRef,
   labelFor?: (handle: string) => string | undefined,
+  kindOf?: (ref: MateRef) => string | undefined,
 ): string {
-  return `${MATE_KIND_LABELS[kind] ?? kind}: ${mateRefLabel(ref_a, labelFor)} to ${mateRefLabel(ref_b, labelFor)}`
+  return `${MATE_KIND_LABELS[kind] ?? kind}: ${mateRefLabel(ref_a, labelFor, kindOf)} to ${mateRefLabel(ref_b, labelFor, kindOf)}`
 }
