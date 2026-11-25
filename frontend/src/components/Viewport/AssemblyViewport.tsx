@@ -501,6 +501,16 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
           ? hits
           : hits.filter(h => h.layer !== GIZMO_HANDLE_LAYER_NAME)
         store.setHoverHits(entityHits, hoverCtrlRef.current)
+        // The orbs name the refs but not the face or edge they came from, so the
+        // same entity is highlighted here too. Read the scope back from the
+        // store: Ctrl may have narrowed the anchors to one entity under this
+        // cursor, and highlight and orbs must agree on which one that is. A
+        // handle on top still occludes, and an entity with no mate refs is not
+        // offered as a pick, so neither draws a highlight for it.
+        const next = useAssemblyStore.getState()
+        const scoped = decision.entityKey === null ? null : next.pickScopeEntity
+        const key = scoped ?? decision.entityKey
+        store.setHoveredEntity(key !== null && (next.entityMateRefs[key]?.length ?? 0) > 0 ? key : null)
       } else {
         // A gizmo handle under the cursor occludes the entity behind it exactly
         // as it does for a click, so entityKey is null there and the entity is
@@ -518,8 +528,8 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
     hoverScheduler.clear()
     setHoveredGizmo(null)
     const store = useAssemblyStore.getState()
-    store.clearHover()  // the aiming-mode anchor hover
-    store.setHoveredEntity(null)  // the selection-mode B-rep hover
+    store.clearHover()  // the anchor hover and its Ctrl scope
+    store.setHoveredEntity(null)  // the B-rep highlight in either mode
   }, [hoverScheduler])
 
   // Shading/Edges change the ID layers; the toggle must dirty the buffer and
@@ -830,15 +840,17 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
           </group>
         ))}
 
-        {/* B-rep selection highlight, only in the plain selector mode: the
-            aiming mode shows anchor triads over the same geometry instead. It is
-            hidden mid-drag, where the raycast owns the gesture. The pick bodies
-            are the drawn ones, so the highlight follows the parts through a
-            settle rather than hanging at the old solved pose. */}
-        {!aiming && !manipulating && (
+        {/* Hover draws in both modes: aiming writes the entity its anchor orbs
+            came from, so the face or edge under the cursor still lights up. The
+            measurement selection set is selector-mode only, because a click
+            aims instead of selecting while a mate chip is armed. Both are held
+            off mid-drag, where the raycast owns the gesture. Pick bodies use the
+            drawn pose, so the highlight follows a settle instead of hanging at
+            the old solved pose. */}
+        {!manipulating && (
           <AssemblySelectionHighlight
             pickParts={drawnPickGeometry}
-            selection={entitySelection}
+            selection={aiming ? EMPTY_ENTITIES : entitySelection}
             hovered={hoveredEntity}
             mateHighlighted={mateHighlighted}
           />
