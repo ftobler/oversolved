@@ -469,6 +469,7 @@ type Transaction = PreviewTransaction | EditTransaction | PlacementTransaction
 // React and the stores.
 export class DocSession {
   private readonly deps: DocSessionDeps
+  private readonly cloneDoc: (doc: PartDoc) => PartDoc
   private readonly history: History<PartDoc, Mutation>
   private readonly listeners = new Set<(event: SessionEvent) => void>()
   private readonly diagnosticsLog: SessionDiagnostic[] = []
@@ -488,7 +489,14 @@ export class DocSession {
 
   constructor(deps: DocSessionDeps) {
     this.deps = deps
-    this.history = new History({ cloneDoc: deps.cloneDoc, cap: MAX_UNDO_DEPTH })
+    // Capture the injected cloner and call it free. DocSession invokes it
+    // directly in runMutations and at transaction begin as well as through
+    // History, so guarding only History would leave those calls exposed if a
+    // native cloner is ever injected. The production dep is cloneDocForUndo (a
+    // plain function), but the same rule must hold for every owner.
+    const cloneDoc = deps.cloneDoc
+    this.cloneDoc = doc => cloneDoc(doc)
+    this.history = new History({ cloneDoc: this.cloneDoc, cap: MAX_UNDO_DEPTH })
   }
 
   getDoc(): PartDoc | null {
@@ -820,7 +828,7 @@ export class DocSession {
   }
 
   private runMutations(current: PartDoc, mutations: Mutation[]): AppliedMutations {
-    const next = this.deps.cloneDoc(current)
+    const next = this.cloneDoc(current)
     const handlers = mutationHandlers as Record<string, AnyHandler | undefined>
     // A copy: an applier that enriches its mutation (a face projection's derived
     // member ids) replaces the entry here, and the journal records the enriched
@@ -1152,7 +1160,7 @@ export class DocSession {
     const txn: PreviewTransaction = {
       id: this.freshId(),
       kind: 'preview',
-      baseline: this.deps.cloneDoc(source),
+      baseline: this.cloneDoc(source),
       touched: false,
       dirty: this.pinDirty(),
     }
@@ -1178,7 +1186,7 @@ export class DocSession {
     const txn: EditTransaction = {
       id: this.freshId(),
       kind: 'edit',
-      baseline: this.deps.cloneDoc(current),
+      baseline: this.cloneDoc(current),
       suppressed: opts.suppressed ?? false,
       styleTouched: false,
       dirty: this.pinDirty(),
@@ -1211,7 +1219,7 @@ export class DocSession {
     const txn: PlacementTransaction = {
       id: this.freshId(),
       kind: 'placement',
-      baseline: this.deps.cloneDoc(current),
+      baseline: this.cloneDoc(current),
       dirty: this.pinDirty(),
       mutation: null,
       constraintIds: new Set(),

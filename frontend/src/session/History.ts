@@ -44,7 +44,12 @@ export class History<Doc, Meta = unknown> {
   private readonly cap: number
 
   constructor(options: HistoryOptions<Doc>) {
-    this.cloneDoc = options.cloneDoc
+    // Call the injected cloner as a free function. A native cloneDoc such as
+    // structuredClone is a WebIDL operation: invoking it with this History as
+    // its receiver throws "Illegal invocation" in Chrome. Node ignores the
+    // receiver, so only the free call keeps both environments working.
+    const cloneDoc = options.cloneDoc
+    this.cloneDoc = doc => cloneDoc(doc)
     this.cap = options.cap
   }
 

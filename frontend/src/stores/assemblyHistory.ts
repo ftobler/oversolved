@@ -34,7 +34,10 @@ class MirroredAssemblyHistory extends History<AssemblyDoc> {
     // holds no shared import payloads (the part doc's are why cloneDocForUndo
     // exists), so a full clone is the correct independent snapshot for both
     // pushed docs and the departing-doc counterparts History builds at move.
-    super({ cloneDoc: structuredClone, cap: MAX_UNDO_DEPTH })
+    // Wrap it so every owner hands History a receiver-free cloner, as the other
+    // History owners do; History guards this itself, but the convention should
+    // hold at the call site too.
+    super({ cloneDoc: doc => structuredClone(doc), cap: MAX_UNDO_DEPTH })
   }
 
   override push(label: AssemblyUndoLabel, doc: AssemblyDoc): number {

@@ -42,6 +42,7 @@ import type { StepImportMode } from '@/workspace/stepImportMode'
 import { stepImportLimitError } from '@/persistence/stepImport'
 import type { AssemblySubject } from '@/utils/assemblySelection'
 import { executeCommand } from '@/hooks/commandRegistry'
+import type { CommandName } from '@/utils/core/commandNames'
 import { modalOwnsEscape } from '@/utils/core/modalEscape'
 import { AssemblyDocumentPanel } from '@/components/layout/AssemblyDocumentPanel'
 import { AssemblyEditPanel } from '@/components/layout/AssemblyEditPanel'
@@ -548,15 +549,24 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
     useAssemblyStore.getState().deleteSubject(subjectToDelete)
   }, [])
 
+  // One dispatch path for every page-level command. A failed Result is a
+  // refusal the user has to see: the tree and editor commands used to drop it,
+  // which left visibility toggles and edits looking dead. Dialog-opening and
+  // no-document commands still do their thing (their Result is ok); the helper
+  // only adds the failure report every command's caller owes the banner.
+  const runCommand = useCallback((id: CommandName, input?: unknown) => {
+    const result = executeCommand(id, input)
+    if (!result.ok) setError(result.message)
+  }, [setError])
+
   // The picker's commit runs the add_part operation through the registry, the
   // same one path every other mutation takes. A refused insert (the I8 guard,
   // a cycle) comes back as a failed Result and is shown: without this the
   // dialog closed and nothing happened, which is the bug this path was fixed
   // for.
   const handlePick = useCallback((docId: string, docRev: number) => {
-    const added = executeCommand('add_part', { docId, docRev })
-    if (!added.ok) setError(added.message)
-  }, [setError])
+    runCommand('add_part', { docId, docRev })
+  }, [runCommand])
 
   // Import STEP drops a file into the open workspace as its own part document,
   // then instances it through the ordinary add_part command. The store write is
@@ -644,8 +654,7 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
     const importWhole = async () => {
       const imported = await addStepPart(workspace, picked.bytes, { fileName: picked.fileName })
       registerImportedParts([{ id: imported.partId, name: imported.name }])
-      const added = executeCommand('add_part', { docId: imported.partId, docRev: 0 })
-      if (!added.ok) setError(added.message)
+      runCommand('add_part', { docId: imported.partId, docRev: 0 })
     }
     try {
       if (mode === 'part') {
@@ -676,7 +685,7 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
     } catch (e) {
       setError(errorMessage(e, 'Failed to import STEP'))
     }
-  }, [uuid, workspaceId, session, stepImport, setError, registerImportedParts, runOperation])
+  }, [uuid, workspaceId, session, stepImport, setError, registerImportedParts, runOperation, runCommand])
 
   const openEntryInNewTab = useOpenEntryInNewTab(workspaceId ?? uuid)
   const handleOpenPartNewTab = useCallback((handle: string, docId?: string) => {
@@ -912,14 +921,13 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
         // The command reports its own refusal (a stale part, the assembly
         // itself) as a failed Result, so the rebind path shows it the same way
         // the insert path does.
-        const result = executeCommand('set_part_doc', { handle: inst.handle, docId })
-        if (!result.ok) setError(result.message)
+        runCommand('set_part_doc', { handle: inst.handle, docId })
       }}
-      onSetFixed={f => executeCommand('set_part_fixed', { handle: inst.handle, fixed: f })}
-      onSetPosition={pos => executeCommand('set_part_position', { handle: inst.handle, pos })}
-      onSetRotation={euler => executeCommand('set_part_rotation', { handle: inst.handle, euler })}
+      onSetFixed={f => runCommand('set_part_fixed', { handle: inst.handle, fixed: f })}
+      onSetPosition={pos => runCommand('set_part_position', { handle: inst.handle, pos })}
+      onSetRotation={euler => runCommand('set_part_rotation', { handle: inst.handle, euler })}
     />
-  ), [poseBasis, partOptions, setError])
+  ), [poseBasis, partOptions, runCommand])
 
   const renderMateEditor = useCallback((mate: { id: string; mate: MateFeatureDef }) => (
     <MateEditor
@@ -929,9 +937,9 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
       activeField={activeMateField}
       labelFor={labelFor}
       onArmField={handleArmMateField}
-      onUpdate={patch => executeCommand('update_mate', { id: mate.id, patch })}
+      onUpdate={patch => runCommand('update_mate', { id: mate.id, patch })}
     />
-  ), [solveStatus, activeMateField, labelFor, handleArmMateField])
+  ), [solveStatus, activeMateField, labelFor, handleArmMateField, runCommand])
 
   // The banner names the unsatisfiable mates by their authored label when they
   // have one, falling back to the feature id.
@@ -974,7 +982,7 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
         handleSave={handleSave}
         handleClone={handleClone}
         onImport={handleImportStep}
-        onExport={() => executeCommand('export_assembly')}
+        onExport={() => runCommand('export_assembly')}
       />
       <div className={`doc-container${panelsOpen ? ' panels-open' : ''}`}>
         <div className="doc-editor">
@@ -984,7 +992,7 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
               className="editor-btn"
               title="Insert part"
               aria-label="Insert part"
-              onClick={() => executeCommand('insert_part_instance')}
+              onClick={() => runCommand('insert_part_instance')}
             >
               <img src={featurePartIcon} alt="Insert part" />
             </button>
@@ -995,7 +1003,7 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
                 className="editor-btn"
                 title={`Insert ${MATE_KIND_LABELS[kind]} mate`}
                 aria-label={`Insert ${MATE_KIND_LABELS[kind]} mate`}
-                onClick={() => executeCommand(insertMateCommand(kind))}
+                onClick={() => runCommand(insertMateCommand(kind))}
               >
                 <img src={MATE_KIND_ICONS[kind]} alt={MATE_KIND_LABELS[kind]} />
               </button>
@@ -1055,14 +1063,14 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
                 editingMateId={editingMateId}
                 editingInstanceHandle={editingInstanceHandle}
                 onSelectPart={handleSelect}
-                onReorderInstance={(movingHandle, beforeHandle) => executeCommand('reorder_part', { movingHandle, beforeHandle })}
-                onReorderMate={(movingId, beforeId) => executeCommand('reorder_mate', { movingId, beforeId })}
+                onReorderInstance={(movingHandle, beforeHandle) => runCommand('reorder_part', { movingHandle, beforeHandle })}
+                onReorderMate={(movingId, beforeId) => runCommand('reorder_mate', { movingId, beforeId })}
                 onOpenPartNewTab={handleOpenPartNewTab}
-                onDuplicateInstance={(handle) => executeCommand('duplicate_part', handle)}
-                onDeleteInstance={(handle) => executeCommand('delete_part', handle)}
-                onToggleVisible={(handle, visible) => executeCommand('set_part_visible', { handle, visible })}
-                onToggleFixed={(handle, fixed) => executeCommand('set_part_fixed_oneshot', { handle, fixed })}
-                onToggleBuiltinVisible={(id, visible) => executeCommand('set_builtin_visible', { id, visible })}
+                onDuplicateInstance={(handle) => runCommand('duplicate_part', handle)}
+                onDeleteInstance={(handle) => runCommand('delete_part', handle)}
+                onToggleVisible={(handle, visible) => runCommand('set_part_visible', { handle, visible })}
+                onToggleFixed={(handle, fixed) => runCommand('set_part_fixed_oneshot', { handle, fixed })}
+                onToggleBuiltinVisible={(id, visible) => runCommand('set_builtin_visible', { id, visible })}
                 onEditInstance={handleEditInstance}
                 onCommitInstance={handleCommitInstance}
                 onCancelInstance={handleCancelInstance}
@@ -1070,7 +1078,7 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
                 onEditMate={handleEditMate}
                 onCommitMate={handleCommitMate}
                 onCancelMate={handleCancelMate}
-                onDeleteMate={(featureId) => executeCommand('delete_mate', featureId)}
+                onDeleteMate={(featureId) => runCommand('delete_mate', featureId)}
                 onRequestRenameMate={requestRenameMate}
               />
             </div>

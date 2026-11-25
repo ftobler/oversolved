@@ -270,4 +270,22 @@ describe('the clone policy', () => {
 
     expect(history.redo(doc('a', [1]))).toEqual({ label: 'one', doc: { label: 'a', items: [1, 2] } })
   })
+
+  // Node's structuredClone ignores its receiver, so a method call on History
+  // passes there but throws "Illegal invocation" in Chrome. This strict clone
+  // reproduces the browser check: every call site must invoke the cloner free.
+  it('calls an injected native cloner without a receiver on push, undo and redo', () => {
+    const strictClone = function (this: unknown, d: Doc): Doc {
+      if (this !== undefined) throw new TypeError('Illegal invocation')
+      return { label: d.label, items: [...d.items] }
+    }
+    const history = makeHistory(50, strictClone)
+    const a = doc('a', [1])
+    const b = doc('b', [2])
+    history.push('one', a)
+    history.push('two', b)
+
+    expect(history.undo(b)).toEqual({ label: 'two', doc: b })
+    expect(history.redo(a)).toEqual({ label: 'two', doc: b })
+  })
 })
