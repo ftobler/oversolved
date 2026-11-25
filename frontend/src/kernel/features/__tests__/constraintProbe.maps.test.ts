@@ -18,7 +18,7 @@ vi.mock('../sketch', async (importOriginal) => {
   return { ...actual, probeRedundantConstraint: probe }
 })
 
-import { classifyPendingAdd } from '../constraintProbe'
+import { classifyPendingAdd, decideUnDrive } from '../constraintProbe'
 import type { PartDoc } from '@/types/cad'
 
 function doc(): PartDoc {
@@ -99,5 +99,53 @@ describe('classifyPendingAdd projection facts', () => {
     }
     expect(classifyPendingAdd(crossSketchDoc(), repeat)).toBe('redundant')
     expect(probe).not.toHaveBeenCalled()
+  })
+})
+
+/** A driven length on a face projection's derived member. The member is a
+ *  solve-time row, not a document entity, so the un-drive probe can only see the
+ *  dimension when the caller passes the last solve's derived members. */
+function projectedDoc(): PartDoc {
+  return {
+    version: 7,
+    kind: 'part',
+    features: [{
+      id: 'sk1', kind: 'sketch', label: 'Sketch', plane: '@builtin_plane_front',
+      entities: [{ id: 'l1', kind: 'line' }],
+      initial: { l1: [0, 0, 10, 0] },
+      constraints: [
+        { id: 'proj_face', kind: 'projection', source: '?face', members: { 'u|e_aaaa': 'proj_face.aaaaaaaa' } },
+        { id: 'c_ref', kind: 'length', target: '$proj_face.aaaaaaaa', value: 1, driven: true },
+      ],
+    }],
+  } as unknown as PartDoc
+}
+
+const derivedMembers = [{ id: 'proj_face.aaaaaaaa', kind: 'line', params: [0, 0, 1, 0] }]
+
+describe('decideUnDrive on projected geometry', () => {
+  beforeEach(() => {
+    probe.mockClear()
+    // The real solver can only flag the row when the derived member rows are
+    // present in the lowered copy; model that instead of a blanket `true`.
+    probe.mockImplementation((_feature, _id, _kinds, members) =>
+      Array.isArray(members) && members.length > 0)
+  })
+
+  it('forwards the solve members so a redundant un-drive is refused', () => {
+    const decision = decideUnDrive(projectedDoc(), 'sk1', 'c_ref', {}, derivedMembers)
+    expect(decision.allowed).toBe(false)
+    expect(decision.reason).toMatch(/would overconstrain the sketch/)
+    expect(probe).toHaveBeenCalledTimes(1)
+    expect(probe.mock.calls[0][3]).toBe(derivedMembers)
+  })
+
+  it('would allow it without the solve members: the draft drops as unresolved', () => {
+    // The regression the page fix closes: Part.tsx must supply the rows from
+    // projection_members, or this gate reads "dropped" and lets the row drive.
+    expect(decideUnDrive(projectedDoc(), 'sk1', 'c_ref', {}).allowed).toBe(true)
+    // The probe still runs, but with no derived member rows it has no basis to
+    // call the driving row redundant. That is the answer allowing the un-drive.
+    expect(probe.mock.calls[0][3]).toBeUndefined()
   })
 })

@@ -1661,8 +1661,15 @@ export default function Part() {
       },
       onToggleConstraintDriven: (featureId, constraintId, driven) => {
         if (!driven) {
-          const decision = decideUnDrive(docRef.current, featureId, constraintId,
-            resolvedKindsOfSketch(solveResults?.[featureId]?.solved))
+          const resolvedKinds = resolvedKindsOfSketch(solveResults?.[featureId]?.solved)
+          const projectionMembers = solveResults?.[featureId]?.projection_members
+          // A face projection's members are solve-time rows, not document rows.
+          // The probe needs them to lower a constraint naming a derived member;
+          // without them it would call the add dropped and allow the un-drive.
+          const derivedMembers = projectionMembers === undefined
+            ? undefined
+            : Object.values(projectionMembers).flatMap(report => report.entities)
+          const decision = decideUnDrive(docRef.current, featureId, constraintId, resolvedKinds, derivedMembers)
           if (!decision.allowed) {
             showMessage({ title: CANNOT_APPLY_TITLE, message: decision.reason!, variant: 'error' })
             setContextMenu(null)
