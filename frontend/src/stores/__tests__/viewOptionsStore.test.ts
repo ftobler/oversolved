@@ -16,7 +16,7 @@ import {
 } from '@/stores/viewOptionsStore'
 
 function reset(overrides: Partial<ReturnType<typeof useViewOptionsStore.getState>> = {}): void {
-  useViewOptionsStore.setState({ ...DEFAULT_VIEW_PREFERENCES, collisionDebug: false, ...overrides })
+  useViewOptionsStore.setState({ ...DEFAULT_VIEW_PREFERENCES, collisionDebug: false, shaderProbe: false, ...overrides })
 }
 
 describe('view options store', () => {
@@ -35,6 +35,7 @@ describe('view options store', () => {
     expect(state.curvature).toBe(false)
     expect(state.orbit_around_cursor).toBe(true)
     expect(state.collisionDebug).toBe(false)
+    expect(state.shaderProbe).toBe(false)
   })
 
   it('persists the orbit-around-cursor choice through the port', () => {
@@ -83,6 +84,17 @@ describe('view options store', () => {
     expect(save).not.toHaveBeenCalled()
     expect(useViewOptionsStore.getState().collisionDebug).toBe(true)
     expect(JSON.stringify(backendBundle.preferences.read())).not.toContain('collision')
+  })
+
+  it('toggles the shader probe flag without writing it to preferences', () => {
+    // A frame-by-frame console probe is a debug tool, like collisionDebug: it
+    // must be off again after a reload, not silently logging on every load.
+    const save = vi.spyOn(backendBundle.preferences, 'save').mockResolvedValue(undefined)
+    useViewOptionsStore.getState().setShaderProbe(true)
+    expect(useViewOptionsStore.getState().shaderProbe).toBe(true)
+    useViewOptionsStore.getState().setShaderProbe(false)
+    expect(useViewOptionsStore.getState().shaderProbe).toBe(false)
+    expect(save).not.toHaveBeenCalled()
   })
 
   it('keeps the in-memory value when the write throws', () => {

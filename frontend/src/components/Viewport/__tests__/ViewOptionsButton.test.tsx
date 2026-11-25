@@ -24,6 +24,7 @@ function reset(): void {
   useViewOptionsStore.setState({
     ...DEFAULT_VIEW_PREFERENCES,
     collisionDebug: false,
+    shaderProbe: false,
     curvatureAutoRange: null,
   })
   useSectionStore.setState({ ...DEFAULT_SECTION_STATE })
@@ -177,6 +178,19 @@ describe('ViewOptionsButton viewer rows', () => {
     save.mockClear()
     fireEvent.click(row('Collision render'))
     expect(useViewOptionsStore.getState().collisionDebug).toBe(true)
+    expect(save).not.toHaveBeenCalled()
+  })
+
+  it('toggles the shader probe debug row without persisting it', () => {
+    const save = vi.spyOn(backendBundle.preferences, 'save').mockResolvedValue(undefined)
+    render(<ViewOptionsButton />)
+    open()
+
+    const probe = row('Shader probe')
+    expect(probe).toHaveAttribute('aria-checked', 'false')
+    fireEvent.click(probe)
+    expect(useViewOptionsStore.getState().shaderProbe).toBe(true)
+    expect(probe).toHaveAttribute('aria-checked', 'true')
     expect(save).not.toHaveBeenCalled()
   })
 

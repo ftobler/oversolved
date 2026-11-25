@@ -21,6 +21,7 @@ import '@/components/Viewport/ViewportHud.css'
 import type { GizmoRequest, Hit, Pv } from '@/components/misc/CubeGizmo.utils'
 import SceneController from '@/components/Viewport/SceneController'
 import { useSceneExposure } from '@/components/Viewport/SceneExposure'
+import { useShaderProbe } from '@/components/Viewport/shaderProbe'
 import EnvLight, { ENV_INTENSITY } from '@/components/Viewport/EnvLight'
 import { INITIAL_CAMERA } from '@/components/Viewport/cameraConstants'
 import { fitToContent, shouldAutoFit } from '@/components/Viewport/cameraController'
@@ -235,6 +236,10 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
     createdLiveRef.current = true
     setSceneTick(t => t + 1)
   }, [])
+
+  // Same probe as the part viewport, labelled so a console line says which
+  // pane compiled the program. sceneTick is the renderer-readiness signal.
+  useShaderProbe(glRef, sceneTick, 'assembly')
 
   // Frame the assembly once, when its first geometry lands. `fittedRef` doubles
   // as the abandon latch: see shouldAutoFit for why a grab has to retire a fit
