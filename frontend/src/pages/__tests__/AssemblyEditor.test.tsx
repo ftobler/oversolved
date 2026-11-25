@@ -539,11 +539,14 @@ describe('AssemblyEditor (Stage 6b)', () => {
     expect([...picker.options].map(option => option.value)).not.toContain('part-2')
   })
 
-  it('lists the assembly origin planes hidden by default and toggles one visible', async () => {
+  it('lists the origin always shown and the three planes hidden by default, toggles one visible', async () => {
     await renderLoaded()
-    // The Origin section lists the frame's origin and three reference planes,
-    // each with a Show affordance because they start hidden.
-    for (const label of ['Origin', 'Top', 'Front', 'Right']) {
+    // The origin is the always-drawn datum: its row is lit and has no eye.
+    const originRow = screen.getByText('Origin').closest('.feature-item') as HTMLElement
+    expect(originRow).toBeTruthy()
+    expect(originRow.querySelector('.feature-visibility-btn')).toBeNull()
+    expect(originRow.classList.contains('invisible')).toBe(false)
+    for (const label of ['Top', 'Front', 'Right']) {
       expect(screen.getByLabelText(`Show ${label}`)).toBeTruthy()
     }
 

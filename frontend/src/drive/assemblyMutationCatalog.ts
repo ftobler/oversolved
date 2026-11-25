@@ -351,8 +351,9 @@ export const ASSEMBLY_MUTATION_CATALOG = {
     fields: { handle: str(), visible: bool() },
   },
   set_builtin_visible: {
-    summary: 'Show or hide one of the assembly\'s own origin or plane features.',
-    fields: { id: str('AssemblyOrigin, AssemblyTop, AssemblyFront or AssemblyRight.'), visible: bool() },
+    summary: 'Show or hide one of the assembly\'s own reference planes.',
+    note: 'The assembly origin is always shown and is never a valid id here; writing it is refused with "The assembly origin is always shown".',
+    fields: { id: str('AssemblyTop, AssemblyFront or AssemblyRight.'), visible: bool() },
   },
   add_mate: {
     summary: 'Add a complete mate (both refs, parameters and an optional label) as one step.',

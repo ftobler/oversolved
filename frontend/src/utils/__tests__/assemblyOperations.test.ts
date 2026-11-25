@@ -186,10 +186,10 @@ describe('planAssemblyOperation', () => {
     expect(plan.doc).toEqual(doc)
   })
 
-  // The origin row and the plane rows share one operation and one tree eye, so
-  // the undo tooltip is the only place the user learns WHICH reference geometry
-  // they just hid. The old single label read "Toggle plane visibility" next to
-  // "Origin", and the table test pinned that wording, so nothing caught it.
+  // The label is the one cell that resolves from the document: a plane's tree
+  // eye needs its row named in the undo tooltip. The origin no longer has an eye
+  // and refuses a write; its synthetic row here only pins the label resolver's
+  // wording, not a toggle that exists in the tree.
   it('labels the built-in visibility toggle after the feature the id names', () => {
     const doc: AssemblyDoc = {
       kind: 'assembly',
