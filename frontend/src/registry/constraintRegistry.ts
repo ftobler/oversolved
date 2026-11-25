@@ -43,6 +43,14 @@ export interface ConstraintDef {
   hasValue: boolean
 
   /**
+   * Whether a dimension of this kind may be authored as a driven reference
+   * measurement (`PartConstraint.driven`). The registry owns the capability so
+   * the applier, the drive boundary and the document reader cannot disagree
+   * about which kinds can measure without constraining.
+   */
+  drivable?: boolean
+
+  /**
    * The dimension editor's leading icon when it differs from the dimension
    * tool's. Only the angular dimension sets it: the toolbar's dimension glyph
    * stands for every linear size. `undefined` falls back to
@@ -345,6 +353,7 @@ export const CONSTRAINTS: readonly ConstraintDef[] = [
     description: 'Sets the length of a line segment to a specific value.',
     category: 'dimensional',
     hasValue: true,
+    drivable: true,
     refPattern: 'target',
     operands: 'one',
     renderKind: 'dim_linear',
@@ -356,6 +365,7 @@ export const CONSTRAINTS: readonly ConstraintDef[] = [
     description: 'Sets the radius of a circle or arc to a specific value.',
     category: 'dimensional',
     hasValue: true,
+    drivable: true,
     refPattern: 'target',
     operands: 'one',
     renderKind: 'dim_radius',
@@ -367,6 +377,7 @@ export const CONSTRAINTS: readonly ConstraintDef[] = [
     description: 'Sets the diameter of a circle or arc to a specific value.',
     category: 'dimensional',
     hasValue: true,
+    drivable: true,
     refPattern: 'target',
     operands: 'one',
     renderKind: 'dim_diameter',
@@ -378,6 +389,7 @@ export const CONSTRAINTS: readonly ConstraintDef[] = [
     description: 'Sets the distance between two points to a specific value.',
     category: 'dimensional',
     hasValue: true,
+    drivable: true,
     refPattern: 'a_b',
     operands: 'pair',
     renderKind: 'dim_linear',
@@ -389,6 +401,7 @@ export const CONSTRAINTS: readonly ConstraintDef[] = [
     description: 'Sets the horizontal (X) distance between two points to a specific value.',
     category: 'dimensional',
     hasValue: true,
+    drivable: true,
     refPattern: 'a_b',
     operands: 'pair',
     renderKind: 'dim_linear',
@@ -400,6 +413,7 @@ export const CONSTRAINTS: readonly ConstraintDef[] = [
     description: 'Sets the vertical (Y) distance between two points to a specific value.',
     category: 'dimensional',
     hasValue: true,
+    drivable: true,
     refPattern: 'a_b',
     operands: 'pair',
     renderKind: 'dim_linear',
@@ -411,6 +425,7 @@ export const CONSTRAINTS: readonly ConstraintDef[] = [
     description: 'Sets the perpendicular distance from a point to a line to a specific value.',
     category: 'dimensional',
     hasValue: true,
+    drivable: true,
     refPattern: 'a_b',
     operands: 'pair',
     renderKind: 'dim_linear',
@@ -422,6 +437,7 @@ export const CONSTRAINTS: readonly ConstraintDef[] = [
     description: 'Sets the angle between two line segments to a specific value (in degrees).',
     category: 'dimensional',
     hasValue: true,
+    drivable: true,
     refPattern: 'a_b',
     operands: 'pair',
     renderKind: 'dim_angle',
@@ -519,6 +535,13 @@ export const CONSTRAINT_BY_KIND: ReadonlyMap<string, ConstraintDef> =
 // dimension, so it must not match.
 export function isDimensionKind(kind: string): boolean {
   return CONSTRAINT_BY_KIND.get(kind)?.category === 'dimensional'
+}
+
+/** The one capability gate for a driven reference dimension. A kind outside the
+ *  registry, or a dimension that cannot be measured (today `radius_difference`),
+ *  is not drivable: the applier, the drive and the document reader all ask here. */
+export function isDrivableConstraintKind(kind: string): boolean {
+  return CONSTRAINT_BY_KIND.get(kind)?.drivable === true
 }
 
 /** The label a dimension's value editor shows, keyed by the render kind the

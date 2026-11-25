@@ -32,6 +32,9 @@ export const COLOR_CONSTRAINT = '#ffd54f'
 // colour. Kept in the amber family so it still reads as a constraint, not as
 // an error.
 export const COLOR_CONSTRAINT_DIM = '#8d7529'
+// A driven reference is a measurement, not a claim about the sketch. Neutral
+// grey keeps it apart from both the amber driver and the error colours.
+export const COLOR_CONSTRAINT_DRIVEN = '#9aa0a6'
 
 export const ICON_SIZE = 22
 export const ICON_COLS = 3

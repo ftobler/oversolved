@@ -748,6 +748,15 @@ const CONSTRAINT_SIGN_NOTE =
   'pins the turn from the first line to the second; absent, the unsigned angle is matched. Other ' +
   'kinds ignore it.'
 
+const DRIVEN_CONSTRAINT_NOTE =
+  'A dimension may author `driven: true` to measure solved geometry without constraining it: it never ' +
+  'reaches the solver, so dof, status and the redundancy flags of the rest are unchanged, and its label ' +
+  'shows the current measurement in parentheses. Only the dimensions listed as drivable in the registry ' +
+  'accept it; a geometric row is refused by name. A driven dimension takes no expression and its stored ' +
+  'value is only the seed used if it later becomes driving. Author a redundant dimension this way ' +
+  'instead of refusing it: the editor presets and locks the toggle when the measurement would ' +
+  'overconstrain the sketch.'
+
 const ANGLE_SET_VALUE_NOTE =
   'An `angle` value is the corner the label shows: the constraint\'s stored `pos`, or the ' +
   'renderer\'s default wedge when it has none, picks the wedge, and the document stores the ' +
@@ -1277,7 +1286,7 @@ export const MUTATION_CATALOG = {
   add_constraint: {
     summary: 'Add a sketch constraint over entity refs.',
     note: VERTEX_REF_NOTE + ' ' + MIDPOINT_TARGET_NOTE + CONSTRAINT_PROJECTION_NOTE + ' ' + ANGLE_VALUE_NOTE
-      + ' ' + CONSTRAINT_DUPLICATE_NOTE + ' ' + TANGENT_PAIR_NOTE,
+      + ' ' + CONSTRAINT_DUPLICATE_NOTE + ' ' + TANGENT_PAIR_NOTE + ' ' + DRIVEN_CONSTRAINT_NOTE,
     fields: {
       featureId: str(),
       kind: str(CONSTRAINT_KIND_NOTE),
@@ -1286,6 +1295,7 @@ export const MUTATION_CATALOG = {
       pos: optPoint(),
       sign: optNum(CONSTRAINT_SIGN_NOTE),
       id: optStr('A caller-supplied constraint id (the editor names the row it opens for the value it just placed); omitted mints a unique one.'),
+      driven: optBool('True authors a reference dimension; only drivable dimension kinds accept it.'),
     },
   },
   set_constraint_value: {
@@ -1304,6 +1314,18 @@ export const MUTATION_CATALOG = {
   set_constraint_sign: {
     summary: 'Flip a signed dimension: sets +1 or -1; any negative value is -1, anything else +1.',
     fields: { featureId: str(), constraintId: str(), sign: num(CONSTRAINT_SIGN_NOTE) },
+  },
+  set_constraint_driven: {
+    summary: 'Toggle a dimension between driving and a driven reference measurement.',
+    note: DRIVEN_CONSTRAINT_NOTE + ' `value` is the measurement to write when the dimension becomes '
+      + 'driving again; the command layer supplies it so the geometry does not jump. A redundant '
+      + 'un-drive is refused before the mutation with the overconstrain reason.',
+    fields: {
+      featureId: str(),
+      constraintId: str(),
+      driven: bool(),
+      value: optNum('The measured value the toggle writes when making the dimension driving.'),
+    },
   },
   freeze_projection: {
     summary: 'Convert a projected entity or projection constraint to ordinary geometry, fixed by default.',
@@ -2420,6 +2442,7 @@ export const MUTATION_FAMILY: Record<Mutation['type'], MutationFamily> = {
   set_constraint_value: 'sketch',
   set_constraint_pos: 'sketch',
   set_constraint_sign: 'sketch',
+  set_constraint_driven: 'sketch',
   delete: 'sketch',
   freeze_projection: 'sketch',
   add_entity: 'sketch',

@@ -171,7 +171,9 @@ export function applyRemoveDanglingContent(
     if (feature.constraints) {
       const superfluous = new Set(constraints)
       feature.constraints = feature.constraints.filter(
-        c => !(superfluous.has(c.id))
+        // A driven reference is a measurement the author chose, never solver
+        // dead weight, even if a stale plan names it.
+        c => (c.driven === true || !superfluous.has(c.id))
           // A targetless projection is a live face projection (the schema
           // reserves that form for it), even when its member map is empty after
           // all members were excluded. Cleaning it would delete the constraint
@@ -195,7 +197,7 @@ export function hasDanglingContentInDoc(
     if (feature?.kind !== 'sketch') continue
     if (projections.some(cid => (feature.constraints ?? []).some(c =>
       c.id === cid && c.kind === 'projection' && c.target !== undefined))) return true
-    if (constraints.some(cid => (feature.constraints ?? []).some(c => c.id === cid))) return true
+    if (constraints.some(cid => (feature.constraints ?? []).some(c => c.id === cid && !c.driven))) return true
   }
   return false
 }

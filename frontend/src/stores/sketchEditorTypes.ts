@@ -39,6 +39,22 @@ export interface DialogState {
   // a directional dimension). Runs its handler and closes the dialog; it does
   // not go through `validate`/`onConfirm`.
   extraAction?: { label: string; onClick: () => void }
+  // A reference-dimension switch between the value box and the verdict buttons.
+  // A locked switch reports the measurement's fixed role without letting the
+  // user turn it off. The dialog makes the value box read-only whenever the
+  // switch is on: a driven dimension measures, it does not claim a value.
+  toggle?: {
+    label: string
+    value: boolean
+    locked?: boolean
+    hint?: string
+    // Returning false reverts the switch (used when un-driving would
+    // overconstrain the sketch).
+    onChange?: (value: boolean) => boolean | void
+  }
+  // A read-only value box (a driven dimension, or a measurement the probe
+  // pinned) keeps the exact measured text and takes no wheel steps.
+  readOnly?: boolean
 }
 
 // The drag state shape lives with the model types, so pure drag math can read

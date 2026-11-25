@@ -9,6 +9,8 @@ export {
   dimensionTargets,
   constraintOperandArity,
   constraintOperandProblem,
+  isDimensionKind,
+  isDrivableConstraintKind,
 } from '@/registry/constraintRegistry'
 export type { ConstraintDef, DimensionRule, DimensionPick, ResolvedDimension } from '@/registry/constraintRegistry'
 

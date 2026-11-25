@@ -48,4 +48,15 @@ describe('cleanup and a live face projection', () => {
     expect(hasDanglingContentInDoc(doc(), { sk1: { projections: [EDGE], constraints: [] } })).toBe(true)
     expect(hasDanglingContentInDoc(doc(), { sk1: { projections: [EMPTY], constraints: [] } })).toBe(false)
   })
+
+  it('a driven dimension is never swept by the superfluous cleanup', () => {
+    const d = doc()
+    const feature = d.features?.[0]
+    if (feature?.kind !== 'sketch') throw new Error('no sketch')
+    feature.constraints?.push({ id: 'c_ref', kind: 'length', target: '$p1', value: 2, driven: true })
+    const plan = { sk1: { projections: [], constraints: ['c_ref'] } }
+    expect(hasDanglingContentInDoc(d, plan)).toBe(false)
+    applyRemoveDanglingContent(d, plan)
+    expect(constraints(d)).toContain('c_ref')
+  })
 })

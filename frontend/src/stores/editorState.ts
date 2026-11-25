@@ -42,6 +42,9 @@ import { activateTool, deactivateTool } from './sketchEditorToolLifecycle'
 import { clampRollbackPosition } from '@/session/DocSession'
 import { useSectionStore } from './sectionStore'
 import { dimensionEditorAvailable, openDimensionEditor } from './dimensionEditor'
+// The redundancy wording lives with the other authoring refusals so the
+// placement gate, the command door and the driven toggle all say one thing.
+import { overconstrainReason, DRIVEN_LOCK_HINT } from '@/utils/core/constraintRefusals'
 
 export { filletSelectionPlan, mirrorSelectionPlan, patternSelectionPlan } from '@/utils/geometry/selectionPlans'
 export type { FilletSelectionPlan, MirrorSelectionPlan } from '@/utils/geometry/selectionPlans'
@@ -100,15 +103,6 @@ export function deleteMutationFor(
       : { type: 'delete', targets: targetsCopy, materialize: rows },
     ...(empty.length > 0 ? { frozenNothing: empty } : {}),
   }
-}
-
-// The user-facing reason for an add the redundancy gate refuses. Shared by the
-// command path (applyConstraint returns it to the caller, which raises the
-// cannot-apply message) and the dimension confirm path (which raises the
-// message itself through the showMessage port), so both say the same thing.
-function overconstrainReason(kind: string): string {
-  const label = CONSTRAINT_BY_KIND.get(kind)?.label ?? kind
-  return `This would overconstrain the sketch: the ${label.toLowerCase()} is already implied by the existing constraints.`
 }
 
 // The part-side editor FSM fields this store owns. Declared here rather than in
@@ -1242,20 +1236,12 @@ export const editorState = createStore<EditorState>((set, get) => ({
       ...(pos && { pos }),
       ...(sign !== null && { sign }),
     }
-    // The same authoring gate applyConstraint runs, now BEFORE the insert so a
-    // refused dimension leaves nothing in the document. Until the
-    // driven-dimension plan lands there is no driven fallback: a redundant
-    // placement refuses exactly as the command door does.
+    // The same authoring gate applyConstraint runs, now BEFORE the insert. A
+    // redundant dimension is no longer a refusal here: it is authored driven,
+    // so the measurement lands with the toggle already on and locked. The
+    // command door (applyConstraint, no value dialog) still refuses as before.
     const verdict = sketchCallbacks.checkRedundantAdd?.(pending)
-    if (verdict === true) {
-      sketchCallbacks.showMessage?.({
-        title: CANNOT_APPLY_TITLE,
-        message: overconstrainReason(constraintKind),
-        variant: 'error',
-      })
-      get().cancelPlacementGesture()
-      return
-    }
+    const forcedDriven = verdict === true
     if (verdict === null) {
       // The probe found the add would append nothing: drop the gesture (and
       // its scratch projections) without authoring a dead constraint.
@@ -1297,6 +1283,7 @@ export const editorState = createStore<EditorState>((set, get) => ({
       ...(displayedNatural !== null && { value: displayedNatural }),
       ...(pos && { pos }),
       ...(sign !== null && { sign }),
+      ...(forcedDriven && { driven: true as const }),
     })
     // The insert takes the gesture's picks with it: the ghost hands over to the
     // real dimension in this same commit, so nothing disappears while the
@@ -1342,6 +1329,18 @@ export const editorState = createStore<EditorState>((set, get) => ({
       // every other one (length, point distances, radius, diameter) is a length.
       quantity: constraintKind === 'angle' ? 'angle' : 'length',
       onFlip,
+      driven: forcedDriven,
+      ...(forcedDriven && { drivenLockHint: DRIVEN_LOCK_HINT }),
+      onDrivenChange: (driven) => {
+        // A user-chosen reference still lands as one placement entry: the
+        // toggle is a field edit on the row the insert just created, inside the
+        // same transaction. Its value is the measurement the box was showing,
+        // so making the dimension driving again cannot move the sketch.
+        onMutation({
+          type: 'set_constraint_driven', featureId, constraintId: effectiveCid, driven,
+          ...(displayedNatural !== null && { value: displayedNatural }),
+        })
+      },
       placement: {
         onCommit: () => get().commitPlacementGesture(),
         onCancel: () => get().cancelPlacementGesture(),

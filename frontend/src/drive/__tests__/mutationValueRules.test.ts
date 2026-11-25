@@ -114,6 +114,7 @@ describe('value rules cover the catalog', () => {
     ['add_constraint', { type: 'add_constraint', featureId: 'sk1', kind: 'coincident', targets: ['$a start'] }],
     ['set_constraint_pos', { type: 'set_constraint_pos', featureId: 'sk1', constraintId: 'c1', pos: [0] }],
     ['set_constraint_value', { type: 'set_constraint_value', featureId: 'sk1', constraintId: 'c_dist', value: 0 }, pointDistanceDoc()],
+    ['set_constraint_driven', { type: 'set_constraint_driven', featureId: 'sk1', constraintId: 'c1', driven: false, value: Infinity }],
     ['delete', { type: 'delete', targets: ['sk1/l1'] }],
     ['freeze_projection', { type: 'freeze_projection', featureId: 'sk1', target: '' }],
     ['freeze_projection', { type: 'freeze_projection', featureId: 'sk1', target: 'e1', mode: 'pinned' }],

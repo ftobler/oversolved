@@ -15,6 +15,7 @@ export {
   applySetConstraintValue,
   applySetConstraintPos,
   applySetConstraintSign,
+  applySetConstraintDriven,
   applyAddEntity,
   applyAddProjectedEntity,
   applyAddEntityWithConstraint,

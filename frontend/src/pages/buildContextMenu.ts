@@ -22,6 +22,7 @@ import iconRenameIcon from '@/assets/icons/rename.svg'
 import featureExportIcon from '@/assets/icons/icon-download.svg'
 import constraintFixedIcon from '@/assets/icons/constraint-fixed.svg'
 import constraintProjectionIcon from '@/assets/icons/constraint-projection.svg'
+import constraintDimensionIcon from '@/assets/icons/constraint-dimension.svg'
 import featureSketchIcon from '@/assets/icons/feature-sketch.svg'
 import type { FreezeProjectionMode } from '@/utils/yamlMutations/freezeProjection'
 
@@ -145,6 +146,10 @@ export interface BuildContextMenuInput {
   // first and then the current selection. Empty greys the freeze pair; the
   // command selects these before it runs.
   projectedTargetIds: readonly string[]
+  // The dimension a right-click can flip between driving and reference. The
+  // page resolves it from the picked tile plus the current selection; absent
+  // greys the toggle item rather than adding a second board.
+  drivenTarget?: { featureId: string; constraintId: string; driven: boolean }
 }
 
 export interface BuildContextMenuCallbacks {
@@ -167,6 +172,7 @@ export interface BuildContextMenuCallbacks {
   onTogglePartVisibility: (partId: string, visible: boolean) => void
   onNewSketchOnPlane: (planeQuery: string) => void
   onFreezeProjection: (mode: FreezeProjectionMode, targets: readonly string[]) => void
+  onToggleConstraintDriven?: (featureId: string, constraintId: string, driven: boolean) => void
 }
 
 export interface BuildContextMenuOutput {
@@ -511,6 +517,15 @@ export function buildSketchBoard(
         disabled: !canFreeze,
         onClick: () => {
           if (canFreeze) callbacks.onFreezeProjection('free', targets)
+        },
+      },
+      {
+        label: input.drivenTarget?.driven ? 'Make dimension driving' : 'Make dimension driven',
+        icon: constraintDimensionIcon,
+        disabled: input.drivenTarget === undefined || callbacks.onToggleConstraintDriven === undefined,
+        onClick: () => {
+          const t = input.drivenTarget
+          if (t) callbacks.onToggleConstraintDriven?.(t.featureId, t.constraintId, !t.driven)
         },
       },
       cleanupItem(sketchId, input, callbacks),

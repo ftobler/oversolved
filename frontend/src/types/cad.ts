@@ -758,6 +758,11 @@ export interface PartConstraint {
   // geometry, so it bounds no profile. One flag for the projection, mirroring
   // how freeze treats a member id as "the whole face"; absent = profile.
   construction?: boolean
+  // A reference dimension: it measures solved geometry without constraining it.
+  // Only dimension kinds declare this capability in the constraint registry.
+  // The stored value is the last measurement, kept as a seed for un-driving;
+  // readers display the measurement from the current solve instead.
+  driven?: true
 }
 
 export interface PartEntityDef {
@@ -1315,6 +1320,9 @@ export interface Constraint {
    *  the profile can rotate along it, in degrees, for the tooltip. */
   weak?: boolean
   weak_angle?: number
+  /** The authored row measures solved geometry instead of driving it. Its
+   *  render value comes from the solve, and the label reads as a reference. */
+  driven?: boolean
 }
 
 export interface Constraints {
@@ -1617,8 +1625,12 @@ export type Mutation =
   // lands where the drag showed.
   | { type: 'move_sketch_group'; featureId: string; members: DragMember[]; delta: Point; solvedGeometry?: Record<string, number[]> }
   | { type: 'resize_circle'; featureId: string; entityId: string; radius: number; solvedGeometry?: Record<string, number[]> }
-  | { type: 'add_constraint'; featureId: string; kind: string; targets: string[]; value?: number; pos?: Point; sign?: number; id?: string }
+  | { type: 'add_constraint'; featureId: string; kind: string; targets: string[]; value?: number; pos?: Point; sign?: number; id?: string; driven?: true }
   | { type: 'set_constraint_value'; featureId: string; constraintId: string; value: number }
+  // Toggle a dimension between a driver and a reference measurement. The
+  // optional value is the current measurement the toggle writes when it makes
+  // the dimension driving again, so the sketch does not jump.
+  | { type: 'set_constraint_driven'; featureId: string; constraintId: string; driven: boolean; value?: number }
   | { type: 'set_constraint_pos'; featureId: string; constraintId: string; pos: Point }
   | { type: 'set_constraint_sign'; featureId: string; constraintId: string; sign: number }
   | { type: 'delete'; targets: string[]; materialize?: ProjectionMemberEntityData[] }

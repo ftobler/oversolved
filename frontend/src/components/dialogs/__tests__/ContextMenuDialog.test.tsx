@@ -94,6 +94,72 @@ describe('ContextMenuDialog validation', () => {
     expect(screen.queryByText('Flip side')).not.toBeInTheDocument()
   })
 
+  it('renders the driven toggle, shows its hint, and lets an unlocked switch call back', () => {
+    const onChange = vi.fn(() => true)
+    useSketchUiStore.setState({
+      pendingDialog: {
+        position: [0, 0],
+        label: 'dimension',
+        defaultValue: '10',
+        quantity: 'length',
+        onConfirm: vi.fn(),
+        toggle: {
+          label: 'Driven', value: false, hint: 'Only measures; does not constrain.',
+          onChange,
+        },
+      },
+    })
+    render(<ContextMenuDialog />)
+
+    const toggle = screen.getByRole('checkbox', { name: 'Driven' }) as HTMLInputElement
+    expect(toggle.checked).toBe(false)
+    expect(toggle.closest('label')?.getAttribute('title')).toBe('Only measures; does not constrain.')
+    expect(screen.getByText('Only measures; does not constrain.')).toBeInTheDocument()
+    const input = screen.getByRole('textbox') as HTMLInputElement
+    expect(input.readOnly).toBe(false)
+
+    fireEvent.click(toggle)
+    expect(onChange).toHaveBeenCalledWith(true)
+    expect((screen.getByRole('checkbox', { name: 'Driven' }) as HTMLInputElement).checked).toBe(true)
+    expect((screen.getByRole('textbox') as HTMLInputElement).readOnly).toBe(true)
+  })
+
+  it('a locked driven toggle cannot be changed and its value box is read-only', () => {
+    const onChange = vi.fn()
+    useSketchUiStore.setState({
+      pendingDialog: {
+        position: [0, 0],
+        label: 'dimension',
+        defaultValue: '73.74',
+        quantity: 'angle',
+        onConfirm: vi.fn(),
+        toggle: {
+          label: 'Driven', value: true, locked: true,
+          hint: 'Already set by the existing constraints; this dimension can only measure.',
+          onChange,
+        },
+      },
+    })
+    render(<ContextMenuDialog />)
+
+    const toggle = screen.getByRole('checkbox', { name: 'Driven' }) as HTMLInputElement
+    expect(toggle.checked).toBe(true)
+    expect(toggle.disabled).toBe(true)
+    expect(screen.getByText(/this dimension can only measure/)).toBeInTheDocument()
+    expect((screen.getByRole('textbox') as HTMLInputElement).readOnly).toBe(true)
+    fireEvent.click(toggle)
+    expect(onChange).not.toHaveBeenCalled()
+
+    // A read-only measured box confirms without validation: a measured angle
+    // of 0 is legal even though the driving value rule refuses it.
+    const onConfirm = vi.fn()
+    act(() => {
+      useSketchUiStore.setState({ pendingDialog: { ...useSketchUiStore.getState().pendingDialog!, onConfirm, validate: () => 'never valid' } })
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'OK' }))
+    expect(onConfirm).toHaveBeenCalledWith('73.74')
+  })
+
   it('shows the quantity unit inside the box and says it in the accessible name', () => {
     // The freshly placed dimension's prompt carries a quantity, so it reads like
     // the double-click editor: the unit sits in the box and the input's name

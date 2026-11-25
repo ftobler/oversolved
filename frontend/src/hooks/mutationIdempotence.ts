@@ -70,6 +70,7 @@ export const IDEMPOTENT_MUTATION = {
   set_constraint_value: true,
   set_constraint_pos: true,
   set_constraint_sign: true,
+  set_constraint_driven: true,
 
   // part_style material: the color popover applies on every click, not only when
   // a control moved, so the Apply button alone can dispatch a same-value write.

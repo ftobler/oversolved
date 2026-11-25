@@ -47,3 +47,25 @@
 .context-menu-btn-extra {
   white-space: nowrap;
 }
+
+/* The driven switch sits between the value box and the verdict buttons. It is
+   a measurement role, not another value, so it reads quieter than the field. */
+.context-menu-dialog .context-menu-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #c8c8c8;
+  user-select: none;
+}
+
+.context-menu-dialog .context-menu-toggle input {
+  accent-color: #9aa0a6;
+  margin: 0;
+}
+
+.context-menu-toggle-hint {
+  font-size: 11px;
+  color: #9aa0a6;
+  white-space: normal;
+  max-width: 220px;
+}

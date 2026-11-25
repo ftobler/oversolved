@@ -1,6 +1,6 @@
 import type { PartDoc, PartConstraint, PartTarget } from '@/types/cad'
 import type { DragMember } from '@/types/drag'
-import { entityVertexIndices, entityCoordPairs, constraintOperandArity } from '@/registry'
+import { entityVertexIndices, entityCoordPairs, constraintOperandArity, isDrivableConstraintKind } from '@/registry'
 import {
   warn, round, allFinite, findSketchFeature, parseTarget, uniqueConstraintId,
   resolveSketch, mintEntityId, CONSTRAINT_REF_FIELDS, refMatchesEntity,
@@ -535,6 +535,9 @@ export function applyAddConstraint(
   // A caller-supplied id, so the UI can open the value editor for the row it is
   // about to insert. Absent (every script and command path) mints a unique one.
   id?: string,
+  // A driven reference measures without constraining. The capability lives in
+  // the registry, so this applier cannot be handed a flag for a geometric row.
+  driven?: true,
 ): AddConstraintOutcome {
   // A missing feature is a stale id, not a refusal: nothing can be authored.
   // The containers are deliberately not materialized here, so every refusal
@@ -542,6 +545,9 @@ export function applyAddConstraint(
   // a no-op. The constraint list is created only when the constraint is pushed.
   const feature = findSketchFeature(doc, featureId)
   if (!feature) return 'refused'
+  if (driven === true && !isDrivableConstraintKind(kind)) {
+    throw new MutationRefusal(`add_constraint: ${kind} cannot be driven; only dimension constraints can measure without constraining`)
+  }
   // Checked before any target is materialized: a refused zero dimension must
   // not leave a promoted point behind.
   const zeroProblem = isConstraintKindName(kind) ? pointDistanceZeroProblem(kind, value) : null
@@ -720,6 +726,7 @@ export function applyAddConstraint(
   if (storedValue !== undefined && Number.isFinite(storedValue)) c.value = round(storedValue)
   if (storedPos !== undefined && Number.isFinite(storedPos[0]) && Number.isFinite(storedPos[1])) c.pos = [round(storedPos[0]), round(storedPos[1])]
   if (sign !== undefined && Number.isFinite(sign)) c.sign = sign < 0 ? -1 : 1
+  if (driven === true) c.driven = true
   if (!feature.constraints) feature.constraints = []
   feature.constraints.push(c)
   // The constraint is accepted, so the held entities it names can land too. A
@@ -991,6 +998,49 @@ export function applySetConstraintSign(
   if (!feature?.constraints) return
   const c = feature.constraints.find(c => c.id === constraintId)
   if (c) c.sign = sign < 0 ? -1 : 1
+}
+
+/**
+ * Flip a dimension between a driver and a reference measurement. The value a
+ * caller passes when un-driving is the measurement the label showed: storing it
+ * keeps the geometry where it was when the dimension stops measuring. A driven
+ * row keeps its last measurement as a seed, but readers always show the current
+ * solve instead. Every refusal throws before a write, so undo sees no half step.
+ */
+export function applySetConstraintDriven(
+  doc: PartDoc,
+  featureId: string,
+  constraintId: string,
+  driven: boolean,
+  value?: number,
+): void {
+  const feature = findSketchFeature(doc, featureId)
+  if (!feature?.constraints) return
+  const c = feature.constraints.find(c => c.id === constraintId)
+  if (!c) return
+  if (!isDrivableConstraintKind(c.kind)) {
+    throw new MutationRefusal(`set_constraint_driven: ${c.kind} cannot be driven; only dimension constraints can measure without constraining`)
+  }
+  if (driven) {
+    c.driven = true
+    if (value !== undefined && Number.isFinite(value)) c.value = round(value)
+    return
+  }
+  delete c.driven
+  if (value === undefined) return
+  if (!Number.isFinite(value)) {
+    warn('applySetConstraintDriven: ignoring non-finite value', { featureId, constraintId, value })
+    return
+  }
+  const storedValue = c.kind === 'angle'
+    ? angleStoredValue({
+        constraint: c,
+        value,
+        sketch: unflattenGeometry(feature.initial, feature.entities),
+        pos: c.pos,
+      })?.theta ?? value
+    : value
+  c.value = round(storedValue)
 }
 
 export function applyAddEntity(

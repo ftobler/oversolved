@@ -330,11 +330,11 @@ describe('sketchEditorStore', () => {
       setSketchCallback('commitPlacement', null)
     })
 
-    it('a duplicate dimension is refused before the insert with the cannot-apply message', () => {
-      // The dimension tool is the canonical dimension path, so the authoring
-      // gate has to answer here too: the natural value makes the duplicate a
-      // probe candidate, and the refusal arrives before any mutation exists,
-      // leaving no constraint and no prompt.
+    it('a redundant dimension is authored driven before the insert, with the toggle preset and locked', () => {
+      // The dimension tool is the canonical dimension path: the gate runs
+      // before the insert, but a redundant measurement is no longer a refusal.
+      // It lands driven, with a read-only measured value and no cannot-apply
+      // message; the gesture still commits as one placement.
       const handler = vi.fn()
       setSketchCallback('onMutation', handler)
       const gate = vi.fn(() => true)
@@ -354,18 +354,54 @@ describe('sketchEditorStore', () => {
       expect(gate).toHaveBeenCalledWith({
         featureId: 'S1', kind: 'length', targets: ['entity:S1:L1'], value: 10,
       })
-      expect(handler).not.toHaveBeenCalled()
-      expect(messages).toHaveBeenCalledWith({
-        title: 'Cannot apply constraint',
-        message: expect.stringMatching(/would overconstrain.*length/),
-        variant: 'error',
+      expect(handler).toHaveBeenCalledWith({
+        type: 'add_constraint', featureId: 'S1', kind: 'length', targets: ['entity:S1:L1'],
+        value: 10, id: expect.any(String), driven: true,
       })
-      expect(useSketchUiStore.getState().pendingDialog).toBeNull()
-      expect(cancelPlacement).toHaveBeenCalledTimes(1)
+      expect(messages).not.toHaveBeenCalled()
+      expect(cancelPlacement).not.toHaveBeenCalled()
+      const dialog = useSketchUiStore.getState().pendingDialog!
+      expect(dialog).not.toBeNull()
+      expect(dialog.toggle).toMatchObject({
+        label: 'Driven', value: true, locked: true,
+        hint: 'Already set by the existing constraints; this dimension can only measure.',
+      })
+      expect(dialog.defaultValue).toBe('10')
+      handler.mockClear()
+      dialog.onConfirm('10')
+      expect(handler).not.toHaveBeenCalled()
       setSketchCallback('getSketch', null)
       setSketchCallback('checkRedundantAdd', null)
       setSketchCallback('showMessage', null)
       setSketchCallback('cancelPlacement', null)
+    })
+
+    it('a free dimension opens with the toggle off; turning it on commits it driven with the measured value', () => {
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      setSketchCallback('checkRedundantAdd', () => false)
+      setSketchCallback('getSketch', () => ({
+        L1: { start: [0, 0], end: [10, 0] },
+      } as never))
+      useEditorState.setState({
+        dimensionPicks: [{ isVertex: false, target: 'entity:S1:L1', entityKind: 'line' }],
+      })
+      useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
+
+      const dialog = useSketchUiStore.getState().pendingDialog!
+      expect(dialog.toggle).toMatchObject({ label: 'Driven', value: false, locked: false })
+      handler.mockClear()
+      dialog.toggle!.onChange!(true)
+      expect(handler).toHaveBeenCalledWith({
+        type: 'set_constraint_driven', featureId: 'S1', constraintId: expect.any(String),
+        driven: true, value: 10,
+      })
+      // The measured box is read-only in the dialog, so confirming edits no
+      // value: the toggle is the only authoring that happened.
+      dialog.onConfirm('10')
+      expect(handler).toHaveBeenCalledTimes(1)
+      setSketchCallback('getSketch', null)
+      setSketchCallback('checkRedundantAdd', null)
     })
 
     it('hands the gate the label pos the placement collected, and inserts on a false answer', () => {
@@ -399,11 +435,14 @@ describe('sketchEditorStore', () => {
       setSketchCallback('checkRedundantAdd', null)
     })
 
-    it('a refused projected dimension cancels the placement and inserts nothing', () => {
+    it('a redundant projected dimension becomes a driven dimension on the landed projection', () => {
+      // The projection is no longer scratch work for a refused gesture: the
+      // dimension lands on it as a driven reference, in the one placement entry.
       const handler = vi.fn()
       setSketchCallback('onMutation', handler)
       setSketchCallback('checkRedundantAdd', () => true)
-      setSketchCallback('showMessage', vi.fn())
+      const messages = vi.fn()
+      setSketchCallback('showMessage', messages)
       const cancelPlacement = vi.fn()
       setSketchCallback('cancelPlacement', cancelPlacement)
       setSketchCallback('getSketch', () => ({}))
@@ -411,12 +450,14 @@ describe('sketchEditorStore', () => {
       handler.mockClear()
       useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
 
-      // The projection was scratch work for a gesture that committed nothing;
-      // the placement cancel rewinds it with no delete mutation and no prompt.
-      expect(handler).not.toHaveBeenCalled()
-      expect(cancelPlacement).toHaveBeenCalledTimes(1)
-      expect(useSketchUiStore.getState().pendingDialog).toBeNull()
-      expect(useSketchEditorStore.getState().pendingBrepProjectionIds).toEqual([])
+      const insert = handler.mock.calls.find(([m]) => m.type === 'add_constraint')?.[0]
+      expect(insert).toMatchObject({ type: 'add_constraint', driven: true, kind: 'length' })
+      expect(messages).not.toHaveBeenCalled()
+      expect(cancelPlacement).not.toHaveBeenCalled()
+      expect(useSketchUiStore.getState().pendingDialog?.toggle?.value).toBe(true)
+      // The projection id stays pending until the dialog commits the gesture,
+      // exactly as for a driving dimension.
+      expect(useSketchEditorStore.getState().pendingBrepProjectionIds.length).toBe(1)
       setSketchCallback('getSketch', null)
       setSketchCallback('checkRedundantAdd', null)
       setSketchCallback('showMessage', null)

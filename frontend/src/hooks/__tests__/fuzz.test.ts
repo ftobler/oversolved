@@ -140,10 +140,11 @@ describe('the seeded session fuzz (fake scheduler)', () => {
 // is reached without dropping an entry. A fuzz run that finds a genuine failure
 // adds its seed here (with the failing message in the note) before the fix, so
 // the fix has a regression test. Every new mutation type re-rolls the sequence:
-// clear_pick_field made the old cap pin 29 stop at 47, so the cap seed was
-// re-measured to the first one that still reaches 50 with no drop. Seed 15 is
-// still the first to draw set_rollback, so that pin did not move.
-const CAP_SEED = 6
+// clear_pick_field made the old cap pin 29 stop at 47, and adding
+// set_constraint_driven re-rolled it again: seed 6 now stops at 47, so the cap
+// seed was re-measured to 21, the first one that still reaches 50 with no drop.
+// Seed 15 is still the first to draw set_rollback, so that pin did not move.
+const CAP_SEED = 21
 const CAP_STEPS = 100
 
 const REGRESSION_SEEDS: readonly { seed: number; steps: number; note: string }[] = [

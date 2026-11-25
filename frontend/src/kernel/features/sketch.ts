@@ -1060,6 +1060,7 @@ export function solveSketch(
   const rendered = deriveConstraints(pf, solvedSketch, { originLocal })
   const wireIndexById = new Map<string, number>()
   constraintIds.forEach((cid, i) => { if (cid !== null) wireIndexById.set(cid, i) })
+  const authoredById = new Map((pf.constraints ?? []).map(c => [c.id, c]))
   // Redundancy is only ever measured on a satisfied solve: the solver's walk
   // is a phase fact of a settled system (see solve.rs), and on an unsatisfied
   // one the same bytes carry whatever the failed solve left there. Gate the
@@ -1073,7 +1074,16 @@ export function solveSketch(
   const constraintResults: Constraints = {}
   for (const [cid, c] of Object.entries(rendered)) {
     const idx = wireIndexById.get(cid)
-    if (idx === undefined) continue
+    // A driven reference has no wire row, so it has no verdict to carry. Its
+    // render is still published (measured from the solved geometry), and it is
+    // never marked redundant or conflicting: neither fact applies to a row the
+    // solver never saw.
+    if (idx === undefined) {
+      if (authoredById.get(cid)?.driven === true) {
+        constraintResults[cid] = { ...c, residual: 0, driven: true }
+      }
+      continue
+    }
     const redundant = satisfiedSolve && (out.constraintFlags[idx] & CONSTRAINT_FLAG.redundant) !== 0
     const weakAngle = weakByWire.get(idx)
     constraintResults[cid] = {
@@ -1095,7 +1105,6 @@ export function solveSketch(
       freeIds.map(id => entityDisplayName(pf, id) ?? 'a free entity'),
     )]
     : []
-  const authoredById = new Map((pf.constraints ?? []).map(c => [c.id, c]))
   // The weak (second-order) constraints: the solve says the sketch is fully
   // constrained and still names the rows that only hold at an extreme. The
   // sentence says what the user can change; the structured list keeps the ids

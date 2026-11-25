@@ -10,6 +10,7 @@ import { computeConstraintRender } from '@/utils/geometry/geometryMapping'
 import type { ConstraintRenderContext } from '@/utils/geometry/geometryMapping'
 import { computeAngleDimension, shorterSpan } from '@/utils/geometry/angleDimensionLogic'
 import type { AngleDimGeometry } from '@/utils/geometry/angleDimensionLogic'
+import { dimensionValueFromRender } from '@/utils/geometry/dimensionMeasure'
 
 const DEG = 180 / Math.PI
 
@@ -94,19 +95,10 @@ export function computeNaturalDimensionValue(
   // string-literal kinds of the dim variants, so TS won't narrow on `kind`
   // alone. The geometryMapping branch we hit for length / radius / diameter /
   // distance / angle definitely returns the matching shape.
-  const render = computeConstraintRender(c, sketch, renderCtx(originLocal)) as
-    DimLinearRender | DimRadiusRender | DimDiameterRender | DimAngleRender | { kind: 'unknown' | string }
-  if (render.kind === 'dim_linear' || render.kind === 'dim_radius' || render.kind === 'dim_diameter') {
-    const r = render as DimLinearRender | DimRadiusRender | DimDiameterRender
-    return Math.hypot(r.p2[0] - r.p1[0], r.p2[1] - r.p1[1])
-  }
-  if (render.kind === 'dim_angle') {
-    // Smaller of the two opposite angles between the two line directions,
-    // in degrees. Matches the solver's angle constraint (angle in [0, 180]).
-    const r = render as DimAngleRender
-    return linePairAngle(r.p1, r.p2, r.p3, r.p4)
-  }
-  return null
+  const render = computeConstraintRender(c, sketch, renderCtx(originLocal))
+  // One measurement rule with the driven label's solve-time value: both read
+  // the render geometry here, so a pre-fill and a reference dimension agree.
+  return dimensionValueFromRender(render)
 }
 
 /**

@@ -2,11 +2,14 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { openDimensionEditor } from '@/stores/dimensionEditor'
 import type { Quantity } from '@/utils/fieldUnit'
-import { COLOR_CONSTRAINT, COLOR_CONSTRAINT_DIM } from '@/utils/geometry/sketchHelpers'
+import { COLOR_CONSTRAINT, COLOR_CONSTRAINT_DIM, COLOR_CONSTRAINT_DRIVEN } from '@/utils/geometry/sketchHelpers'
 import { COLOR_SELECTED, COLOR_ERROR_DEEP, COLOR_CONSTRAINT_WEAK, LABEL_Z_OFFSET } from '@/components/Geometry3D/constants'
 import { useDimensionLabelIdRegistration } from '@/picking/useDimensionLabelIdRegistration'
 import { useDimDispatchRegistration } from './useDimDispatchRegistration'
 import type { PlaneTransform } from '@/types/cad'
+import { getSketchCallback } from '@/stores/sketchEditorCallbacks'
+import { CANNOT_APPLY_TITLE } from '@/utils/core/applyTitles'
+import { overconstrainReason, DRIVEN_LOCK_HINT } from '@/utils/core/constraintRefusals'
 
 function useClickAfterDragSuppression() {
   const moved = useRef(false)
@@ -38,6 +41,10 @@ export interface DimInteraction {
    *  and `weakTitle` is the sentence to show on hover. */
   weak?: boolean
   weakTitle?: string
+  /** The authored row is a reference measurement, not a driver. Its label reads
+   *  in parentheses and neutral grey, and its edit dialog opens with the toggle
+   *  already on. */
+  driven?: boolean
 }
 
 export function useDimInteraction(
@@ -106,6 +113,18 @@ export function useDimInteraction(
     // The same editor a fresh placement opens: the label, the expression input,
     // the kind's value rule and Flip side are one implementation, so the two
     // entry points cannot drift apart.
+    const drivenProbe = getSketchCallback('checkConstraintDriven')
+    const lockHint = drivenProbe?.(interaction.featureId, cid) === true ? DRIVEN_LOCK_HINT : undefined
+    const driven = interaction.driven === true || lockHint !== undefined
+    const onMutation = getSketchCallback('onMutation')
+    const setDriven = (next: boolean) => {
+      onMutation?.({
+        type: 'set_constraint_driven', featureId: interaction.featureId, constraintId: cid,
+        driven: next,
+        // The measured number the label shows is the seed for a driving row.
+        ...(Number.isFinite(value) && { value }),
+      })
+    }
     openDimensionEditor({
       featureId: interaction.featureId,
       cid,
@@ -116,6 +135,20 @@ export function useDimInteraction(
       quantity,
       validatePositive,
       onFlip,
+      driven,
+      ...(lockHint !== undefined && { drivenLockHint: lockHint }),
+      ...(lockHint !== undefined && interaction.driven !== true && { afterConfirm: () => setDriven(true) }),
+      onDrivenChange: (next) => {
+        if (!next && drivenProbe?.(interaction.featureId, cid) === true) {
+          getSketchCallback('showMessage')?.({
+            title: CANNOT_APPLY_TITLE,
+            message: overconstrainReason(constraintKind ?? 'dimension'),
+            variant: 'error',
+          })
+          return false
+        }
+        setDriven(next)
+      },
     })
   }, [interaction, cid, value, validatePositive, constraintKind, quantity, consumeClick, onFlip])
   // Called at the start of each pointer-down so a fresh drag begins with the flag clear.
@@ -139,11 +172,12 @@ export function useDimInteraction(
     : interaction?.culprit ? COLOR_ERROR_DEEP
     : interaction?.redundant ? COLOR_CONSTRAINT_DIM
     : interaction?.weak ? COLOR_CONSTRAINT_WEAK
+    : interaction?.driven ? COLOR_CONSTRAINT_DRIVEN
     : COLOR_CONSTRAINT
   // The weak sentence is the only hover text the dimension label can carry, so
   // it is passed through here rather than re-derived per component.
   const title = interaction?.weak ? interaction.weakTitle : undefined
-  return { hovered, selected, color, title, onOver, onOut, onClick, onDoubleClick, resetDragMoved, isDragged }
+  return { hovered, selected, color, driven: interaction?.driven === true, title, onOver, onOut, onClick, onDoubleClick, resetDragMoved, isDragged }
 }
 
 /**

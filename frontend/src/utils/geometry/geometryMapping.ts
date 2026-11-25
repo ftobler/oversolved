@@ -12,6 +12,7 @@ import { segmentsAreParallel } from '@/utils/geometry/segmentGeometry'
 import { ellipseAxisPoints } from '@/utils/geometry/ellipseAxis'
 import { resolveVertexRef } from '@/types/vertexRef'
 import { fitPointIndex } from '@/types/vertexKeys'
+import { dimensionValueFromRender } from '@/utils/geometry/dimensionMeasure'
 
 type ResolvedRef = { entity: string; point?: string } | null | undefined
 
@@ -222,8 +223,15 @@ export function computeConstraintRender(
   ctx: ConstraintRenderContext = {},
 ): ConstraintRender {
   const render = computeConstraintRenderCore(constraint, sketch, ctx)
-  if (render.kind !== 'unknown') return render
-  return fallbackConstraintGlyph(constraint, sketch)
+  if (render.kind === 'unknown') return fallbackConstraintGlyph(constraint, sketch)
+  // A driven dimension's stored value is only a seed. Its published number is
+  // the measurement of the solved geometry the render was built from, using the
+  // same rule as computeNaturalDimensionValue (the dialog's pre-fill).
+  if (constraint.driven === true && 'value' in render) {
+    const measured = dimensionValueFromRender(render)
+    if (measured !== null) return { ...render, value: measured }
+  }
+  return render
 }
 
 // Anchor a fallback glyph at the first operand that resolves to a point. Returns
@@ -795,7 +803,11 @@ export function deriveConstraints(
   for (const c of feature.constraints) {
     const render = computeConstraintRender(c, sketch, ctx)
     if (render.kind === 'unknown') continue
-    result[c.id] = { render, residual: 0 }
+    result[c.id] = {
+      render,
+      residual: 0,
+      ...(c.driven === true ? { driven: true } : {}),
+    }
   }
   return result
 }

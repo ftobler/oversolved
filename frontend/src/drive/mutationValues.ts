@@ -20,7 +20,7 @@
 import type { EntityKind, FeatureKind, FilletCorner, Mutation, PartDoc, PatternKind, Point, SketchPatternMode } from '@/types/cad'
 import { patternSubOf } from '@/types/cad'
 import { ENTITY_BY_KIND } from '@/registry/entityRegistry'
-import { CONSTRAINT_BY_KIND } from '@/registry/constraintRegistry'
+import { CONSTRAINT_BY_KIND, isDrivableConstraintKind } from '@/registry/constraintRegistry'
 import { BUILTIN_PLANES, resolveBarePlaneId } from '@/kernel/solverConstants'
 import { mirrorAxisFromLineParams, mirrorsToItself } from '@/utils/geometry/mirrorSketch'
 import { planFilletCorners } from '@/utils/yamlMutations/sketchFillet'
@@ -566,6 +566,12 @@ function addConstraint(raw: RawStep, ctx: ValueContext): ValueViolation | null {
       `constraint kind ${json(kind)} is not a sketch constraint; use one of ${[...CONSTRAINT_BY_KIND.keys()].join(', ')}`,
     )
   }
+  if (raw.driven !== undefined) {
+    if (raw.driven !== true) return invalid('driven must be true when present; omit it for a driving dimension')
+    if (typeof kind === 'string' && !isDrivableConstraintKind(kind)) {
+      return invalid(`${kind} cannot be driven; only dimension constraints can measure without constraining`)
+    }
+  }
   const targets = raw.targets
   if (!Array.isArray(targets)) return invalid(`targets must be a list of references, got ${json(targets)}`)
   if (targets.length === 0) return invalid('targets must name at least one entity or vertex reference')
@@ -711,6 +717,18 @@ function setConstraintValue(raw: RawStep, ctx: ValueContext): ValueViolation | n
 function setConstraintPos(raw: RawStep): ValueViolation | null {
   const problem = finitePointProblem(raw.pos, 'pos')
   return problem === null ? null : invalid(problem)
+}
+
+function setConstraintDriven(raw: RawStep, ctx: ValueContext): ValueViolation | null {
+  if (raw.value !== undefined && !isFiniteNumber(raw.value)) return invalid('value must be a finite number')
+  if (typeof raw.featureId !== 'string' || typeof raw.constraintId !== 'string') return null
+  const constraint = ctx.doc === null ? undefined : sketchOf(ctx.doc, raw.featureId)?.constraints
+    ?.find(c => c.id === raw.constraintId)
+  if (constraint === undefined) return null
+  if (!isDrivableConstraintKind(constraint.kind)) {
+    return invalid(`${constraint.kind} cannot be driven; only dimension constraints can measure without constraining`)
+  }
+  return null
 }
 
 const DELETE_FORMS =
@@ -2824,6 +2842,7 @@ export const MUTATION_VALUE_RULES = {
   resize_circle: resizeCircle,
   add_constraint: addConstraint,
   set_constraint_value: setConstraintValue,
+  set_constraint_driven: setConstraintDriven,
   set_constraint_pos: setConstraintPos,
   set_constraint_sign: 'none',
   delete: deleteRule,

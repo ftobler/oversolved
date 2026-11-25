@@ -355,6 +355,11 @@ function expandSugarConstraints(feature: SketchFeature, dropped: DroppedConstrai
   const kindById = new Map(entities.map((e) => [e.id, e.kind]))
   const out: PartConstraint[] = []
   for (const c of feature.constraints ?? []) {
+    // A driven reference never reaches the solver. It is not a dropped row: the
+    // authored constraint keeps its render block and its label, but the wire is
+    // exactly the wire of the sketch without it, so the rest of the solve (dof,
+    // status, redundancy verdicts) cannot change because of a measurement.
+    if (c.driven === true) continue
     if (c.kind === 'projection') continue
     if (c.kind === 'ngon') out.push(...lowerNgonConstraint(c))
     else if (c.kind === 'dock') out.push(...expandDockConstraint(c, feature))

@@ -73,6 +73,18 @@ describe('applyFreezeProjection on a single entity projection', () => {
     })
   }
 
+  it('keeps a driven dimension attached to the entity it freezes', () => {
+    const feature = heldSketch(KINDS[1], [0, 0, 10, 0])
+    feature.constraints?.push({ id: 'c_ref', kind: 'length', target: '$e1', value: 10, driven: true })
+    const doc = docWith(feature)
+    applyFreezeProjection(doc, 'sk1', 'e1')
+    const rows = sketchOf(doc).constraints ?? []
+    const ref = rows.find(c => c.id === 'c_ref')
+    expect(ref?.driven).toBe(true)
+    expect(rows.some(c => c.kind === 'projection')).toBe(false)
+    expect(rows.some(c => c.kind === 'fixed')).toBe(true)
+  })
+
   it('free mode removes only the link and keeps the baked position', () => {
     const doc = docWith(heldSketch(KINDS[1], [0, 0, 10, 0]))
     applyFreezeProjection(doc, 'sk1', 'e1', 'free')

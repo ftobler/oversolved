@@ -103,6 +103,7 @@ const SKETCH_BOARD = [
   'Hide Constraints',
   'Convert to fixed',
   'Break link (keep free)',
+  'Make dimension driven',
   DANGLING,
   'Rebuild',
 ]
@@ -1054,13 +1055,13 @@ describe('sketch board commands', () => {
     ])
   })
 
-  it('puts the cleanup after the freeze pair and before Rebuild', () => {
+  it('puts the cleanup after the freeze pair and the driven toggle, before Rebuild', () => {
     const result = buildContextMenu(
       defaultInput({ features: planeAndSketch, activeSketchFeatureId: 'sketch1' }),
       defaultCallbacks(),
     )
     const labels = result.items.map(i => i.label)
-    expect(labels.indexOf(DANGLING)).toBe(labels.indexOf('Break link (keep free)') + 1)
+    expect(labels.indexOf(DANGLING)).toBe(labels.indexOf('Make dimension driven') + 1)
     expect(labels.indexOf('Rebuild')).toBe(labels.indexOf(DANGLING) + 1)
   })
 

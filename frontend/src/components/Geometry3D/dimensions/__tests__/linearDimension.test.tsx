@@ -55,6 +55,7 @@ vi.mock('../useDimDispatchRegistration', () => ({
 import { LinearDimension } from '../Linear'
 import { useEditorState } from '@/hooks/useEditorState'
 import { RENDER_ORDER_EDITING } from '@/utils/core/partColors'
+import { COLOR_CONSTRAINT, COLOR_CONSTRAINT_DRIVEN } from '@/utils/geometry/sketchHelpers'
 
 type Dim = React.ComponentProps<typeof LinearDimension>['dim']
 type Interaction = NonNullable<React.ComponentProps<typeof LinearDimension>['interaction']>
@@ -224,6 +225,14 @@ describe('LinearDimension extension lines', () => {
 })
 
 describe('LinearDimension label text', () => {
+  it('a driven label shows its measurement in parentheses in neutral grey', () => {
+    renderDim({ value: 10.5 }, { interaction: { ...INTERACTION, driven: true } })
+    expect(lastLabel()).toMatchObject({ label: '(10.50)', color: COLOR_CONSTRAINT_DRIVEN })
+    // A driver keeps the amber claim and the bare number.
+    renderDim({ value: 10.5 }, { interaction: INTERACTION })
+    expect(lastLabel()).toMatchObject({ label: '10.50', color: COLOR_CONSTRAINT })
+  })
+
   it('formats integer values without decimals and fractional values to two places', () => {
     renderDim({ value: 10 })
     expect(spies.Label.mock.calls.at(-1)![0].label).toBe('10')

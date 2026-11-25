@@ -17,6 +17,7 @@ import { applyAddConstraint, applyAddProjectedEntity } from '@/utils/yamlMutatio
 import { duplicateConstraintOf } from '@/utils/constraintProblems'
 import type { ProjectionMemberEntity } from './projectionMembers'
 import { probeRedundantConstraint } from './sketch'
+import { emitWire, local } from '@/kernel/query'
 
 /** One `add_projected_entity` the pending add depends on. The constraint
  *  command plans the projection before the probe runs, so the probe applies it
@@ -141,4 +142,54 @@ export function classifyPendingAdd(
   if (drafted === null || drafted.status === 'dropped') return 'dropped'
   if (drafted.status === 'duplicate') return 'redundant'
   return probeRedundantConstraint(drafted.probeFeature, drafted.draft.id, resolvedKinds, derivedMembers) === true ? 'redundant' : 'ok'
+}
+
+/** Convert a stored constraint's operands to the target spellings the applier
+ *  reads, for a probe that treats the row as if it were added at the end. */
+function storedConstraintTargets(c: PartConstraint): string[] {
+  const refText = (ref: unknown): string | null => {
+    if (typeof ref === 'string') return ref
+    if (ref !== null && typeof ref === 'object') {
+      const r = ref as { entity?: unknown; point?: unknown }
+      if (typeof r.entity === 'string') {
+        return emitWire(local(r.entity, typeof r.point === 'string' ? r.point : ''))
+      }
+    }
+    return null
+  }
+  return [c.target, c.a, c.b].map(refText).filter((t): t is string => t !== null)
+}
+
+/**
+ * Ask whether an existing driving dimension is already implied by the rest of
+ * the sketch. The row is removed from the probe copy first, so the answer is
+ * about the other constraints, not about the row duplicating itself. This is
+ * the edit-dialog twin of classifyPendingAdd: a true answer means the dimension
+ * must stay driven and an un-drive would overconstrain the sketch.
+ */
+export function redundantWithoutConstraint(
+  doc: PartDoc | null,
+  featureId: string,
+  constraintId: string,
+  resolvedKinds?: Readonly<Record<string, string>>,
+  derivedMembers?: readonly ProjectionMemberEntity[],
+): boolean {
+  const feature = (doc?.features ?? []).find(f => f.id === featureId)
+  if (doc === null || feature?.kind !== 'sketch') return false
+  const c = (feature.constraints ?? []).find(row => row.id === constraintId)
+  if (!c || c.driven === true) return false
+  const targets = storedConstraintTargets(c)
+  if (targets.length === 0) return false
+  const probeDoc: PartDoc = {
+    ...doc,
+    features: (doc.features ?? []).map(f => f.id === featureId && f.kind === 'sketch'
+      ? { ...f, constraints: (f.constraints ?? []).filter(row => row.id !== constraintId) }
+      : f),
+  }
+  return classifyPendingAdd(probeDoc, {
+    featureId, kind: c.kind, targets,
+    ...(c.value !== undefined && { value: c.value }),
+    ...(c.pos && { pos: c.pos }),
+    ...(c.sign !== undefined && { sign: c.sign }),
+  }, resolvedKinds, derivedMembers) === 'redundant'
 }

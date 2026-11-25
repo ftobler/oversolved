@@ -22,6 +22,7 @@ export default function ContextMenuDialog() {
   const rootRef = useRef<HTMLDivElement>(null)
   const [error, setError] = useState<string | null>(null)
   const [seenDialog, setSeenDialog] = useState(dialog)
+  const [toggleValue, setToggleValue] = useState(dialog?.toggle?.value ?? false)
   // The dialog hangs from the label's point while it fits, and flips or pins to
   // the window margin when the wider glass row would push OK/Cancel off screen.
   const [pos, setPos] = useState<[number, number]>([0, 0])
@@ -30,9 +31,13 @@ export default function ContextMenuDialog() {
   // wheel writes straight to the DOM value and leaves the confirm/Enter commit
   // to own the mutation; no per-notch validation, matching the dialog's own
   // confirm-time gate. The hook attaches to the existing `inputRef`.
+  const readOnly = dialog?.readOnly === true || (dialog?.toggle !== undefined && toggleValue)
   const wheelRef = useWheelStep({
     readText: () => inputRef.current?.value ?? '',
     inputRef,
+    // A driven dimension measures: its box is read-only and a wheel notch must
+    // not step a value the user cannot author anyway.
+    enabled: !readOnly,
     onStep: (next) => {
       if (inputRef.current) inputRef.current.value = String(next)
       if (error) setError(null)
@@ -45,6 +50,7 @@ export default function ContextMenuDialog() {
   if (dialog !== seenDialog) {
     setSeenDialog(dialog)
     setError(null)
+    setToggleValue(dialog?.toggle?.value ?? false)
     if (dialog) setPos([dialog.position[0] + 12, dialog.position[1] + 8])
   }
 
@@ -103,6 +109,13 @@ export default function ContextMenuDialog() {
 
   const handleConfirm = () => {
     const value = inputRef.current?.value ?? ''
+    // A read-only box shows a measurement, not an authored value: there is
+    // nothing to validate, and a measured zero (an angle) is legal.
+    if (readOnly) {
+      dialog.onConfirm(value)
+      closeDialog()
+      return
+    }
     // Reject invalid input in place: keep the dialog open and show why, rather
     // than silently dropping the gesture.
     const err = dialog.validate?.(value) ?? null
@@ -145,8 +158,31 @@ export default function ContextMenuDialog() {
             ? 'feature-field-input context-menu-input feature-field-input--error'
             : 'feature-field-input context-menu-input'}
           aria-label={fieldAccessibleName(dialog.label, dialog.quantity ?? 'none', lengthUnit)}
+          readOnly={readOnly}
         />
       </UnitBox>
+      {dialog.toggle && (
+        <label
+          className="context-menu-toggle"
+          title={dialog.toggle.hint}
+          style={{ opacity: dialog.toggle.locked ? 0.75 : 1, cursor: dialog.toggle.locked ? 'default' : 'pointer' }}
+        >
+          <input
+            type="checkbox"
+            checked={toggleValue}
+            disabled={dialog.toggle.locked}
+            onChange={(e) => {
+              if (dialog.toggle!.locked) return
+              const next = e.target.checked
+              // A refused un-drive leaves the switch where it was: the value
+              // box stays read-only and the user sees why through the message.
+              if (dialog.toggle!.onChange?.(next) === false) return
+              setToggleValue(next)
+            }}
+          />
+          <span>{dialog.toggle.label}</span>
+        </label>
+      )}
       <button className="feature-ok-btn" onClick={handleConfirm} title="OK"><img src={okIcon} alt="OK" /></button>
       <button className="feature-cancel-btn" onClick={() => { dialog.onCancel?.(); closeDialog() }} title="Cancel"><img src={cancelIcon} alt="Cancel" /></button>
       {dialog.extraAction && (
@@ -159,6 +195,7 @@ export default function ContextMenuDialog() {
         </button>
       )}
       {error && <span className="context-menu-error" role="alert">{error}</span>}
+      {dialog.toggle?.hint && <span className="context-menu-toggle-hint">{dialog.toggle.hint}</span>}
     </div>
   )
 }

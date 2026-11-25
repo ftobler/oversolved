@@ -20,6 +20,8 @@ export function describeMutation(m: Mutation): string {
       return `set ${m.constraintId} pos in ${m.featureId}`
     case 'set_constraint_sign':
       return `flip ${m.constraintId} side in ${m.featureId}`
+    case 'set_constraint_driven':
+      return `set ${m.constraintId} ${m.driven ? 'driven' : 'driving'} in ${m.featureId}`
     case 'delete':
       return `delete ${m.targets.length} element(s)`
     case 'freeze_projection':

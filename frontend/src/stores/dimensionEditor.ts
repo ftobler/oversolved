@@ -59,6 +59,14 @@ export interface DimensionEditorOptions {
     onCommit: () => void
     onCancel: () => void
   }
+  // The reference-dimension toggle. A preset-and-locked switch says the probe
+  // found the measurement already implied by the other constraints.
+  driven?: boolean
+  drivenLockHint?: string
+  onDrivenChange?: (driven: boolean) => boolean | void
+  // Runs after the value branch of confirm, for an edit dialog whose probe
+  // requires the row itself to become driven.
+  afterConfirm?: () => void
 }
 
 /** The variable scope visible to a feature's expression fields: the same
@@ -115,9 +123,21 @@ export function openDimensionEditor(opts: DimensionEditorOptions): void {
           type: 'set_constraint_value', featureId: opts.featureId, constraintId: opts.cid, value: edited,
         })
       }
+      opts.afterConfirm?.()
       placement?.onCommit()
     },
     ...(opts.onFlip && { extraAction: { label: 'Flip side', onClick: opts.onFlip } }),
+    ...(opts.onDrivenChange !== undefined || opts.driven === true
+      ? {
+          toggle: {
+            label: 'Driven',
+            value: opts.driven ?? false,
+            locked: opts.drivenLockHint !== undefined,
+            hint: opts.drivenLockHint,
+            onChange: opts.onDrivenChange,
+          },
+        }
+      : {}),
   }
   if (placement) dialog.onCancel = placement.onCancel
   if (!getSketchCallback('openDialog')) {

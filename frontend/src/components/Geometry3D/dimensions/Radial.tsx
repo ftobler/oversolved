@@ -13,7 +13,7 @@ export function RadiusDimension({ cid, dim, interaction, planeTransform }: {
   interaction?: DimInteraction
   planeTransform?: PlaneTransform
 }) {
-  const { color, hovered, title, onOver, onOut, onClick, onDoubleClick, resetDragMoved, isDragged } = useDimInteraction(cid, dim.value, interaction)
+  const { color, driven, hovered, title, onOver, onOut, onClick, onDoubleClick, resetDragMoved, isDragged } = useDimInteraction(cid, dim.value, interaction)
   const activeDragPos = useActiveLabelDrag(cid)
 
   // p1 = center, p2 = edge point; r is the circle/arc radius.
@@ -59,7 +59,8 @@ export function RadiusDimension({ cid, dim, interaction, planeTransform }: {
   // the arc range (p1, p2 endpoints + center) to detect if label is outside arc span.
   const isInside = isPointInsideRadius(labelX, labelY, cx, cy, r)
 
-  const label = `R${dim.value % 1 === 0 ? dim.value : dim.value.toFixed(2)}`
+  const valueText = `R${dim.value % 1 === 0 ? dim.value : dim.value.toFixed(2)}`
+  const label = driven ? `(${valueText})` : valueText
 
   const onPointerDown = useDimLabelPointerDown(cid, interaction, resetDragMoved, cx, cy, labelX, labelY)
   useDimLabelRegistration({ cid, interaction, isDragged, labelX, labelY, planeTransform, onClick, onOver, onOut, onDoubleClick, onPointerDown })
@@ -98,7 +99,7 @@ export function DiameterDimension({ cid, dim, interaction, planeTransform }: {
   interaction?: DimInteraction
   planeTransform?: PlaneTransform
 }) {
-  const { color, hovered, title, onOver, onOut, onClick, onDoubleClick, resetDragMoved, isDragged } = useDimInteraction(cid, dim.value, interaction)
+  const { color, driven, hovered, title, onOver, onOut, onClick, onDoubleClick, resetDragMoved, isDragged } = useDimInteraction(cid, dim.value, interaction)
   const activeDragPos = useActiveLabelDrag(cid)
 
   // p1 and p2 are the two endpoints of the diameter; center is their midpoint.
@@ -137,7 +138,8 @@ export function DiameterDimension({ cid, dim, interaction, planeTransform }: {
   const udirX = diamLen > 0 ? (ep2x - ep1x) / diamLen : 1
   const udirY = diamLen > 0 ? (ep2y - ep1y) / diamLen : 0
 
-  const label = `Ø${dim.value % 1 === 0 ? dim.value : dim.value.toFixed(2)}`
+  const valueText = `Ø${dim.value % 1 === 0 ? dim.value : dim.value.toFixed(2)}`
+  const label = driven ? `(${valueText})` : valueText
 
   const onPointerDown = useDimLabelPointerDown(cid, interaction, resetDragMoved, anchorX, anchorY, labelX, labelY)
   useDimLabelRegistration({ cid, interaction, isDragged, labelX, labelY, planeTransform, onClick, onOver, onOut, onDoubleClick, onPointerDown })

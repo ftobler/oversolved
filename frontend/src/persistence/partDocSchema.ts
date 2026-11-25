@@ -152,6 +152,8 @@ const CONSTRAINT_SCHEMA: JsonSchema = {
     // A face projection's whole wire as construction geometry. Absent means
     // profile, so a document written before the flag loads unchanged.
     construction: { type: 'boolean' },
+    // A reference dimension: measures solved geometry without constraining it.
+    driven: { enum: [true] },
   },
   additionalProperties: true,
   allOf: [

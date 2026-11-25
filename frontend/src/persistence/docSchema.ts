@@ -14,6 +14,7 @@ import { parse as parseYaml } from 'yaml'
 import type { AssemblyDoc, PartDoc } from '@/types/cad'
 import { isVertexPointKey, MAX_FIT_POINT_KEY } from '@/types/vertexKeys'
 import { entityPointKeys } from '@/registry/entityRegistry'
+import { isDrivableConstraintKind } from '@/registry/constraintRegistry'
 import { resolveVertexRef } from '@/types/vertexRef'
 import { errorMessage } from '@/utils/core/errorMessage'
 import { evalExpr } from '@/kernel/evalExpr'
@@ -765,6 +766,14 @@ function checkConstraint(value: unknown, field: string): void {
   for (const key of ['value', 'x', 'y', 'sign']) {
     checkOptional(constraint, key, field, checkFiniteNumber)
   }
+  // A driven row is a measurement, so the flag is true or absent. The capability
+  // check keeps a hand-edited geometric row from loading as a silent no-op.
+  checkOptional(constraint, 'driven', field, (v, f) => {
+    if (v !== true) fail(f, `must be true when present, got ${JSON.stringify(v)}`)
+    if (!isDrivableConstraintKind(kind)) {
+      fail(f, `is not allowed on ${kind}; only dimension constraints can be driven`)
+    }
+  })
   for (const key of CONSTRAINT_OPERAND_KEYS) {
     checkOptional(constraint, key, field, checkReferenceOperand)
   }

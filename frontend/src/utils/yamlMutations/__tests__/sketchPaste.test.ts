@@ -45,6 +45,25 @@ const sketchOf = (doc: PartDoc, id: string): SketchFeature => featureById(doc, i
 const copy = (doc: PartDoc): PartDoc => JSON.parse(JSON.stringify(doc)) as PartDoc
 
 describe('paste_sketch_entities document write', () => {
+  it('carries the driven flag through a copy/paste', () => {
+    const source = {
+      ...RECT,
+      constraints: [
+        ...(RECT.constraints ?? []),
+        {
+          id: 'diag', kind: 'point_distance', a: '$bstart', b: '$rend',
+          value: Math.hypot(10, 6), driven: true as const,
+        },
+      ],
+    } as SketchFeature
+    const built = buildSketchClip(source, ['b', 'r', 't', 'l'])
+    if ('reason' in built) throw new Error(built.reason)
+    const d = makeDoc(emptySketch())
+    applyPasteSketchEntities(d, { featureId: 'sk2', clip: built.clip, offset: [0, 0] })
+    const pasted = sketchOf(d, 'sk2').constraints?.find(c => c.kind === 'point_distance')
+    expect(pasted?.driven).toBe(true)
+  })
+
   it('adds the rectangle with fresh ids, moved by the offset, constraints rewritten', () => {
     const doc = makeDoc(emptySketch())
     applyPasteSketchEntities(doc, { featureId: 'sk2', clip: rectClip(), offset: [10, 5] })

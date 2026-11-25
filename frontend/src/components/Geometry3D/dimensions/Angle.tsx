@@ -53,7 +53,7 @@ export function AngleDimension({ cid, dim, interaction, planeTransform }: {
   // applier reads it against this label's stored pos and stores theta again.
   const displayedValue = isSupplement ? 180 - dim.value : dim.value
 
-  const { color, hovered, title, onOver, onOut, onClick, onDoubleClick, resetDragMoved, isDragged } =
+  const { color, driven, hovered, title, onOver, onOut, onClick, onDoubleClick, resetDragMoved, isDragged } =
     useDimInteraction(cid, displayedValue, interaction, false, onFlip, 'angle', 'angle')
 
   // Arc endpoint ray directions (radians) for arrowhead tangents.
@@ -83,7 +83,8 @@ export function AngleDimension({ cid, dim, interaction, planeTransform }: {
   const tanStartInX = -Math.sin(a0r) * arcSign, tanStartInY = Math.cos(a0r) * arcSign
   const tanEndInX   =  Math.sin(a1r) * arcSign, tanEndInY   = -Math.cos(a1r) * arcSign
 
-  const label = `${displayedValue % 1 === 0 ? displayedValue : displayedValue.toFixed(1)}°`
+  const valueText = `${displayedValue % 1 === 0 ? displayedValue : displayedValue.toFixed(1)}°`
+  const label = driven ? `(${valueText})` : valueText
 
   const onPointerDown = useDimLabelPointerDown(cid, interaction, resetDragMoved, vx, vy, labelX, labelY)
   useDimLabelRegistration({ cid, interaction, isDragged, labelX, labelY, planeTransform, onClick, onOver, onOut, onDoubleClick, onPointerDown })

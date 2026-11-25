@@ -60,6 +60,11 @@ export const sketchCallbacks: {
   // Registered by Part.tsx (it owns the doc and the solver probe); a headless
   // store use has no port and allows every add.
   checkRedundantAdd: ((pending: PendingConstraint) => boolean | null) | null
+  // True when an existing dimension must stay driven: asked as if it were added
+  // at the end of the sketch, with the row itself removed from the probe copy.
+  // The edit dialog presets and locks its toggle from this, the same answer the
+  // placement dialog gets from checkRedundantAdd.
+  checkConstraintDriven: ((featureId: string, constraintId: string) => boolean) | null
   // Surfaces an authoring refusal the store itself decides on, so it reaches
   // the user through the same message dialog as a command rejection. Null in a
   // headless store use, where there is no dialog to show.
@@ -84,6 +89,7 @@ export const sketchCallbacks: {
   commitPlacement: null,
   cancelPlacement: null,
   checkRedundantAdd: null,
+  checkConstraintDriven: null,
   showMessage: null,
   openDialog: null,
   closeDialog: null,
@@ -126,6 +132,7 @@ export function setSketchCallback(key: 'resolveEdgeKind', cb: ((query: string) =
 export function setSketchCallback(key: 'isEditSessionOpen', cb: (() => boolean) | null): void
 export function setSketchCallback(key: 'beginPlacement' | 'commitPlacement' | 'cancelPlacement', cb: (() => void) | null): void
 export function setSketchCallback(key: 'checkRedundantAdd', cb: ((pending: PendingConstraint) => boolean | null) | null): void
+export function setSketchCallback(key: 'checkConstraintDriven', cb: ((featureId: string, constraintId: string) => boolean) | null): void
 export function setSketchCallback(key: 'showMessage', cb: ((payload: SketchMessage) => void) | null): void
 export function setSketchCallback(key: 'openDialog', cb: ((dialog: DialogState) => void) | null): void
 export function setSketchCallback(key: 'closeDialog', cb: (() => void) | null): void
@@ -155,6 +162,7 @@ const SESSION_CALLBACK_KEYS = [
   'commitPlacement',
   'cancelPlacement',
   'checkRedundantAdd',
+  'checkConstraintDriven',
   'showMessage',
 ] as const satisfies readonly (keyof typeof sketchCallbacks)[]
 

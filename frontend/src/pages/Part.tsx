@@ -1,14 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import type { ViewportHandle } from '@/components/Viewport'
-import type { PartDoc, PartFeature, Mutation, Sketch, LengthUnit } from '@/types/cad'
+import type { PartDoc, PartFeature, Mutation, Sketch, SketchFeature, LengthUnit } from '@/types/cad'
 import { randomId } from '@/utils/yamlMutations'
 import { isWholePartSelectionId, parseTopoFallbackQuery, stripSelectionWrapper } from '@/utils/query/selectionId'
 import { parseQuery } from '@/utils/query'
 import { selectionSourceFeatureIds } from '@/utils/query/pickOrder'
 import { isFaceRestriction } from '@/kernel/occ/primitives'
 import { findEdgeKindForQuery } from '@/picking/partDispatchCallbacks'
-import { classifyPendingAdd } from '@/kernel/features/constraintProbe'
+import { classifyPendingAdd, redundantWithoutConstraint } from '@/kernel/features/constraintProbe'
+import { isDrivableConstraintKind } from '@/registry/constraintRegistry'
+import { overconstrainReason } from '@/utils/core/constraintRefusals'
+import { CANNOT_APPLY_TITLE } from '@/utils/core/applyTitles'
 import { variableRenameProblem, variableNameInput } from '@/kernel/features/variable'
 import { PROJECTION_NOT_FROZEN_TITLE, projectionNotFrozenMessage } from '@/kernel/features/projectionMembers'
 import { projectedSelectionTargets } from '@/utils/yamlMutations/freezeProjection'
@@ -1124,6 +1127,18 @@ export default function Part() {
     return verdict === 'redundant' ? true : verdict === 'dropped' ? null : false
   }, [docRef, solveResults])
 
+  // The edit dialog asks the same question as the placement dialog, but about a
+  // row already in the document. The pure probe owns the answer, so the dialog
+  // and its context-menu twin cannot drift apart.
+  const checkConstraintDriven = useCallback((featureId: string, constraintId: string) => {
+    const resolvedKinds = resolvedKindsOfSketch(solveResults?.[featureId]?.solved)
+    const projectionMembers = solveResults?.[featureId]?.projection_members
+    const derivedMembers = projectionMembers === undefined
+      ? undefined
+      : Object.values(projectionMembers).flatMap(report => report.entities)
+    return redundantWithoutConstraint(docRef.current, featureId, constraintId, resolvedKinds, derivedMembers)
+  }, [docRef, solveResults])
+
   useEffect(() => {
     // The feature-handle drag pumps live field mutations and waits on the
     // solve each one requested before sending the next, so the sink hands back
@@ -1139,6 +1154,7 @@ export default function Part() {
     setSketchCallback('onRebuild', handleRebuild)
     setSketchCallback('onExitSketch', handleExitSketch)
     setSketchCallback('checkRedundantAdd', checkRedundantAdd)
+    setSketchCallback('checkConstraintDriven', checkConstraintDriven)
     // How the dimension confirm path surfaces an authoring refusal of its own
     // (the gate above answers, but the refusal has no command caller to return
     // a reason to): the same MessageDialog the command rejections use.
@@ -1181,7 +1197,7 @@ export default function Part() {
     return () => {
       clearSketchCallbacks()
     }
-  }, [handleMutation, commitMutationGroup, beginPlacement, commitPlacement, cancelPlacement, handleRebuild, handleExitSketch, checkRedundantAdd, showMessage, solveResults, docRef, session])
+  }, [handleMutation, commitMutationGroup, beginPlacement, commitPlacement, cancelPlacement, handleRebuild, handleExitSketch, checkRedundantAdd, checkConstraintDriven, showMessage, solveResults, docRef, session])
 
   // The sketch editor store is module-level and survives a Part unmount, so a
   // remounted Part (WorkspacePage keys it by entry) would otherwise inherit the
@@ -1556,6 +1572,20 @@ export default function Part() {
     const projectedTargetIds = activeFeature?.kind === 'sketch'
       ? projectedSelectionTargets(activeFeature, candidates)
       : []
+    // The driven toggle acts on one selected dimension tile. The authored row
+    // is the truth for its role; the solve's render block supplies the current
+    // measurement when the edit dialog needs one.
+    let drivenTarget: BuildContextMenuInput['drivenTarget']
+    if (activeFeature?.kind === 'sketch' && candidates.size === 1) {
+      const parts = [...candidates][0].split(':')
+      if (parts[0] === 'constraint' && parts[1] === activeFeature.id) {
+        const constraintId = parts.slice(2).join(':')
+        const row = (activeFeature.constraints ?? []).find(c => c.id === constraintId)
+        if (row && isDrivableConstraintKind(row.kind)) {
+          drivenTarget = { featureId: activeFeature.id, constraintId, driven: row.driven === true }
+        }
+      }
+    }
     // The body a viewport click acts on, with the hover winning over the
     // selection: the same precedence resolveSurfaceTarget uses, so a face hover
     // aims New Sketch at the face and Hide/Color/Export at the body under it. A
@@ -1591,6 +1621,7 @@ export default function Part() {
       visibleParts: effectiveVisibleParts,
       hasDanglingContent,
       projectedTargetIds,
+      ...(drivenTarget && { drivenTarget }),
     }
     const callbacks: BuildContextMenuCallbacks = {
       onRebuild: handleRebuild,
@@ -1628,13 +1659,34 @@ export default function Part() {
         executeCommand('freeze_projection', { mode })
         setContextMenu(null)
       },
+      onToggleConstraintDriven: (featureId, constraintId, driven) => {
+        if (!driven && checkConstraintDriven(featureId, constraintId)) {
+          const row = features.find(f => f.id === featureId)?.kind === 'sketch'
+            ? (features.find(f => f.id === featureId) as SketchFeature).constraints?.find(c => c.id === constraintId)
+            : undefined
+          showMessage({
+            title: CANNOT_APPLY_TITLE,
+            message: overconstrainReason(row?.kind ?? 'dimension'),
+            variant: 'error',
+          })
+          setContextMenu(null)
+          return
+        }
+        const render = solveResults[featureId]?.constraints?.[constraintId]?.render
+        const value = render && 'value' in render && typeof render.value === 'number' ? render.value : undefined
+        handleMutation({
+          type: 'set_constraint_driven', featureId, constraintId, driven,
+          ...(value !== undefined && { value }),
+        })
+        setContextMenu(null)
+      },
     }
     const { items } = buildContextMenu(input, callbacks)
     setContextMenu({ position: pos, items })
   }, [handleRebuild, handleRemoveDanglingContent, toggleVisibility, toggleSuppression, handleExitSketch, handleDeleteFeature,
     handleAddFeature, handleAlignCameraToSketchPlane, handleNormalToPlane, handleNewSketchOnPlane,
     features, visibleFeaturesWithEdit, activeSketchFeatureId, partLabels, hasDanglingContent, bodies,
-    effectiveVisibleParts, viewportRef, handleSetPartColorPopover, handleMutation])
+    effectiveVisibleParts, viewportRef, handleSetPartColorPopover, handleMutation, checkConstraintDriven, showMessage, solveResults])
 
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {

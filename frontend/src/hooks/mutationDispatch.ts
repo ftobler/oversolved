@@ -27,6 +27,7 @@ import {
   applySetConstraintValue,
   applySetConstraintPos,
   applySetConstraintSign,
+  applySetConstraintDriven,
   applyToggleConstruction,
   applySetFeaturePlane,
   applyAddSketch,
@@ -244,10 +245,12 @@ export const mutationHandlers: MutationHandlers = {
   resize_circle: (next, m) =>
     applyResizeCircle(next, m.featureId, m.entityId, m.radius, m.solvedGeometry),
   add_constraint: (next, m) => {
-    applyAddConstraint(next, m.featureId, m.kind, m.targets, m.value, m.pos, m.sign, m.id)
+    applyAddConstraint(next, m.featureId, m.kind, m.targets, m.value, m.pos, m.sign, m.id, m.driven)
   },
   set_constraint_value: (next, m) =>
     applySetConstraintValue(next, m.featureId, m.constraintId, m.value),
+  set_constraint_driven: (next, m) =>
+    applySetConstraintDriven(next, m.featureId, m.constraintId, m.driven, m.value),
   set_constraint_pos: (next, m) =>
     applySetConstraintPos(next, m.featureId, m.constraintId, m.pos),
   set_constraint_sign: (next, m) =>

@@ -12,7 +12,7 @@ import { AngleDimension } from './Angle'
  *  sentence the label shows while hovered. */
 export type DimInteractionBase = Pick<
   DimInteraction,
-  'featureId' | 'entityId' | 'redundant' | 'culprit' | 'weak' | 'weakTitle'
+  'featureId' | 'entityId' | 'redundant' | 'culprit' | 'weak' | 'weakTitle' | 'driven'
 >
 
 function interactionFor(base: DimInteractionBase | undefined, cid: string, promptLabel: string): DimInteraction | undefined {

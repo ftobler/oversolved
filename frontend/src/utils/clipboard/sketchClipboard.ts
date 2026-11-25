@@ -82,7 +82,7 @@ const isRecord = (value: unknown): value is RawRow =>
 const CONSTRAINT_FIELDS = [
   'value', 'target', 'a', 'b', 'refs', 'circle', 'line', 'arc', 'point',
   'point_a', 'point_b', 'host', 'x', 'y', 'axis', 'sign', 'pos', 'source',
-  'members', 'excluded',
+  'members', 'excluded', 'driven',
 ] as const
 
 /** The flat params of one solved entity, in the registry's slot order. The
@@ -368,6 +368,11 @@ export function validateClip(value: unknown): SketchEntitiesClip | { reason: str
     }
     if (clone.axis !== undefined && typeof clone.axis !== 'string') {
       return { reason: constraintInvalid(raw.id, 'axis must be a string') }
+    }
+    // A reference dimension carries its role through the clipboard: a pasted
+    // measurement must not become a driver in the target sketch.
+    if (clone.driven !== undefined && clone.driven !== true) {
+      return { reason: constraintInvalid(raw.id, 'driven must be true when present') }
     }
     // x/y are a fixed row's pin, which the free-copy rule already refused; a
     // non-finite pair on any other kind would still be junk in the document.

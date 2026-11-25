@@ -253,6 +253,7 @@ export function ConstraintOverlays({ constraints, sketch, extent, featureId, pla
         featureId, entityId: eid,
         ...(c.superfluous ? { redundant: true } : {}),
         ...(c.culprit ? { culprit: true } : {}),
+        ...(c.driven ? { driven: true } : {}),
         ...(c.weak ? {
           weak: true,
           weakTitle: weakConstraintWarning(

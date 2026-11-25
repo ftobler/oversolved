@@ -72,7 +72,7 @@ export function LinearDimension({ cid, dim, dimOffset, interaction, planeTransfo
       type: 'set_constraint_sign', featureId: interaction.featureId, constraintId: cid, sign: -current,
     })
   }, [interaction, cid, dimKind, dim.p1, dim.p2, dim.normal])
-  const { color, hovered, title, onOver, onOut, onClick, onDoubleClick, resetDragMoved, isDragged } =
+  const { color, driven, hovered, title, onOver, onOut, onClick, onDoubleClick, resetDragMoved, isDragged } =
     useDimInteraction(cid, dim.value, interaction, true, isDirectional ? onFlip : undefined, dimKind)
   const activeDragPos = useActiveLabelDrag(cid)
 
@@ -125,7 +125,10 @@ export function LinearDimension({ cid, dim, dimOffset, interaction, planeTransfo
   // The arrows still mark the point, and the value stays a label on it.
   const hasLine = dimLen > 0
 
-  const label = dim.value % 1 === 0 ? String(dim.value) : dim.value.toFixed(2)
+  const valueText = dim.value % 1 === 0 ? String(dim.value) : dim.value.toFixed(2)
+  // Parentheses are the drafting convention for a reference dimension: the
+  // number is a measurement, not a value the geometry must satisfy.
+  const label = driven ? `(${valueText})` : valueText
 
   // Extension-line evaluation: each side is evaluated independently. When an
   // entity segment is provided (ext1_line / ext2_line) the extension line is

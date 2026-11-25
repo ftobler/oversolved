@@ -1405,6 +1405,7 @@ export class DocSession {
           break
         case 'set_constraint_value':
         case 'set_constraint_sign':
+        case 'set_constraint_driven':
           if (!constraintIds.has(m.constraintId)) return false
           break
         default:
