@@ -12,6 +12,8 @@
 import type { PartDoc } from '@/types/cad'
 import type { SolveOutcome, SolveScheduler, SolveSchedulerState } from '@/session/SolveScheduler'
 import { solveLocally } from '@/kernel/solveLocally'
+import { SolveSuperseded } from '@/kernel/errors'
+import { makePrng } from '@/utils/core/prng'
 
 // `trapCount` reads how many kernel traps solveLocally has recovered from so
 // far. A trap is retried on a fresh module and the retry usually passes, which
@@ -21,9 +23,21 @@ import { solveLocally } from '@/kernel/solveLocally'
 // `verifyMeshReuse` turns on the builder's parity oracle: every body whose mesh
 // a solve reused from an earlier one is tessellated afresh and compared, and a
 // difference fails the solve (kernel/builderMeshReuse.ts).
+//
+// `abortSeed` seeds a stream (its own, so the session sequence is untouched)
+// that, before about one solve in four, first runs the same solve stopped at a
+// random feature boundary (`shouldAbort`). The real solve then resumes from that
+// partial state, so the undo/redo sequences also run over partial caches.
 export interface RealSolveSchedulerOptions {
   trapCount?: () => number
   verifyMeshReuse?: boolean
+  abortSeed?: number
+}
+
+/** True at the `index`-th feature boundary of one build, false elsewhere. */
+function stopAtBoundary(index: number): () => boolean {
+  let boundaries = 0
+  return () => boundaries++ === index
 }
 
 export function createRealSolveScheduler(options: RealSolveSchedulerOptions = {}): SolveScheduler<PartDoc> {
@@ -31,6 +45,7 @@ export function createRealSolveScheduler(options: RealSolveSchedulerOptions = {}
   let pendingCount = 0
   let lastError: string | null = null
   const idleWaiters: Array<() => void> = []
+  const abortDraw = options.abortSeed === undefined ? null : makePrng(options.abortSeed)
 
   return {
     async request(doc, opts): Promise<SolveOutcome> {
@@ -39,12 +54,25 @@ export function createRealSolveScheduler(options: RealSolveSchedulerOptions = {}
       lastError = null
       let error: string | null = null
       const trapsBefore = options.trapCount?.() ?? 0
+      const solveOptions = {
+        bypassCache: opts?.bypassCache,
+        validate: opts?.validate,
+        verifyMeshReuse: options.verifyMeshReuse,
+      }
       try {
-        const response = await solveLocally(doc as unknown as Record<string, unknown>, {
-          bypassCache: opts?.bypassCache,
-          validate: opts?.validate,
-          verifyMeshReuse: options.verifyMeshReuse,
-        })
+        if (abortDraw && abortDraw() < 0.25) {
+          const boundary = Math.floor(abortDraw() * Math.max(1, doc.features?.length ?? 0))
+          try {
+            // A build with fewer dirty features than `boundary` just completes.
+            await solveLocally(doc as unknown as Record<string, unknown>, {
+              ...solveOptions,
+              shouldAbort: stopAtBoundary(boundary),
+            })
+          } catch (e) {
+            if (!(e instanceof SolveSuperseded)) throw e
+          }
+        }
+        const response = await solveLocally(doc as unknown as Record<string, unknown>, solveOptions)
         // The real suite is gated on OCC being loaded; a null here means the
         // loader got torn down mid-run, which is a test bug, not a solve.
         if (response === null) throw new Error('OCC.js unavailable for a real-kernel fuzz run')
