@@ -195,7 +195,7 @@ describe('AssemblyEditor (Stage 6b)', () => {
 
   it('starts empty and shows the insert affordance', async () => {
     await renderLoaded()
-    expect(screen.getByText(/Empty assembly/)).toBeTruthy()
+    expect(screen.queryByText(/Empty assembly/)).toBeNull()
     expect(screen.getByLabelText('Insert part')).toBeTruthy()
   })
 
@@ -735,15 +735,14 @@ describe('AssemblyEditor (Stage 6b)', () => {
   })
 
   // A failed load has no document. The editor previously rendered its toolbar,
-  // tree and viewport over the null doc (every mutation a silent no-op) with the
-  // empty hint on top; now it is terminal, with one way back.
+  // tree and viewport over the null doc (every mutation a silent no-op); now it
+  // is terminal, with one way back.
   it('shows a terminal panel and no live editor when the load fails', async () => {
     vi.mocked(backendBundle.documents.load).mockRejectedValueOnce(new Error('boom'))
     renderEditor()
     await tick()
     await tick()
     expect(screen.getByText(/Error: boom/)).toBeTruthy()
-    expect(screen.queryByText(/Empty assembly/)).toBeNull()
     expect(screen.queryByLabelText('Insert part')).toBeNull()
   })
 

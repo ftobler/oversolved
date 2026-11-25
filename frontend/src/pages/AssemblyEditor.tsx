@@ -1038,9 +1038,6 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
                 onCancelSolve slot, so the shared overlay renders the spinner and
                 cancel for a full (non-live) solve; it is opacity-0 when idle. */}
             <LoadingOverlay />
-            {instances.length === 0 && mates.length === 0 && !error && (
-              <p className="assembly-empty-hint">Empty assembly - insert parts to get started.</p>
-            )}
             {/* Both overlay columns are positioning-only and click-through, so
                 the gaps between the cards still orbit and pick in the viewport;
                 each card opts back in (Glass.css `.glass-panel`). The left
