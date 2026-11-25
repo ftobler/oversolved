@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { screen, waitFor, fireEvent, act } from '@testing-library/react'
 import { installPointerEventStub } from '@/testing/pointerEventStub'
+import { readWorkspaceOrderIds } from '@/workspace/order'
 import { freshLocalDb, renderWorkspaces, seedStore } from './workspacesHarness'
 
 // jsdom has no PointerEvent; without the stub fireEvent drops button, id and type.
@@ -50,6 +51,13 @@ describe('Workspaces custom order', () => {
   const move = (x: number, y: number) => fireEvent.pointerMove(window, { pointerId: 1, clientX: x, clientY: y })
   const release = (x: number, y: number) => fireEvent.pointerUp(window, { pointerId: 1, clientX: x, clientY: y })
   const choose = (label: 'Date' | 'Custom') => fireEvent.click(screen.getByRole('button', { name: label }))
+  // The browser owns a touchmove until the long press activates: if a blocker
+  // were installed earlier, preventDefault would stop the grid from scrolling.
+  const touchMoveBlocked = () => {
+    const event = new Event('touchmove', { bubbles: true, cancelable: true })
+    window.dispatchEvent(event)
+    return event.defaultPrevented
+  }
 
   it('defaults to Date and remembers Custom across a remount', async () => {
     await seed(['Alpha'])
@@ -90,6 +98,52 @@ describe('Workspaces custom order', () => {
     expect(moveSpy).toHaveBeenCalledWith(c, 0)
     await waitFor(() => expect(visibleNames()).toEqual(['C', 'A', 'B']))
     expect(document.querySelector('.doc-tile.dragging')).toBeNull()
+  })
+
+  it('persists the same order it previews when a tile moves forward', async () => {
+    const [a, b, c] = await seed(['A', 'B', 'C'])
+    stubGrid([a, b, c])
+    const store = seedStore()
+    const moveSpy = vi.spyOn(store, 'moveWorkspace')
+    renderWorkspaces()
+    await waitFor(() => expect(tile('A')).toBeTruthy())
+    choose('Custom')
+    await waitFor(() => expect(visibleNames()).toEqual(['A', 'B', 'C']))
+
+    press(tile('A'), 50, 40)
+    move(300, 44)
+    move(230, 40)
+    // A is before C in the preview, so it must land before C in the store too.
+    expect(visibleNames()).toEqual(['B', 'A', 'C'])
+    release(230, 40)
+
+    await waitFor(() => expect(moveSpy).toHaveBeenCalledTimes(1))
+    expect(moveSpy).toHaveBeenCalledWith(a, 1)
+    await waitFor(() => expect(visibleNames()).toEqual(['B', 'A', 'C']))
+    expect(await readWorkspaceOrderIds()).toEqual([b, a, c])
+  })
+
+  it('drops after the last visible tile without crossing a trashed one', async () => {
+    const [a, b, c] = await seed(['A', 'B', 'C'])
+    const store = seedStore()
+    await store.trash(c)
+    stubGrid([a, b, c])
+    const moveSpy = vi.spyOn(store, 'moveWorkspace')
+    renderWorkspaces()
+    await waitFor(() => expect(tile('A')).toBeTruthy())
+    choose('Custom')
+    await waitFor(() => expect(visibleNames()).toEqual(['A', 'B']))
+
+    press(tile('A'), 50, 40)
+    move(300, 44)
+    move(230, 40)
+    expect(visibleNames()).toEqual(['B', 'A'])
+    release(230, 40)
+
+    await waitFor(() => expect(moveSpy).toHaveBeenCalledTimes(1))
+    expect(moveSpy).toHaveBeenCalledWith(a, 1)
+    // C is trashed but keeps its slot behind the two live tiles.
+    expect(await readWorkspaceOrderIds()).toEqual([b, a, c])
   })
 
   it('leaves tiles not draggable in Date, during search and in the trash', async () => {
@@ -150,12 +204,14 @@ describe('Workspaces custom order', () => {
     press(tile('C'), 290, 40, 'touch')
     move(300, 44)
     expect(document.querySelector('.doc-tile.dragging')).toBeNull()
+    expect(touchMoveBlocked()).toBe(false)
     release(300, 44)
     expect(moveSpy).not.toHaveBeenCalled()
 
     press(tile('C'), 290, 40, 'touch')
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 380)) })
     expect(document.querySelector('.doc-tile.dragging')).toBeTruthy()
+    expect(touchMoveBlocked()).toBe(true)
     move(10, 40)
     release(10, 40)
 

@@ -6,7 +6,7 @@ interface WorkspacePickerDialogProps {
   isOpen: boolean
   // The workspace the entry is in now, left out of the tiles.
   currentWorkspace: string
-  // The live workspaces in the browser's order. Null while the read is out.
+  // The live workspaces in the store's default modified order. Null while the read is out.
   workspaces: readonly WorkspaceSummary[] | null
   listError?: string | null
   // The move's refusal for the picked workspace; the dialog stays open on it.
@@ -21,7 +21,7 @@ const GROUPS: readonly TilePickerGroup[] = [{ key: 'workspace', label: 'Workspac
 
 // "Move to workspace": the insert-part browser over workspaces instead of
 // documents. Each tile is a workspace's library tile (its cover preview, name
-// and modified date), in the order the library lists them.
+// and modified date), in the default modified order the store returns.
 export default function WorkspacePickerDialog({
   isOpen, currentWorkspace, workspaces, listError = null, notice = null, busy = false,
   onClose, onSelect, onPick,

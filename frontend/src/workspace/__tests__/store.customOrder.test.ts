@@ -3,6 +3,7 @@ import { IdbWorkspaceStore } from '../store'
 import { readWorkspaceOrderIds, writeWorkspaceOrderIds } from '../order'
 import { readWorkspaceMeta, writeWorkspaceMeta } from '../idbCarrier'
 import { importBag } from '../import'
+import { importPickedFile } from '../importFile'
 import { resetWorkspaceIdb } from './idbHarness'
 import { STORE_WORKSPACE_ORDER, idbPutTo } from '@/persistence/idb'
 
@@ -32,6 +33,25 @@ describe('custom workspace order', () => {
     const duplicate = (await store.duplicate(first)).workspace
     expect(await readWorkspaceOrderIds()).toEqual([first, imported.workspace, duplicate])
     expect((await store.list({ sort: 'custom' })).map(s => s.workspace)).toEqual([first, imported.workspace, duplicate])
+  })
+
+  it('appends a STEP assembly import workspace at the bottom', async () => {
+    const store = new IdbWorkspaceStore()
+    const first = (await store.create('First')).workspace
+    const bytes = new TextEncoder().encode('ISO-10303-21;\nEND-ISO-10303-21;\n')
+    const file = {
+      name: 'bracket.step',
+      size: bytes.byteLength,
+      type: '',
+      async arrayBuffer() {
+        return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
+      },
+    } as unknown as File
+
+    const result = await importPickedFile(file, { stepMode: 'assembly_one_part' }, store)
+
+    expect(result.mode).toBe('new')
+    expect(await readWorkspaceOrderIds()).toEqual([first, result.workspace])
   })
 
   it('moveWorkspace reorders without touching updatedAt or the Date sort', async () => {

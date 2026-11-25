@@ -392,8 +392,8 @@
 
 .doc-tile.draggable {
   cursor: grab;
-  /* The pointer owns the gesture; a touch swipe outside it still scrolls. */
-  touch-action: none;
+  /* Vertical scrolling stays native until a long press claims the gesture. */
+  touch-action: pan-y;
 }
 
 .doc-tile.dragging {

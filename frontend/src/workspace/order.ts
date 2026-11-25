@@ -8,12 +8,13 @@
 // a migration. Writers reconcile too, so a newly created workspace really is
 // the last tile even when the record had forgotten older ones.
 import {
+  STORE_WORKSPACE_META,
   STORE_WORKSPACE_ORDER,
   idbGetFrom,
   idbPutTo,
-  idbUpdateFrom,
+  idbTransaction,
 } from '@/persistence/idb'
-import { listWorkspaceMetas } from './idbCarrier'
+import type { WorkspaceMetaRecord } from './idbCarrier'
 
 export const WORKSPACE_ORDER_KEY = 'workspace_order'
 
@@ -81,23 +82,43 @@ export async function writeWorkspaceOrderIds(ids: string[]): Promise<void> {
   await idbPutTo<WorkspaceOrderRecord>(STORE_WORKSPACE_ORDER, { key: WORKSPACE_ORDER_KEY, ids: [...ids] })
 }
 
-// Every write goes through one read-modify-write transaction so two tabs that
-// create workspaces at once cannot clobber each other's slot. The metas are
-// read before the transaction; reconcile() inside it deals with any id the
-// record has forgotten.
+// One transaction holds both reads and the write. A meta snapshot taken before
+// the transaction could omit a workspace another tab created in between, and
+// reconciling against it would drop that id from the order; reading the rows
+// inside the same transaction keeps the two answers consistent.
 async function editOrder(edit: (ids: string[]) => string[]): Promise<void> {
-  const metas = await listWorkspaceMetas()
-  await idbUpdateFrom<WorkspaceOrderRecord>(
-    [STORE_WORKSPACE_ORDER],
-    STORE_WORKSPACE_ORDER,
-    WORKSPACE_ORDER_KEY,
-    record => {
-      const raw = storedIds(record)
-      const current = resolveCustomOrder(raw, metas)
-      const ids = edit(current)
-      // Do not write a record that already says what is in memory: an import
-      // that joins a workspace must not churn the order store.
-      return sameIds(raw, ids) && record ? undefined : { key: WORKSPACE_ORDER_KEY, ids }
+  await idbTransaction(
+    [STORE_WORKSPACE_ORDER, STORE_WORKSPACE_META],
+    'readwrite',
+    stores => {
+      const orderStore = stores[STORE_WORKSPACE_ORDER]
+      let record: WorkspaceOrderRecord | undefined
+      let metas: WorkspaceMetaRecord[] = []
+      let recordReady = false
+      let metasReady = false
+      const apply = () => {
+        if (!recordReady || !metasReady) return
+        const raw = storedIds(record)
+        const ids = edit(resolveCustomOrder(raw, metas))
+        // An import that joins a workspace must not churn the order store when
+        // the record already says exactly what the edit produces.
+        if (!record || !sameIds(raw, ids)) orderStore.put({ key: WORKSPACE_ORDER_KEY, ids })
+      }
+      const orderRequest = orderStore.get(WORKSPACE_ORDER_KEY) as IDBRequest<WorkspaceOrderRecord | undefined>
+      orderRequest.onsuccess = () => {
+        record = orderRequest.result
+        recordReady = true
+        apply()
+      }
+      // getAll and get are queued in one transaction; apply() runs from the
+      // second success handler, while the transaction is still alive, so its
+      // put is part of the same atomic unit.
+      const metaRequest = stores[STORE_WORKSPACE_META].getAll() as IDBRequest<WorkspaceMetaRecord[]>
+      metaRequest.onsuccess = () => {
+        metas = metaRequest.result
+        metasReady = true
+        apply()
+      }
     },
   )
 }

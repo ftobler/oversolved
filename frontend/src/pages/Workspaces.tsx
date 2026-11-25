@@ -389,15 +389,18 @@ export default function Workspaces() {
       if (!wasActive) return
       void (async () => {
         try {
-          // The store's index is in the full order (trashed tiles included), so
-          // translate the visible slot through it before the one move write.
+          // The store's index is in the full order (trashed tiles included),
+          // and moveWorkspace removes the dragged id BEFORE inserting it. Look
+          // up the slot in that list without the dragged id, or a forward move
+          // lands one tile too far and an end drop crosses trailing trash.
           const full = await store.list({ includeTrashed: true, sort: 'custom' })
+          const withoutDragged = full.filter(summary => summary.workspace !== workspace)
           const target = remainingIds[slot]
           const last = remainingIds[remainingIds.length - 1]
-          const lastIndex = last === undefined ? -1 : full.findIndex(summary => summary.workspace === last)
-          const toIndex = target === undefined
-            ? (lastIndex < 0 ? full.length : lastIndex + 1)
-            : full.findIndex(summary => summary.workspace === target)
+          const index = target === undefined
+            ? withoutDragged.findIndex(summary => summary.workspace === last) + 1
+            : withoutDragged.findIndex(summary => summary.workspace === target)
+          const toIndex = index < 0 ? withoutDragged.length : index
           await store.moveWorkspace(workspace, toIndex)
           await refresh(trashView, debouncedSearch)
         } catch (err) {
