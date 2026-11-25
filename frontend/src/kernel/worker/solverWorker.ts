@@ -609,7 +609,11 @@ export function handleWorkerMessage(
     actor.submit({
       lane: 'solve',
       run: async (ctx) => {
-        const res = await handleSolveRequest(msg, solveLocally, fileCache, () => ctx.superseded)
+        // A copy, because the build yields between features: a message landing
+        // in that gap may replace an import's bytes under the same id, and the
+        // digests this solve folded in at its start must keep matching the bytes
+        // its later import features read.
+        const res = await handleSolveRequest(msg, solveLocally, new Map(fileCache), () => ctx.superseded)
         post(res, collectTransferables(res))
       },
       onSuperseded: () => {

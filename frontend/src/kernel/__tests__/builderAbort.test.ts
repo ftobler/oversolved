@@ -97,25 +97,29 @@ describe('buildAbortable', () => {
     expect(results(resumed)).toEqual(results(build(spec, {}, deps)))
   })
 
-  it('truncates before a checkpoint whose bodies still need post-loop registration', async () => {
+  it('runs the post-loop registration on a stop for a checkpoint whose bodies still need it', async () => {
     // f2 creates a shaped body whose loop-side registration does not land (the
     // fake extractor knows no body), so its checkpoint and every later one
-    // still need the post-loop pass the stop skips.
+    // still need the post-loop pass. The stop runs it instead of dropping them.
     const releaseCheckpoint = vi.fn()
-    const releaseRestoreCopies = vi.fn()
+    const extracted: string[][] = []
     const deps = makeDeps({
       trySolveFeature: (feature, _repo, partStore): FeatureResult => {
         if (feature.id === 'f2') partStore.b = { ...barePart('b', 'f2'), shape: 7 as OccHandle }
         return { status: 'ok' }
       },
+      extractBrepMetadata: (store) => { extracted.push(Object.keys(store)); return {} },
       releaseCheckpoint,
-      releaseRestoreCopies,
     })
     const stop = aborted(await buildAbortable({ features: features(5) }, {}, deps, abortAfter(3), noYield))
-    expect(Object.keys(stop.state.checkpoints)).toEqual(['f0', 'f1'])
-    expect(stop.dropped).toEqual(['f2', 'f3'])
-    expect(releaseCheckpoint.mock.calls.map((c) => c[0])).toEqual(['f2', 'f3'])
-    expect(releaseRestoreCopies).toHaveBeenCalledTimes(1)
+    expect(Object.keys(stop.state.checkpoints)).toEqual(['f0', 'f1', 'f2', 'f3'])
+    expect(stop.dropped).toEqual([])
+    expect(releaseCheckpoint).not.toHaveBeenCalled()
+    // The completed checkpoints carry the post-loop serializer's marker; the
+    // ones that needed nothing keep the loop's snapshot.
+    expect((stop.state.checkpoints.f2.repo_snapshot as { version?: number }).version).toBe(2)
+    expect((stop.state.checkpoints.f1.repo_snapshot as { version?: number }).version).toBeUndefined()
+    expect(extracted.filter((ids) => ids.includes('b')).length).toBeGreaterThan(0)
   })
 
   it('releases only the restore copies when every finished checkpoint is kept', async () => {
