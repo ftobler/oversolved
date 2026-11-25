@@ -110,6 +110,11 @@ export interface BuildOptions {
   prevState?: BuildState | null
   pickBoundary?: number | null
   rollbackPosition?: number | null
+  /** Debug parity oracle: tessellate every body whose render or pick mesh was
+   *  reused from an earlier build afresh and throw `MeshReuseMismatchError`
+   *  (kernel/builderMeshReuse.ts) on a difference. On in the real session fuzz
+   *  and the action matrix; off in production, where it doubles the render. */
+  verifyMeshReuse?: boolean
 }
 
 export interface BuildResponse {

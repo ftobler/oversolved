@@ -38,6 +38,13 @@ import {
   partsNeedingCheckpointRegistration,
   type MetaExtractor,
 } from './builderAncestry'
+import {
+  PartChangeTracker,
+  renderFinalParts,
+  renderPickParts,
+  boundCheckpointMeshes,
+  verifyReusedMeshes,
+} from './builderMeshReuse'
 
 // ─── Feature key union for dirty detection ───
 
@@ -151,106 +158,6 @@ export function validateIncremental(
     return { level: 3, passed: false, diffs: l3 }
   }
   return { level: 3, passed: true, diffs: {} }
-}
-
-// ─── Mesh reuse helpers ───
-
-// On a fully-clean rebuild (nothing dirty) the final bodies are byte-identical
-// to the previous build's, so their render mesh is too. Reuse the final
-// checkpoint's stored bodies_snapshot as `bodies` instead of re-tessellating the
-// whole document. Returns null (fall through to a fresh tessellation) unless the
-// rebuild is fully clean AND every live body maps to a non-empty prev snapshot.
-function reuseFinalMeshOnCleanRebuild(
-  prevState: BuildState | null | undefined,
-  features: Array<Record<string, unknown>>,
-  firstDirty: number,
-  partStore: Record<string, PartSolid>,
-  lastFid: string | null,
-): Record<string, Record<string, unknown>> | null {
-  if (!prevState || lastFid == null) return null
-  if (firstDirty !== features.length) return null
-  const prevCp = prevState.checkpoints[lastFid]
-  if (!prevCp) return null
-  const snap = prevCp.bodies_snapshot as Record<string, Record<string, unknown>>
-  if (!snap || !Object.keys(snap).length) return null
-  const out: Record<string, Record<string, unknown>> = {}
-  for (const [bid, body] of Object.entries(partStore)) {
-    if (body.shape == null) continue
-    const mesh = snap[bid]
-    if (!mesh || !Object.keys(mesh).length) return null  // incomplete snapshot; re-tessellate
-    out[bid] = mesh
-  }
-  return out
-}
-
-// Reuse the render mesh of imported bodies that are byte-identical to the
-// previous solve, even when the tail is dirty. An imported body carries heavy
-// STEP geometry (1000+ faces) whose tessellation is pure recomputation on every
-// downstream edit. When the body's producing feature AND every feature that
-// modified it sit in the clean prefix (indices < firstDirty), `findFirstDirty`
-// guarantees its geometry is unchanged, so last solve's mesh is exact. The
-// handle itself is NOT a usable cache key: the clean-prefix restore deep-copies
-// each shape (BRepBuilderAPI_Copy), minting a fresh handle every solve.
-//
-// Returns a partial {bodyId -> reused render result} covering only the reusable
-// imported bodies; the caller tessellates the rest. Empty on a fully-clean
-// rebuild (handled by reuseFinalMeshOnCleanRebuild) or a full rebuild (nothing
-// clean). The source is the previous solve's final checkpoint snapshot, the only
-// place a full render mesh is stored.
-function reuseCleanImportedPartMeshes(
-  prevState: BuildState | null | undefined,
-  firstDirty: number,
-  partStore: Record<string, PartSolid>,
-): Record<string, Record<string, unknown>> {
-  const out: Record<string, Record<string, unknown>> = {}
-  if (!prevState || firstDirty <= 0) return out
-  const cleanFids = new Set(prevState.feature_order.slice(0, firstDirty))
-  const prevLastFid = prevState.feature_order[prevState.feature_order.length - 1]
-  if (prevLastFid == null) return out
-  const prevSnap = prevState.checkpoints[prevLastFid]?.bodies_snapshot as
-    | Record<string, Record<string, unknown>>
-    | undefined
-  if (!prevSnap) return out
-  for (const [bid, body] of Object.entries(partStore)) {
-    if (body.shape == null || !body.imported) continue
-    // Wholly produced within the clean prefix => geometry unchanged this solve.
-    if (!cleanFids.has(body.created_by)) continue
-    if (body.modified_by.some((fid) => !cleanFids.has(fid))) continue
-    const mesh = prevSnap[bid]
-    if (mesh && Object.keys(mesh).length) out[bid] = mesh
-  }
-  return out
-}
-
-// The same reuse for the PICK world (the body set before the edited feature).
-// Only the final feature's checkpoint stores a render mesh, so a pick boundary
-// anywhere else re-tessellated the whole document -- and it never self-healed,
-// because a clean-prefix checkpoint is carried over verbatim and keeps its empty
-// bodies_snapshot, so the cost repeated on every solve while the editor stayed
-// open. With a heavy STEP import behind the edit that was 25% of a full import
-// each time.
-//
-// `finalBodies` is the guard this wrapper exists for: the mesh on offer comes
-// from the previous solve's FINAL checkpoint, but a body can be clean at the
-// pick boundary and still be modified by a later clean-prefix feature, in which
-// case that mesh is the wrong shape for the pick world. `modified_by` only ever
-// appends and the pick-checkpoint history is a prefix of the final one, so equal
-// lengths is an exact "same shape in both worlds" test. A body the edited
-// feature deletes is absent from the live store and falls through to a real
-// tessellation -- correct, and it is one body rather than all of them.
-function reusePickPartMeshes(
-  prevState: BuildState | null | undefined,
-  firstDirty: number,
-  pickParts: Record<string, PartSolid>,
-  finalParts: Record<string, PartSolid>,
-): Record<string, Record<string, unknown>> {
-  const out: Record<string, Record<string, unknown>> = {}
-  for (const [bid, mesh] of Object.entries(reuseCleanImportedPartMeshes(prevState, firstDirty, pickParts))) {
-    const live = finalParts[bid]
-    if (!live || live.modified_by.length !== pickParts[bid].modified_by.length) continue
-    out[bid] = mesh
-  }
-  return out
 }
 
 // ─── Build orchestration ───
@@ -376,6 +283,11 @@ export function build(
     }
   }
 
+  // Which feature last changed each body's render inputs: the provenance the
+  // final mesh carries into the next build (kernel/builderMeshReuse.ts).
+  const changes = new PartChangeTracker()
+  changes.markRestored(partStore)
+
   const registeredPartIds = new Set(Object.keys(partStore))
 
   // Fids that own at least one shaped body, so `reconcileFeatureSolids` can exit in
@@ -481,6 +393,9 @@ export function build(
     // Before the snapshot and the registration below read the bodies, and
     // even after a failed solve: a solver can modify a body and then throw.
     deps.indexModifierDiffs?.(partStore)
+    // After the diffs are indexed: they rewrite `brep_new` and the owner maps,
+    // which the render reads.
+    changes.observe(fid, partStore)
 
     // A body the feature consumed (a boolean tool, a fused array source) is out of
     // the store but still fully registered: its faces stay live carrying the very
@@ -551,22 +466,26 @@ export function build(
 
   // The final feature's checkpoint owns the one render mesh we always keep (for
   // display + an end-of-stack pick). Every earlier checkpoint stays lazy: its
-  // bodies_snapshot is empty and the pick path tessellates it on demand.
+  // bodies_snapshot is empty and the pick path meshes it on demand, keeping the
+  // last pick world it meshed (`boundCheckpointMeshes`).
   const lastFid = features.length ? String(features[features.length - 1].id ?? '') : null
 
-  // On a fully-clean rebuild the final bodies are unchanged, so reuse the prior
-  // build's final render mesh instead of re-tessellating the whole document.
-  // Otherwise, still reuse the render mesh of any clean-prefix imported body
-  // (unchanged heavy STEP geometry) and tessellate only the remaining bodies.
-  const partsOut =
-    reuseFinalMeshOnCleanRebuild(options.prevState, features, firstDirty, partStore, lastFid)
-    ?? (() => {
-      const reused = reuseCleanImportedPartMeshes(options.prevState, firstDirty, partStore)
-      const toTessellate = Object.fromEntries(
-        Object.entries(partStore).filter(([bid]) => !(bid in reused)),
-      )
-      return { ...reused, ...deps.tessellateParts(toTessellate, globalRepo) }
-    })()
+  // Reuse the previous build's mesh for every body the tail left unchanged
+  // (the whole final mesh on a fully-clean rebuild) and tessellate the rest.
+  const featureFids = features.map((f) => String(f.id ?? ''))
+  const finalRender = renderFinalParts({
+    prevState: options.prevState,
+    featureFids,
+    firstDirty,
+    partStore,
+    tracker: changes,
+    tessellate: (store) => deps.tessellateParts(store, globalRepo),
+  })
+  const partsOut = finalRender.parts
+  if (options.verifyMeshReuse) {
+    verifyReusedMeshes('final', partsOut, finalRender.reused, partStore,
+      (store) => deps.tessellateParts(store, globalRepo))
+  }
 
   // Rebuild checkpoints for dirty features: attach the render mesh to the final one, and
   // register the B-rep ancestry of any body the solve loop did NOT already register into
@@ -620,6 +539,23 @@ export function build(
       repo_snapshot: snapshotWithBrepGeometry(checkpoint, cpMeta, needing),
       body_store_snapshot: checkpoint.body_store_snapshot,
       bodies_snapshot: partsSnapshot,
+      ...(isLast ? { mesh_stable_since: finalRender.stableSince } : {}),
+    }
+  }
+
+  // A fully-clean rebuild carries the final checkpoint over verbatim. It still
+  // has to end up with this build's mesh and provenance: a rollback can make a
+  // mesh-free checkpoint the final one.
+  if (lastFid != null && cleanPrefixFids.has(lastFid)) {
+    const cp = newCheckpoints[lastFid]
+    if (!(finalRender.wholeReuse && cp.mesh_stable_since)) {
+      newCheckpoints[lastFid] = {
+        ...cp,
+        bodies_snapshot: Object.fromEntries(
+          Object.keys(cp.body_store_snapshot).map((bid) => [bid, partsOut[bid] ?? {}]),
+        ),
+        mesh_stable_since: finalRender.stableSince,
+      }
     }
   }
 
@@ -630,7 +566,15 @@ export function build(
     checkpoints: newCheckpoints,
   }
 
+  // The pick world (the bodies before the edited feature). A checkpoint that
+  // already carries a mesh serves it directly: the final one, or the pick
+  // world an earlier solve stored on a checkpoint this build carried over
+  // (a re-solved checkpoint is a new, mesh-free object). Otherwise a body the
+  // final render proves unchanged since this boundary takes its final mesh, the
+  // rest is tessellated, and the result is stored on the checkpoint so the next
+  // solve with the editor still open does no OCC work for it.
   let pickPartsOut: Record<string, unknown> | undefined
+  let pickTargetFid: string | null = null
   const pickBoundary = options.pickBoundary
   if (pickBoundary != null && pickBoundary >= 0 && pickBoundary <= features.length) {
     if (pickBoundary === 0) {
@@ -640,19 +584,34 @@ export function build(
       // boundary, matching the unavailable-checkpoint contract below.
       pickPartsOut = {}
     } else {
-      const targetFid = String(features[pickBoundary - 1].id ?? '')
+      const targetFid = featureFids[pickBoundary - 1]
       const pickCheckpoint = newCheckpoints[targetFid] ?? options.prevState?.checkpoints[targetFid]
       if (pickCheckpoint) {
-        const snap = pickCheckpoint.bodies_snapshot
+        pickTargetFid = targetFid
+        const snap = pickCheckpoint.bodies_snapshot as Record<string, Record<string, unknown>>
+        const pickStore = pickCheckpoint.body_store_snapshot
         if (Object.keys(snap).length) {
           pickPartsOut = snap
+          // The final checkpoint's mesh is this build's render, verified above.
+          if (options.verifyMeshReuse && targetFid !== lastFid) {
+            const served = new Set(Object.keys(snap).filter((bid) => Object.keys(snap[bid] ?? {}).length))
+            verifyReusedMeshes('pick', snap, served, pickStore, (store) => deps.tessellateParts(store, null))
+          }
         } else {
-          const pickStore = pickCheckpoint.body_store_snapshot
-          const reused = reusePickPartMeshes(options.prevState, firstDirty, pickStore, partStore)
-          const toTessellate = Object.fromEntries(
-            Object.entries(pickStore).filter(([bid]) => !(bid in reused)),
-          )
-          pickPartsOut = { ...reused, ...deps.tessellateParts(toTessellate, null) }
+          const pick = renderPickParts({
+            pickStore,
+            final: finalRender,
+            fidIndex: new Map(featureFids.map((fid, i) => [fid, i])),
+            boundaryIndex: pickBoundary - 1,
+            tessellate: (store) => deps.tessellateParts(store, null),
+          })
+          pickPartsOut = pick.parts
+          if (options.verifyMeshReuse) {
+            verifyReusedMeshes('pick', pick.parts, pick.reused, pickStore, (store) => deps.tessellateParts(store, null))
+          }
+          if (targetFid in newCheckpoints && Object.keys(pick.parts).length) {
+            newCheckpoints[targetFid] = { ...newCheckpoints[targetFid], bodies_snapshot: pick.parts }
+          }
         }
       } else {
         // Checkpoint not found (e.g. prevState was null on first solve, or the
@@ -662,6 +621,7 @@ export function build(
       }
     }
   }
+  boundCheckpointMeshes(newCheckpoints, lastFid, pickTargetFid)
 
   // Builtin planes are always addressable in the result.
   Object.assign(result, BUILTIN_PLANE_RESULTS)

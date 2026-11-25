@@ -101,7 +101,8 @@ export async function describeRealFuzzShard(shard: number): Promise<void> {
         await new Promise(resolve => setImmediate(resolve))
 
         const result = await runFuzzSequence(generateSequence(seed, fuzzSteps), {
-          scheduler: createRealSolveScheduler({ trapCount: () => traps }),
+          // Every reused mesh is checked against a fresh tessellation.
+          scheduler: createRealSolveScheduler({ trapCount: () => traps, verifyMeshReuse: true }),
           // One macrotask per step: a 40-step seed of synchronous solves held
           // the loop past the 30 s stall limit under load.
           settle: yieldToEventLoop,

@@ -206,9 +206,8 @@ describe.skipIf(!hasOcc)('bodySplit: the shared helper', () => {
   })
 
   it('a split sibling carries the same modified_by history as the body it broke off', () => {
-    // An empty history would read as "untouched since created_by", and
-    // reuseCleanImportedBodyMeshes (builder.ts) would then serve a sibling of an
-    // imported body last solve's mesh while the splitting feature is dirty.
+    // An empty history would read as "untouched since created_by" to every
+    // reader of it (the render result's `modified_by`, face attribution).
     const r = rig()
     const part = seedBox(r, 'body_t', [0, 0, 0], 10)
     part.imported = true

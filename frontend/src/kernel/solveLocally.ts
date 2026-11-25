@@ -8,6 +8,7 @@
  */
 
 import { build, RESTORE_OWNER, type BuildDeps, type BuildResponse } from './builder'
+import { MeshReuseMismatchError } from './builderMeshReuse'
 import { featuresWithImportDigests, type ImportFeatureShape } from './importFileBytes'
 import { isDevBuild } from './isDevBuild'
 import { ExportSelectionError, extractErrorMessage, isKernelTrap, KernelFault } from './errors'
@@ -493,6 +494,8 @@ interface SolveLocalOptions {
   rollbackPosition?: number | null
   validate?: boolean
   bypassCache?: boolean
+  // Test-only parity oracle for reused meshes (BuildOptions.verifyMeshReuse).
+  verifyMeshReuse?: boolean
   // Import file bytes by registry id, resolved on the main thread. Kept off the
   // wire options so runtime buffers never ride in a structured-cloneable option.
   files?: ReadonlyMap<string, Uint8Array>
@@ -633,6 +636,7 @@ async function solveLocallyGuarded(
       prevState,
       pickBoundary: options.pickBoundary ?? null,
       rollbackPosition: options.rollbackPosition ?? null,
+      verifyMeshReuse: options.verifyMeshReuse === true,
     }, deps)
     // Remember the state (and the live handles it points at) for the next solve.
     lastBuildState = response._build_state
@@ -648,6 +652,11 @@ async function solveLocallyGuarded(
       // drops the module the allocations belong to.
       faulted = true
       recoverTrap(e)
+    } else if (e instanceof MeshReuseMismatchError) {
+      // build() already released the outgoing generation's tail before the
+      // oracle threw, so the kept state names freed handles. Start cold, or the
+      // mismatch is buried under "handle not live" errors on the next solve.
+      resetLocalSolveCache()
     }
     throw e
   } finally {

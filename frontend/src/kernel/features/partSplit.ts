@@ -353,11 +353,11 @@ export function registerSplitParts(
  *
  * `featureId` is the feature doing the splitting. A sibling MUST carry the same
  * `modified_by` history as the body it broke off, or it reads as untouched
- * since its `created_by`: `reuseCleanImportedBodyMeshes` (builder.ts) would
- * then hand a sibling of an imported body last solve's mesh even though the
- * splitting feature is dirty and just rebuilt it with different geometry.
- * Passing the id explicitly rather than trusting the caller to have pushed it
- * first is deliberate -- the leaves disagree on whether they push before or
+ * since its `created_by` to every reader of the history (the render result's
+ * `modified_by`, face attribution). Mesh reuse no longer trusts the history
+ * (builderMeshReuse.ts proves reuse by provenance), but it still checks it as
+ * a statement of what a clean body is. Passing the id explicitly rather than
+ * trusting the caller to have pushed it first is deliberate -- the leaves disagree on whether they push before or
  * after this call.
  *
  * `preferredFirst` is a sub-shape of `newShape` the caller knows by construction

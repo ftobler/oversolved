@@ -89,8 +89,10 @@ const RATCHETS: Ratchet[] = [
     // and its sub-def read, replacing two raw-record reads with the shipped shape.
     // 365: the move-face slab/sequential route was deleted; its `Dict` alias was
     // the one raw record the direct-only leaf no longer needs.
+    // 360: the builder's mesh-reuse helpers moved to kernel/builderMeshReuse.ts
+    // behind a named `MeshRecord` alias.
     token: 'Record<string, unknown>',
-    baseline: 365,
+    baseline: 360,
   },
 ]
 

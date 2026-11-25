@@ -213,13 +213,14 @@ describe.skipIf(!oc || !solveBytes)('rebuild tessellation count (real OCC + Rust
     expect(h2.renderCount - countAfterFirst).toBe(0)
   })
 
-  // Imported-body tessellation cache (feature `cache-imported-tessellation`).
-  // An imported STEP body carries heavy geometry whose tessellation is pure
-  // recomputation on every unrelated downstream edit. When the import feature
-  // sits in the clean prefix, its render mesh is reused from the previous solve
-  // rather than re-triangulated. The shape HANDLE cannot key this: the
-  // clean-prefix restore deep-copies each shape and mints a fresh handle every
-  // solve, so identity has to come from the clean-prefix determination itself.
+  // Clean-body tessellation cache, first written for imports (feature
+  // `cache-imported-tessellation`) and widened to every body by
+  // `mesh-reuse-clean-bodies`. An imported STEP body is the heavy case: its
+  // tessellation is pure recomputation on every unrelated downstream edit. When
+  // the tail leaves a body alone and its mesh's provenance is in the clean prefix
+  // (kernel/builderMeshReuse.ts), last solve's mesh is reused. The handle cannot
+  // key this across solves (the restore mints a fresh copy each time); within a
+  // build it proves the tail did not touch the body.
   // Import a STEP box (body_imp1) plus an independent native box (body_ex1) via
   // `operation: 'new'`, so the two bodies never fuse and the import stays clean
   // when only the native box is edited. The harness seeds imp1's bytes for every
@@ -319,14 +320,12 @@ describe.skipIf(!oc || !solveBytes)('rebuild tessellation count (real OCC + Rust
   })
 
   // The pick world (the body set BEFORE the edited feature) is served from the
-  // pick checkpoint's own bodies_snapshot -- but only the LAST feature's
-  // checkpoint ever stores a render mesh, so a pick boundary anywhere else used
-  // to re-tessellate the whole document. With a heavy STEP import behind the
-  // edit that was 25% of a full import, on EVERY solve while the editor is open
-  // (a clean-prefix checkpoint is carried over verbatim, so its empty snapshot
-  // never fills in). An imported body clean at both the pick boundary and the
-  // final checkpoint is byte-identical in both worlds, so last solve's mesh is
-  // exact for the pick world too.
+  // pick checkpoint's own bodies_snapshot. Only the final checkpoint used to
+  // store a mesh, so a pick boundary anywhere else re-tessellated the whole
+  // document on EVERY solve while the editor was open; with a heavy STEP import
+  // behind the edit that was 25% of a full import. Now a body whose final mesh
+  // provenance reaches back to the boundary takes that mesh, and the pick world
+  // is kept on its checkpoint for the next solve.
   describe('pick_boundary mesh reuse', () => {
     it('does not re-tessellate a clean imported body for the pick world', () => {
       const h = new CountingHarness()
@@ -352,6 +351,30 @@ describe.skipIf(!oc || !solveBytes)('rebuild tessellation count (real OCC + Rust
       const r2 = h.run(doc, { prevState: r1._build_state, pickBoundary: 4 })
       const picked = (r2.pick_bodies as Record<string, Record<string, unknown>>)['body_imp1']
       expect(picked.mesh).toEqual(fresh)
+    })
+
+    it('an open editor re-renders only the edited body and never the pick world again', () => {
+      // Editing ex2 (boundary 4, pick checkpoint sk2): the first editor solve
+      // meshes nothing new for the pick world (every body there is final-stable),
+      // and each value change after it renders body_ex2 alone.
+      const h = new CountingHarness()
+      const doc = (d: number) => {
+        const features = importPlusTwoNativeDoc().features
+        ;(features[4] as Record<string, unknown>).distance = d
+        return { features }
+      }
+      let prev = h.run(doc(4))._build_state
+      h.rendered = []
+      const r1 = h.run(doc(4), { prevState: prev, pickBoundary: 4 })
+      expect(h.rendered).toEqual([])
+      prev = r1._build_state
+      for (const d of [5, 6, 7]) {
+        h.rendered = []
+        const r = h.run(doc(d), { prevState: prev, pickBoundary: 4 })
+        expect(h.rendered).toEqual(['body_ex2'])
+        expect(r.pick_bodies).toBe(r1.pick_bodies)
+        prev = r._build_state
+      }
     })
 
     it('re-tessellates for the pick world when the import itself is dirty', () => {

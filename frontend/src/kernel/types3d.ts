@@ -129,7 +129,14 @@ export interface FeatureCheckpoint {
   result: Record<string, unknown>
   repo_snapshot: Record<string, unknown>
   body_store_snapshot: Record<string, PartSolid>
+  /** The render mesh of `body_store_snapshot`, or `{}`. The final checkpoint
+   *  always carries one; at most one other (the last pick world) may too. */
   bodies_snapshot: Record<string, unknown>
+  /** Final checkpoint only: per body, the feature since whose checkpoint the
+   *  body's geometry and naming stayed unchanged through the end of the build
+   *  (kernel/builderMeshReuse.ts). The next build reuses a body's mesh when this
+   *  feature is still in its clean prefix and the tail left the body alone. */
+  mesh_stable_since?: Record<string, string>
 }
 
 /** Checkpoint cache passed from one build() call to the next. It is the

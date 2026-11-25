@@ -17,8 +17,13 @@ import { solveLocally } from '@/kernel/solveLocally'
 // far. A trap is retried on a fresh module and the retry usually passes, which
 // leaves no trace in the response; a solve during which the count moved is
 // reported as an error anyway, because the trap itself is the kernel bug.
+//
+// `verifyMeshReuse` turns on the builder's parity oracle: every body whose mesh
+// a solve reused from an earlier one is tessellated afresh and compared, and a
+// difference fails the solve (kernel/builderMeshReuse.ts).
 export interface RealSolveSchedulerOptions {
   trapCount?: () => number
+  verifyMeshReuse?: boolean
 }
 
 export function createRealSolveScheduler(options: RealSolveSchedulerOptions = {}): SolveScheduler<PartDoc> {
@@ -38,6 +43,7 @@ export function createRealSolveScheduler(options: RealSolveSchedulerOptions = {}
         const response = await solveLocally(doc as unknown as Record<string, unknown>, {
           bypassCache: opts?.bypassCache,
           validate: opts?.validate,
+          verifyMeshReuse: options.verifyMeshReuse,
         })
         // The real suite is gated on OCC being loaded; a null here means the
         // loader got torn down mid-run, which is a test bug, not a solve.

@@ -29,8 +29,10 @@ import { shardCount, shardSeeds } from './actionMatrixShards'
 const baselineRows = toBaselineRows((baselineFile as MatrixBaselineFile).rows)
 const storedSweep = (baselineFile as MatrixBaselineFile).sweep
 
+// The parity oracle is on: a reused mesh that differs from a fresh tessellation
+// fails that command's solve, which moves its row off the baseline.
 function realSolver(): MatrixSolver {
-  return { scheduler: createRealSolveScheduler(), settle: () => undefined }
+  return { scheduler: createRealSolveScheduler({ verifyMeshReuse: true }), settle: () => undefined }
 }
 
 function smokeDocs(): CorpusDoc[] {
