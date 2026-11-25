@@ -404,6 +404,29 @@ describe('sketchEditorStore', () => {
       setSketchCallback('checkRedundantAdd', null)
     })
 
+    it('a stale typed value cannot be written after the toggle turns driven', () => {
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      setSketchCallback('checkRedundantAdd', () => false)
+      setSketchCallback('getSketch', () => ({
+        L1: { start: [0, 0], end: [10, 0] },
+      } as never))
+      useEditorState.setState({
+        dimensionPicks: [{ isVertex: false, target: 'entity:S1:L1', entityKind: 'line' }],
+      })
+      useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
+
+      const dialog = useSketchUiStore.getState().pendingDialog!
+      dialog.toggle!.onChange!(true)
+      handler.mockClear()
+      // The DOM box is reset by the dialog, but a stale confirm must be inert
+      // even when it arrives directly through the port.
+      dialog.onConfirm('25')
+      expect(handler).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'set_constraint_value' }))
+      setSketchCallback('getSketch', null)
+      setSketchCallback('checkRedundantAdd', null)
+    })
+
     it('hands the gate the label pos the placement collected, and inserts on a false answer', () => {
       const handler = vi.fn()
       setSketchCallback('onMutation', handler)

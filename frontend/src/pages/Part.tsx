@@ -1,16 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import type { ViewportHandle } from '@/components/Viewport'
-import type { PartDoc, PartFeature, Mutation, Sketch, SketchFeature, LengthUnit } from '@/types/cad'
+import type { PartDoc, PartFeature, Mutation, Sketch, LengthUnit } from '@/types/cad'
 import { randomId } from '@/utils/yamlMutations'
 import { isWholePartSelectionId, parseTopoFallbackQuery, stripSelectionWrapper } from '@/utils/query/selectionId'
 import { parseQuery } from '@/utils/query'
 import { selectionSourceFeatureIds } from '@/utils/query/pickOrder'
 import { isFaceRestriction } from '@/kernel/occ/primitives'
 import { findEdgeKindForQuery } from '@/picking/partDispatchCallbacks'
-import { classifyPendingAdd, redundantWithoutConstraint } from '@/kernel/features/constraintProbe'
+import { classifyPendingAdd, redundantWithoutConstraint, decideUnDrive } from '@/kernel/features/constraintProbe'
 import { isDrivableConstraintKind } from '@/registry/constraintRegistry'
-import { overconstrainReason } from '@/utils/core/constraintRefusals'
+import { displayedDimensionValue } from '@/utils/geometry/dimensionMeasure'
 import { CANNOT_APPLY_TITLE } from '@/utils/core/applyTitles'
 import { variableRenameProblem, variableNameInput } from '@/kernel/features/variable'
 import { PROJECTION_NOT_FROZEN_TITLE, projectionNotFrozenMessage } from '@/kernel/features/projectionMembers'
@@ -1660,20 +1660,20 @@ export default function Part() {
         setContextMenu(null)
       },
       onToggleConstraintDriven: (featureId, constraintId, driven) => {
-        if (!driven && checkConstraintDriven(featureId, constraintId)) {
-          const row = features.find(f => f.id === featureId)?.kind === 'sketch'
-            ? (features.find(f => f.id === featureId) as SketchFeature).constraints?.find(c => c.id === constraintId)
-            : undefined
-          showMessage({
-            title: CANNOT_APPLY_TITLE,
-            message: overconstrainReason(row?.kind ?? 'dimension'),
-            variant: 'error',
-          })
-          setContextMenu(null)
-          return
+        if (!driven) {
+          const decision = decideUnDrive(docRef.current, featureId, constraintId,
+            resolvedKindsOfSketch(solveResults?.[featureId]?.solved))
+          if (!decision.allowed) {
+            showMessage({ title: CANNOT_APPLY_TITLE, message: decision.reason!, variant: 'error' })
+            setContextMenu(null)
+            return
+          }
         }
+        // The applier reads the number the label shows and converts an angle
+        // back to theta against its stored pos. Passing raw theta here would
+        // double-convert a supplement-wedge angle and move the label.
         const render = solveResults[featureId]?.constraints?.[constraintId]?.render
-        const value = render && 'value' in render && typeof render.value === 'number' ? render.value : undefined
+        const value = render === undefined ? undefined : displayedDimensionValue(render) ?? undefined
         handleMutation({
           type: 'set_constraint_driven', featureId, constraintId, driven,
           ...(value !== undefined && { value }),
@@ -1686,7 +1686,7 @@ export default function Part() {
   }, [handleRebuild, handleRemoveDanglingContent, toggleVisibility, toggleSuppression, handleExitSketch, handleDeleteFeature,
     handleAddFeature, handleAlignCameraToSketchPlane, handleNormalToPlane, handleNewSketchOnPlane,
     features, visibleFeaturesWithEdit, activeSketchFeatureId, partLabels, hasDanglingContent, bodies,
-    effectiveVisibleParts, viewportRef, handleSetPartColorPopover, handleMutation, checkConstraintDriven, showMessage, solveResults])
+    effectiveVisibleParts, viewportRef, handleSetPartColorPopover, handleMutation, showMessage, solveResults, docRef])
 
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {

@@ -123,6 +123,34 @@ describe('useDimInteraction click / double-click', () => {
     expect(dialog?.position).toEqual([5, 6])
   })
 
+  it('a dimension the probe says must stay driven opens with a locked toggle', () => {
+    // The edit dialog asks the same probe as the context menu. A true answer
+    // presets the switch on, locks it and makes the measured box read-only;
+    // confirming banks the switch as one set_constraint_driven mutation.
+    const onMutation = vi.fn()
+    setSketchCallback('onMutation', onMutation)
+    setSketchCallback('checkConstraintDriven', () => true)
+    try {
+      const { result } = renderHook(() => useDimInteraction('c1', 10, INTERACTION))
+      act(() => result.current.onDoubleClick({ stopPropagation: vi.fn(), clientX: 0, clientY: 0 }))
+      const dialog = useSketchUiStore.getState().pendingDialog!
+      expect(dialog.toggle).toMatchObject({
+        label: 'Driven', value: true, locked: true,
+        hint: 'Already set by the existing constraints; this dimension can only measure.',
+      })
+      expect(dialog.defaultValue).toBe('10')
+      onMutation.mockClear()
+      act(() => dialog.onConfirm('10'))
+      expect(onMutation).toHaveBeenCalledTimes(1)
+      expect(onMutation).toHaveBeenCalledWith({
+        type: 'set_constraint_driven', featureId: 'S1', constraintId: 'c1', driven: true, value: 10,
+      })
+    } finally {
+      setSketchCallback('checkConstraintDriven', null)
+      setSketchCallback('onMutation', null)
+    }
+  })
+
   it('validate rejects non-numeric input and non-positive values when validatePositive', () => {
     const { result } = renderHook(() => useDimInteraction('c1', 10, INTERACTION, true))
     act(() => result.current.onDoubleClick({ stopPropagation: vi.fn(), clientX: 0, clientY: 0 }))

@@ -18,6 +18,7 @@ import { duplicateConstraintOf } from '@/utils/constraintProblems'
 import type { ProjectionMemberEntity } from './projectionMembers'
 import { probeRedundantConstraint } from './sketch'
 import { emitWire, local } from '@/kernel/query'
+import { overconstrainReason } from '@/utils/core/constraintRefusals'
 
 /** One `add_projected_entity` the pending add depends on. The constraint
  *  command plans the projection before the probe runs, so the probe applies it
@@ -177,7 +178,10 @@ export function redundantWithoutConstraint(
   const feature = (doc?.features ?? []).find(f => f.id === featureId)
   if (doc === null || feature?.kind !== 'sketch') return false
   const c = (feature.constraints ?? []).find(row => row.id === constraintId)
-  if (!c || c.driven === true) return false
+  // A driven row is exactly who asks this question: un-driving it would add the
+  // row back as a driver, so its own flag must not short-circuit the probe. The
+  // row is removed from the copy below before the add is classified.
+  if (!c) return false
   const targets = storedConstraintTargets(c)
   if (targets.length === 0) return false
   const probeDoc: PartDoc = {
@@ -192,4 +196,27 @@ export function redundantWithoutConstraint(
     ...(c.pos && { pos: c.pos }),
     ...(c.sign !== undefined && { sign: c.sign }),
   }, resolvedKinds, derivedMembers) === 'redundant'
+}
+
+/**
+ * The context-menu gate for turning a reference dimension back into a driver.
+ * A redundant un-drive is refused with the same sentence the placement gate
+ * uses; everything else is allowed. Both the menu and the probe live here so a
+ * caller cannot skip the question by reading the row's `driven` flag.
+ */
+export function decideUnDrive(
+  doc: PartDoc | null,
+  featureId: string,
+  constraintId: string,
+  resolvedKinds?: Readonly<Record<string, string>>,
+  derivedMembers?: readonly ProjectionMemberEntity[],
+): { allowed: boolean; reason?: string } {
+  if (!redundantWithoutConstraint(doc, featureId, constraintId, resolvedKinds, derivedMembers)) {
+    return { allowed: true }
+  }
+  const feature = (doc?.features ?? []).find(f => f.id === featureId)
+  const c = feature?.kind === 'sketch'
+    ? (feature.constraints ?? []).find(row => row.id === constraintId)
+    : undefined
+  return { allowed: false, reason: overconstrainReason(c?.kind ?? 'dimension') }
 }

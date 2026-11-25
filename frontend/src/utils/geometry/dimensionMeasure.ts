@@ -6,6 +6,7 @@
 import type {
   ConstraintRender, DimLinearRender, DimRadiusRender, DimDiameterRender, DimAngleRender,
 } from '@/types/cad'
+import { computeAngleDimension } from '@/utils/geometry/angleDimensionLogic'
 
 const DEG = 180 / Math.PI
 
@@ -28,4 +29,21 @@ export function dimensionValueFromRender(render: ConstraintRender): number | nul
     return Number.isFinite(value) ? value : null
   }
   return null
+}
+
+/**
+ * The number the label shows for a solved dimension render. All kinds show the
+ * render value except an angle in a supplement wedge, which shows 180 - theta.
+ * A caller that hands this number to `set_constraint_driven` or a value editor
+ * can safe round-trip it through `angleStoredValue`; passing raw theta there
+ * would store the supplement and move the label.
+ */
+export function displayedDimensionValue(render: ConstraintRender): number | null {
+  if (!('value' in render) || typeof render.value !== 'number') return null
+  if (render.kind === 'dim_angle') {
+    const r = render as DimAngleRender
+    const { isSupplement } = computeAngleDimension(r.p1, r.p2, r.p3, r.p4, r.pos)
+    return isSupplement ? 180 - r.value : r.value
+  }
+  return render.value
 }

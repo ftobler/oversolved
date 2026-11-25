@@ -7,7 +7,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import type { PartDoc, SketchFeature } from '@/types/cad'
 import { solveSketch, setSketchSolver, resetSketchSolver } from '../sketch'
-import { redundantWithoutConstraint } from '../constraintProbe'
+import { redundantWithoutConstraint, decideUnDrive } from '../constraintProbe'
 import { overconstrainReason } from '@/utils/core/constraintRefusals'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { initGlobalRepo } from '@/kernel/query'
@@ -88,6 +88,25 @@ describe.skipIf(!solveBytes)('driven reference dimensions', () => {
     expect(overconstrainReason('point_distance')).toBe(
       'This would overconstrain the sketch: the point distance is already implied by the existing constraints.',
     )
+  })
+
+  it('the un-drive probe still sees a driven row as redundant', () => {
+    // The row is removed from the probe copy before classification, so its own
+    // `driven` flag must not skip the question. Both edit and context-menu gates
+    // ask this to decide whether the dimension must stay driven.
+    setSketchSolver(solveBytes!)
+    const feature = rect(10, [diagonal('c_diag', true)])
+    const doc = { kind: 'part', features: [feature] } as unknown as PartDoc
+    expect(redundantWithoutConstraint(doc, 'sk1', 'c_diag')).toBe(true)
+  })
+
+  it('the context-menu un-drive of a driven row is refused with the overconstrain reason', () => {
+    setSketchSolver(solveBytes!)
+    const feature = rect(10, [diagonal('c_diag', true)])
+    const doc = { kind: 'part', features: [feature] } as unknown as PartDoc
+    const decision = decideUnDrive(doc, 'sk1', 'c_diag')
+    expect(decision.allowed).toBe(false)
+    expect(decision.reason).toMatch(/would overconstrain the sketch.*point distance/)
   })
 
   it('a driven row is not flagged even when its stored value is stale', () => {

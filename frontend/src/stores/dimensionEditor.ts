@@ -101,6 +101,10 @@ export function openDimensionEditor(opts: DimensionEditorOptions): void {
       ? dimensionValueRule(kind)
       : positive
   const defaultValue = opts.value === null ? undefined : formatDimensionInput(opts.value)
+  // The switch can move between open and confirm. Keep its current role here so
+  // a stale value left in the read-only box cannot be written onto a dimension
+  // that now only measures.
+  let isDriven = opts.driven === true
   const dialog: DialogState = {
     position: opts.clientPos,
     label: opts.label,
@@ -116,7 +120,7 @@ export function openDimensionEditor(opts: DimensionEditorOptions): void {
       // already inserted the measured value, so the confirm is only the commit;
       // an edit of a rounded label would otherwise write the rounding back and
       // move a satisfied dimension.
-      if (input !== defaultValue) {
+      if (!isDriven && input !== defaultValue) {
         const scope = expressionScope(opts.featureId)
         const edited = evalExpr(input, scope?.context ?? {})
         getSketchCallback('onMutation')?.({
@@ -134,7 +138,10 @@ export function openDimensionEditor(opts: DimensionEditorOptions): void {
             value: opts.driven ?? false,
             locked: opts.drivenLockHint !== undefined,
             hint: opts.drivenLockHint,
-            onChange: opts.onDrivenChange,
+            onChange: (value) => {
+              isDriven = value
+              return opts.onDrivenChange?.(value)
+            },
           },
         }
       : {}),

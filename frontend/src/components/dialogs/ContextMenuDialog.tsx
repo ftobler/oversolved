@@ -112,7 +112,10 @@ export default function ContextMenuDialog() {
     // A read-only box shows a measurement, not an authored value: there is
     // nothing to validate, and a measured zero (an angle) is legal.
     if (readOnly) {
-      dialog.onConfirm(value)
+      // The box shows a measurement, never what the user typed before the switch
+      // flipped. Confirmed against the exact default, an unchanged accept cannot
+      // write a stale value onto the driven row.
+      dialog.onConfirm(dialog.defaultValue ?? value)
       closeDialog()
       return
     }
@@ -177,6 +180,12 @@ export default function ContextMenuDialog() {
               // A refused un-drive leaves the switch where it was: the value
               // box stays read-only and the user sees why through the message.
               if (dialog.toggle!.onChange?.(next) === false) return
+              if (next && inputRef.current && dialog.defaultValue !== undefined) {
+                // Turning on a reference discards a typed value: the box now
+                // shows the measurement again.
+                inputRef.current.value = dialog.defaultValue
+                if (error) setError(null)
+              }
               setToggleValue(next)
             }}
           />

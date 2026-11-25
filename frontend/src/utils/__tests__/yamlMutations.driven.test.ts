@@ -7,6 +7,9 @@ import { redundantWithoutConstraint } from '@/kernel/features/constraintProbe'
 import { overconstrainReason } from '@/utils/core/constraintRefusals'
 import { setSketchSolver, resetSketchSolver } from '@/kernel/features/sketch'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
+import { displayedDimensionValue } from '@/utils/geometry/dimensionMeasure'
+import { computeAngleDimension } from '@/utils/geometry/angleDimensionLogic'
+import type { DimAngleRender } from '@/types/cad'
 
 const solveBytes = loadSolver()
 
@@ -63,6 +66,46 @@ describe('driven dimension mutations', () => {
     })
     expect(row(d)?.driven).toBeUndefined()
     expect(row(d)?.value).toBe(12.5)
+  })
+
+  it('an un-drive writes the displayed supplement, not raw theta', () => {
+    // The context menu reads the solved render. An angle in a supplement wedge
+    // shows 180 - theta; the applier converts that back to theta against the
+    // stored pos. Passing raw theta would store the supplement and move it.
+    const p1: [number, number] = [0, 0]
+    const p2: [number, number] = [10, 0]
+    const p3: [number, number] = [0, 0]
+    const p4: [number, number] = [5, 5 * Math.tan(Math.PI / 3)]
+    const theta = 60
+    const pos: [number, number] = [3 * Math.cos(2 * Math.PI / 3), 3 * Math.sin(2 * Math.PI / 3)]
+    expect(computeAngleDimension(p1, p2, p3, p4, pos).isSupplement).toBe(true)
+    const render: DimAngleRender = { kind: 'dim_angle', p1, p2, p3, p4, value: theta, pos }
+    expect(displayedDimensionValue(render)).toBeCloseTo(120, 6)
+
+    const d = {
+      version: 1,
+      kind: 'part',
+      features: [{
+        id: 'sk1', kind: 'sketch',
+        entities: [{ id: 'l1', kind: 'line' }, { id: 'l2', kind: 'line' }],
+        initial: { l1: p1.concat(p2), l2: p3.concat(p4) },
+        constraints: [],
+      }],
+    } as unknown as PartDoc
+    mutationHandlers.add_constraint(d, {
+      type: 'add_constraint', featureId: 'sk1', kind: 'angle',
+      targets: ['entity:sk1:l1', 'entity:sk1:l2'], value: displayedDimensionValue(render)!, pos,
+    })
+    mutationHandlers.set_constraint_driven(d, {
+      type: 'set_constraint_driven', featureId: 'sk1',
+      constraintId: ((d.features?.[0] as { constraints?: Array<{ id: string; kind: string }> })?.constraints ?? [])
+        .find(c => c.kind === 'angle')!.id,
+      driven: false,
+      value: displayedDimensionValue(render)!,
+    })
+    const angle = ((d.features?.[0] as { constraints?: Array<{ kind: string; value?: number }> })?.constraints ?? [])
+      .find(c => c.kind === 'angle')!
+    expect(angle.value).toBeCloseTo(theta, 6)
   })
 
   it('set_constraint_driven refuses a non-dimension row by name', () => {

@@ -124,6 +124,29 @@ describe('ContextMenuDialog validation', () => {
     expect((screen.getByRole('textbox') as HTMLInputElement).readOnly).toBe(true)
   })
 
+  it('turning the toggle on restores the measured value after a typed edit', () => {
+    const onConfirm = vi.fn()
+    useSketchUiStore.setState({
+      pendingDialog: {
+        position: [0, 0],
+        label: 'dimension',
+        defaultValue: '10',
+        quantity: 'length',
+        onConfirm,
+        toggle: { label: 'Driven', value: false, onChange: () => true },
+      },
+    })
+    render(<ContextMenuDialog />)
+
+    const input = screen.getByRole('textbox') as HTMLInputElement
+    fireEvent.change(input, { target: { value: '25' } })
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Driven' }))
+
+    expect((screen.getByRole('textbox') as HTMLInputElement).value).toBe('10')
+    fireEvent.click(screen.getByRole('button', { name: 'OK' }))
+    expect(onConfirm).toHaveBeenCalledWith('10')
+  })
+
   it('a locked driven toggle cannot be changed and its value box is read-only', () => {
     const onChange = vi.fn()
     useSketchUiStore.setState({
