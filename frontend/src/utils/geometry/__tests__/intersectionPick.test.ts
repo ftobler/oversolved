@@ -54,6 +54,39 @@ describe('sketchToIntersectionCandidates', () => {
   it('returns nothing without topology', () => {
     expect(sketchToIntersectionCandidates(makeSketch(), undefined, FEATURE, 'active_sketch')).toHaveLength(0)
   })
+
+  it('offers a spline/line crossing with both curve ids in the handle', () => {
+    const sketch: Sketch = {
+      ln: { start: [5, -10], end: [5, 10] } as Sketch[string],
+      sp: { p1: [0, 0], p2: [10 / 3, 0], p3: [20 / 3, 0], p4: [10, 0] } as Sketch[string],
+    }
+    const cands = sketchToIntersectionCandidates(sketch, topo({ a: { x: 5, y: 0 } }), FEATURE, 'active_sketch')
+    expect(cands).toHaveLength(1)
+    expect(cands[0].id).toContain('ln')
+    expect(cands[0].id).toContain('sp')
+  })
+
+  it('offers a fit-spline/line crossing with both curve ids in the handle', () => {
+    const sketch: Sketch = {
+      ln: { start: [5, -10], end: [5, 10] } as Sketch[string],
+      fit: { points: [[0, 0], [10, 0]] } as Sketch[string],
+    }
+    const cands = sketchToIntersectionCandidates(sketch, topo({ a: { x: 5, y: 0 } }), FEATURE, 'active_sketch')
+    expect(cands).toHaveLength(1)
+    expect(cands[0].id).toContain('ln')
+    expect(cands[0].id).toContain('fit')
+  })
+
+  it('offers an ellipse/line crossing with both curve ids in the handle', () => {
+    const sketch: Sketch = {
+      ln: { start: [-10, 0], end: [10, 0] } as Sketch[string],
+      ell: { center: [0, 0], a: 5, b: 3, theta: 0 } as Sketch[string],
+    }
+    const cands = sketchToIntersectionCandidates(sketch, topo({ a: { x: 5, y: 0 } }), FEATURE, 'active_sketch')
+    expect(cands).toHaveLength(1)
+    expect(cands[0].id).toContain('ln')
+    expect(cands[0].id).toContain('ell')
+  })
 })
 
 describe('reconcileMaterializedContacts (slice 4: topology leans on the materialized point)', () => {

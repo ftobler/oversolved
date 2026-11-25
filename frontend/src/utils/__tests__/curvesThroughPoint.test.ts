@@ -61,3 +61,57 @@ describe('curvesThroughPoint', () => {
     expect(curvesThroughPoint(arc, [-5, 0], 1e-6)).toEqual(['arc1'])
   })
 })
+
+describe('curvesThroughPoint conic and Bezier loci', () => {
+  // A straight cubic Bezier from (0,0) to (10,0): with both controls on the
+  // chord B(t) stays on the x axis, crossing the vertical line x=5 at (5,0).
+  const straight: Sketch = {
+    sp: { p1: [0, 0], p2: [10 / 3, 0], p3: [20 / 3, 0], p4: [10, 0] } as Sketch[string],
+    ln: { start: [5, -10], end: [5, 10] } as Sketch[string],
+  }
+
+  it('attributes a spline and a line at their crossing', () => {
+    expect(curvesThroughPoint(straight, [5, 0], 1e-6).sort()).toEqual(['ln', 'sp'])
+  })
+
+  it('keeps the line but drops the spline for a point off the spline locus', () => {
+    // (5,1) is on the vertical line, one unit above the Bezier.
+    expect(curvesThroughPoint(straight, [5, 1], 1e-6)).toEqual(['ln'])
+  })
+
+  it('drops the spline past its end', () => {
+    // The spline stops at x=10; a second horizontal line runs through (11,0)
+    // so the result isolates the spline's refusal beyond its end.
+    const sketch: Sketch = {
+      sp: straight.sp,
+      axis: { start: [0, 0], end: [20, 0] } as Sketch[string],
+    }
+    expect(curvesThroughPoint(sketch, [11, 0], 1e-6)).toEqual(['axis'])
+  })
+
+  it('attributes a fit spline and a line at their crossing', () => {
+    const sketch: Sketch = {
+      fit: { points: [[0, 0], [10, 0]] } as Sketch[string],
+      ln: { start: [5, -10], end: [5, 10] } as Sketch[string],
+    }
+    expect(curvesThroughPoint(sketch, [5, 0], 1e-6).sort()).toEqual(['fit', 'ln'])
+    expect(curvesThroughPoint(sketch, [5, 1], 1e-6)).toEqual(['ln'])
+  })
+
+  it('treats a degenerate fit spline as no curve without throwing', () => {
+    // Coincident fit points are refused by interpolation; membership must treat
+    // that the same way fitSplinePolyline falls back to no curve.
+    const sketch: Sketch = { bad: { points: [[2, 2], [2, 2]] } as Sketch[string] }
+    expect(curvesThroughPoint(sketch, [2, 2], 1e-6)).toEqual([])
+  })
+
+  it('attributes a rotated ellipse only at a point on its locus', () => {
+    const sketch: Sketch = {
+      ell: { center: [0, 0], a: 5, b: 3, theta: 30 } as Sketch[string],
+    }
+    // Rotate the major vertex (u=5, v=0) into world coordinates.
+    const on: [number, number] = [5 * Math.cos(Math.PI / 6), 5 * Math.sin(Math.PI / 6)]
+    expect(curvesThroughPoint(sketch, on, 1e-6)).toEqual(['ell'])
+    expect(curvesThroughPoint(sketch, [0, 0], 1e-6)).toEqual([])  // centre is inside
+  })
+})
