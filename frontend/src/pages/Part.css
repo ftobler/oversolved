@@ -1367,6 +1367,23 @@
   outline: 1px solid #1e3a4a;
 }
 
+/* An edited row reads as editing, not selected: the selected outline is the
+   thin blue line that followed the subject into the editor. Both rules sit
+   after the selected ones; the related companion keeps the win when a row is
+   related at the same time. Shared by the part editor and the assembly tree. */
+.feature-item.editing,
+.feature-item.editing.related {
+  outline: none;
+}
+
+/* A pointer click focuses a row without asking for a focus ring. A selected
+   row already carries its own outline, so exclude it here: the click that
+   selects it must not hide the selection mark. Keyboard focus is
+   :focus-visible and keeps its browser indicator. */
+.feature-item:not(.selected):focus:not(:focus-visible) {
+  outline: none;
+}
+
 /* A part row is marked by the same rules, so it uses the same tint-only hint.
    These sit after the `.document-panel` row overrides above: with equal
    specificity the companion below keeps a selected-and-related row reading as

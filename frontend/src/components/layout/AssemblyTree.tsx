@@ -272,7 +272,13 @@ export function AssemblyTree({
               }}
             >
               <div className="feature-item-title" style={{ paddingLeft: `${8 + Math.max(0, child.depth - 1) * 14}px` }}>
-                {expandable ? (
+                {child.kind === 'assembly'
+                  ? <span className="material-icons feature-icon subassembly-node-icon" aria-hidden="true">account_tree</span>
+                  : <img className="feature-icon" src={featurePartIcon} alt="" />}
+                <span className={`feature-name${child.failed ? ' failed' : ''}`}>{child.label}</span>
+                {/* The disclosure follows the name so the icon column stays
+                    fixed; the indent lives in the title's padding. */}
+                {expandable && (
                   <button
                     type="button"
                     className="subassembly-chevron"
@@ -283,13 +289,7 @@ export function AssemblyTree({
                   >
                     <span className="material-icons">{expanded.has(child.key) ? 'expand_more' : 'chevron_right'}</span>
                   </button>
-                ) : (
-                  <span className="subassembly-chevron-spacer" aria-hidden="true" />
                 )}
-                {child.kind === 'assembly'
-                  ? <span className="material-icons feature-icon subassembly-node-icon" aria-hidden="true">account_tree</span>
-                  : <img className="feature-icon" src={featurePartIcon} alt="" />}
-                <span className={`feature-name${child.failed ? ' failed' : ''}`}>{child.label}</span>
                 <div className="feature-item-actions">
                   <button
                     type="button"
@@ -448,20 +448,6 @@ export function AssemblyTree({
                 }}
               >
                 <div className="feature-item-title">
-                  {node?.children.length ? (
-                    <button
-                      type="button"
-                      className="subassembly-chevron"
-                      onClick={(e) => { e.stopPropagation(); toggleExpanded(node.key) }}
-                      aria-label={`${expanded.has(node.key) ? 'Collapse' : 'Expand'} ${label}`}
-                      aria-expanded={expanded.has(node.key)}
-                      title={expanded.has(node.key) ? 'Collapse' : 'Expand'}
-                    >
-                      <span className="material-icons">{expanded.has(node.key) ? 'expand_more' : 'chevron_right'}</span>
-                    </button>
-                  ) : (
-                    <span className="subassembly-chevron-spacer" aria-hidden="true" />
-                  )}
                   {isAssembly
                     ? <span className="material-icons feature-icon subassembly-node-icon" aria-hidden="true">account_tree</span>
                     : <img className="feature-icon" src={featurePartIcon} alt="" />}
@@ -476,6 +462,20 @@ export function AssemblyTree({
                       alt="Fixed"
                       title="Fixed"
                     />
+                  )}
+                  {/* The disclosure follows the name: a leaf row has no empty
+                      slot, so its icon shares the builtin and mate left edge. */}
+                  {!!node?.children.length && (
+                    <button
+                      type="button"
+                      className="subassembly-chevron"
+                      onClick={(e) => { e.stopPropagation(); toggleExpanded(node.key) }}
+                      aria-label={`${expanded.has(node.key) ? 'Collapse' : 'Expand'} ${label}`}
+                      aria-expanded={expanded.has(node.key)}
+                      title={expanded.has(node.key) ? 'Collapse' : 'Expand'}
+                    >
+                      <span className="material-icons">{expanded.has(node.key) ? 'expand_more' : 'chevron_right'}</span>
+                    </button>
                   )}
                   {/* Row actions are not selections: without stopPropagation the
                       row's onClick would re-select the part these buttons just
