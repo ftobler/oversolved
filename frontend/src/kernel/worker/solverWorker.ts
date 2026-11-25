@@ -19,7 +19,8 @@ import { solveLocally, exportLocally, exportAssemblyLocally, setOccLoader, prelo
 import type { WarmUpState } from '../occ/warmUp'
 import { loadSolverWasm } from '../../wasm-kernel/solverWasm'
 import { isDevBuild } from '../isDevBuild'
-import { extractErrorMessage } from '../errors'
+import { extractErrorMessage, SolveSuperseded } from '../errors'
+import { nextMacrotask } from '../nextMacrotask'
 import { inWorker } from '../inWorker'
 import { loadOccWorker, resetOccWorker } from '../occ/loadOccWorker'
 import { subscribeOccLoadProgress } from '../occ/loadProgress'
@@ -80,9 +81,14 @@ export async function handleSolveRequest(
   req: SolveRequest,
   solve: SolveEngine,
   files?: ReadonlyMap<string, Uint8Array>,
+  shouldAbort?: () => boolean,
 ): Promise<SolveResponse> {
   try {
-    const options = files ? { ...req.options, files } : req.options
+    const options = {
+      ...req.options,
+      ...(files ? { files } : {}),
+      ...(shouldAbort ? { shouldAbort } : {}),
+    }
     const response = await solve(req.spec, options)
     if (!response) {
       // OCC.js unavailable; main thread surfaces "local solver unavailable".
@@ -100,6 +106,8 @@ export async function handleSolveRequest(
     }
     return { id: req.id, ok: true, payload }
   } catch (e) {
+    // Stopped for a newer solve: the same benign reply a queued drop gets.
+    if (e instanceof SolveSuperseded) return { id: req.id, ok: false, error: SUPERSEDED_ERROR }
     return { id: req.id, ok: false, error: extractErrorMessage(e) }
   }
 }
@@ -412,52 +420,41 @@ export function collectTransferables(res: SolveResponse): Transferable[] {
 // the document. Exports are distinct one-shot actions and are never dropped by
 // anything, and they never drop anything either.
 //
-// The job already running is not interruptible: an OCC build is a single
-// synchronous WASM call, and the only way out of it is terminating the whole
-// Worker -- which throws away the checkpoint cache and forces a rebuild from
-// feature 0. That trade only pays when the user explicitly asks for it, which
-// is what the cancel button (`cancelSolver`) does.
+// The job already running cannot be dropped, but a running solve can be asked
+// to stop: a newer solve marks its context superseded, and the build checks the
+// flag at each feature boundary (`buildAbortable`), keeps the checkpoints it
+// finished as the next solve's prevState, and answers SUPERSEDED_ERROR. Inside
+// one feature it is still a synchronous WASM call; the only way out of that is
+// terminating the whole Worker (the cancel button, `cancelSolver`), which costs
+// the checkpoint cache. Exports and bundle builds are never asked to stop.
 
 /** The lanes a queued job can wait in, or null for a one-shot job. `warmup`
  *  only fills idle time: every other submit drops it, and it drops nothing. */
 export type ActorLane = 'solve' | 'measure' | 'warmup'
 
-/** One unit of Worker work: queued, then run to completion in isolation. */
+/** What the Actor tells a running job. `superseded` turns true once a newer job
+ *  of the same lane was submitted; a solve reads it at each feature boundary. */
+export interface ActorJobContext {
+  readonly superseded: boolean
+}
+
+/** One unit of Worker work: queued, then run in isolation. */
 export interface ActorJob {
   // The queue lane. A submit drops the queued jobs of its own lane; a solve
   // also drops the queued measures. Null is a one-shot job (an export, a
   // bundle build): never dropped, and it drops nothing.
   lane: ActorLane | null
-  run: () => Promise<void>
+  run: (ctx: ActorJobContext) => Promise<void>
   // Sends the reply a dropped job will now never produce itself.
   onSuperseded?: () => void
-}
-
-/**
- * A macrotask yield. Requests that arrived while the previous job held the
- * thread are still undelivered message events; letting them land before the
- * next job is picked is what makes the flush effective, otherwise the Actor
- * commits to a solve that the message right behind it already obsoleted.
- * MessageChannel rather than setTimeout because timers are throttled hard in
- * background tabs and a queued solve must not wait on that.
- */
-function nextMacrotask(): Promise<void> {
-  if (typeof MessageChannel === 'undefined') {
-    return new Promise(resolve => { setTimeout(resolve, 0) })
-  }
-  return new Promise(resolve => {
-    const channel = new MessageChannel()
-    channel.port1.onmessage = () => {
-      channel.port1.close()
-      resolve()
-    }
-    channel.port2.postMessage(null)
-  })
 }
 
 export class WorkerActor {
   private queue: ActorJob[] = []
   private draining = false
+  // The job `drain` is awaiting and the context it was handed, so a newer
+  // submit in the same lane can ask it to stop at its next yield point.
+  private running: { job: ActorJob; ctx: { superseded: boolean } } | null = null
   // Real (non-warm-up) jobs submitted so far: the warm-up stops for good once
   // this moves, since the first real request has already paid the cold path.
   private realSubmits = 0
@@ -489,6 +486,9 @@ export class WorkerActor {
         }
       }
       this.queue = kept
+      // The running job of the same lane is obsolete too. It cannot be dropped,
+      // only asked: a solve checks the flag between features and stops there.
+      if (this.running && this.running.job.lane === job.lane) this.running.ctx.superseded = true
     }
     this.queue.push(job)
     void this.drain()
@@ -502,13 +502,17 @@ export class WorkerActor {
         await nextMacrotask()
         const job = this.queue.shift()
         if (!job) break
+        const ctx = { superseded: false }
+        this.running = { job, ctx }
         try {
-          await job.run()
+          await job.run(ctx)
         } catch {
           // The handlers already turn engine failures into error responses, so
           // a throw here can only come from the reply itself (a payload that
           // will not clone). Swallow it: letting it escape would leave every
           // job queued behind it unrun and wedge the Worker for good.
+        } finally {
+          this.running = null
         }
       }
     } finally {
@@ -604,8 +608,12 @@ export function handleWorkerMessage(
   } else if (msg.kind === 'solve') {
     actor.submit({
       lane: 'solve',
-      run: async () => {
-        const res = await handleSolveRequest(msg, solveLocally, fileCache)
+      run: async (ctx) => {
+        // A copy, because the build yields between features: a message landing
+        // in that gap may replace an import's bytes under the same id, and the
+        // digests this solve folded in at its start must keep matching the bytes
+        // its later import features read.
+        const res = await handleSolveRequest(msg, solveLocally, new Map(fileCache), () => ctx.superseded)
         post(res, collectTransferables(res))
       },
       onSuperseded: () => {

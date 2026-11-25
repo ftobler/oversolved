@@ -45,9 +45,10 @@ export interface SolveRequest {
 }
 
 /**
- * Error reported for a solve request that a newer solve flushed out of the
- * Worker queue before it ever ran. Not a document failure: its result was
- * already obsolete, so the UI drops it silently instead of showing it.
+ * Error reported for a solve request that a newer solve made obsolete: flushed
+ * out of the Worker queue before it ever ran, or stopped at a feature boundary
+ * while running. Not a document failure: its result was already obsolete, so
+ * the UI drops it silently instead of showing it.
  */
 export const SUPERSEDED_ERROR = 'solve superseded'
 

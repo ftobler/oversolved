@@ -20,6 +20,19 @@ export function extractErrorMessage(e: unknown): string {
 export const KERNEL_FAULT_PREFIX = 'kernel fault'
 
 /**
+ * A solve that stopped between two features because a newer solve made it
+ * stale (`solveLocally`'s `shouldAbort`). The engine kept the checkpoints it
+ * finished as the next solve's prevState; the Worker answers the request with
+ * `SUPERSEDED_ERROR`, the same benign reply a dropped queued solve gets.
+ */
+export class SolveSuperseded extends Error {
+  constructor() {
+    super('solve superseded: stopped at a feature boundary for a newer solve')
+    this.name = 'SolveSuperseded'
+  }
+}
+
+/**
  * A WASM trap that escaped the kernel. The heap is undefined after one of
  * these: C++ stack unwinding did not run, so the module has been discarded and
  * the next call loads a fresh one. This is not a document failure; a retry may
