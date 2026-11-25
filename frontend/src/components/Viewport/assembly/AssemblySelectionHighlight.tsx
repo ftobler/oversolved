@@ -1,11 +1,11 @@
-// Draws the assembly's B-rep selection and hover, mode-gated by the viewport so
-// it never shows while a mate field is armed (that mode has its own anchor
-// gizmos). The pick bodies arrive at the DRAWN pose (the solved pose plus the
-// live drag/settling offset the viewport already applied), so the highlight
-// follows a settle instead of hanging at the last baked pose. This component
-// only turns their Float32Arrays into three.js buffers and picks the highlight
-// colours -- the part editor's COLOR_SELECTED / COLOR_HOVER, so the two editors
-// read the same.
+// Draws the assembly's B-rep selection and hover. The viewport keeps selection
+// in plain selector mode, but writes a hover entity in aiming mode too, so the
+// face or edge the anchor orbs came from is highlighted there as well. The pick
+// bodies arrive at the DRAWN pose (the solved pose plus the live drag/settling
+// offset the viewport already applied), so the highlight follows a settle
+// instead of hanging at the last baked pose. This component only turns their
+// Float32Arrays into three.js buffers and picks the highlight colours -- the
+// part editor's COLOR_SELECTED / COLOR_HOVER, so the two editors read the same.
 
 import { useEffect, useMemo } from 'react'
 import * as THREE from 'three'

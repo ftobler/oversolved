@@ -138,7 +138,8 @@ export interface AssemblyEditorData {
    * solve clears it (as it does hoverHits).
    */
   entitySelection: Set<string>
-  // The single entity under the cursor in B-rep selection mode; null when none.
+  // The single entity under the cursor: written in both selector and mate-aim
+  // mode, so the highlight names what the anchor orbs resolve from.
   hoveredEntity: string | null
   // The ID-buffer debug renderpass overlay lives in viewOptionsStore
   // (`collisionDebug`) now: one flag for both editors, drawn from the viewport's
@@ -375,7 +376,7 @@ interface AssemblyEditorState extends AssemblyEditorData {
   // Add or remove one B-rep entity from the measurement selection.
   toggleSelection: (entityKey: string) => void
   clearSelection: () => void
-  // The lone entity highlighted under the cursor in B-rep selection mode.
+  // The lone entity highlighted under the cursor, in either mode.
   setHoveredEntity: (entityKey: string | null) => void
   // The reference a mate pick chip would commit right now; the set is retained.
   activePickCandidate: () => MateRef | null
