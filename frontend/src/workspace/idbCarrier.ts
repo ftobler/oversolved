@@ -235,6 +235,93 @@ export async function purgeWorkspaceRows(workspace: string): Promise<void> {
   )
 }
 
+// One entry move between two workspaces, as rows: what the target receives
+// (working copy and checkpoint, already keyed to the target with their target
+// paths), which source ids are dropped, and how each meta row changes.
+export interface EntryRowsMove {
+  from: string
+  to: string
+  working: WorkspaceEntryRecord[]
+  saved: WorkspaceEntryRecord[]
+  drop: string[]
+  editSource: (meta: WorkspaceMetaRecord) => WorkspaceMetaRecord
+  editTarget: (meta: WorkspaceMetaRecord) => WorkspaceMetaRecord
+}
+
+// The move in ONE transaction across both workspaces: the target rows land and
+// the source rows go together, or nothing happens. That is stronger than
+// writing the target first and deleting after: a failure anywhere (a quota, a
+// target row that appeared since the plan, a missing workspace row) aborts the
+// unit, so the source is never short of an entry the target did not get and
+// the target never holds half a move.
+//
+// The target rows, checkpoint ones included, are `add`ed, not `put`: an id the
+// target gained since the plan was read (or an orphan checkpoint row a hard
+// removal left there) refuses the whole unit instead of being overwritten. The
+// meta rows are read and rewritten inside the transaction, chained from the
+// get's callback, so a concurrent edit to the rest of either row is never lost
+// to a stale copy; what the edits add (the moved rows' edges) is the caller's.
+export async function moveEntryRows(move: EntryRowsMove): Promise<void> {
+  let failure: unknown
+  let failed = false
+  try {
+    await idbTransaction(
+      [STORE_WORKSPACE_META, STORE_WORKSPACE_ENTRIES, STORE_WORKSPACE_ENTRY_META, STORE_WORKSPACE_SAVED],
+      'readwrite',
+      stores => {
+        const abort = (err: unknown): void => {
+          if (!failed) {
+            failure = err
+            failed = true
+          }
+          try {
+            stores[STORE_WORKSPACE_META].transaction.abort()
+          } catch {
+            // Already aborting; the transaction's own handlers settle the promise.
+          }
+        }
+        // A refused `add` aborts the unit on its own (the error is not
+        // prevented); recording it keeps the request's ConstraintError as the
+        // reason rather than the transaction's generic one.
+        const guard = (request: IDBRequest): void => {
+          request.onerror = () => {
+            if (!failed) {
+              failure = request.error ?? new Error('IndexedDB write refused')
+              failed = true
+            }
+          }
+        }
+        for (const record of move.working) {
+          guard(stores[STORE_WORKSPACE_ENTRIES].add(record))
+          guard(stores[STORE_WORKSPACE_ENTRY_META].add(entryMetaOf(record)))
+        }
+        for (const record of move.saved) guard(stores[STORE_WORKSPACE_SAVED].add(record))
+        for (const id of move.drop) {
+          stores[STORE_WORKSPACE_ENTRIES].delete([move.from, id])
+          stores[STORE_WORKSPACE_ENTRY_META].delete([move.from, id])
+          stores[STORE_WORKSPACE_SAVED].delete([move.from, id])
+        }
+        const rewrite = (workspace: string, edit: (meta: WorkspaceMetaRecord) => WorkspaceMetaRecord): void => {
+          const request = stores[STORE_WORKSPACE_META].get(workspace) as IDBRequest<WorkspaceMetaRecord | undefined>
+          request.onsuccess = () => {
+            try {
+              if (!request.result) throw new Error(`Workspace not found: ${workspace}`)
+              stores[STORE_WORKSPACE_META].put(withoutLegacyProvenance(edit(withoutLegacyProvenance(request.result))))
+            } catch (err) {
+              abort(err)
+            }
+          }
+        }
+        rewrite(move.to, move.editTarget)
+        rewrite(move.from, move.editSource)
+      },
+    )
+  } catch (err) {
+    // The reason the unit was aborted for is the one the caller can act on.
+    throw failed ? failure : err
+  }
+}
+
 // The mirror row read back as list()'s EntryMeta. The payload fields the mirror
 // dropped are exactly the ones EntryMeta never carried, so no fallback read of
 // the working copy is needed; `size` falls back only for a pre-v6 row.

@@ -18,10 +18,13 @@ import {
   IdbCarrier,
   allWorkspaceEntryMetas,
   listWorkspaceMetas,
+  moveEntryRows,
   purgeWorkspaceRows,
   readWorkspaceMeta,
   replaceWorkspaceRows,
+  savedEntryRecords,
   workspaceEntryMetas,
+  workspaceEntryRecords,
   writeWorkspaceMeta,
   type WorkspaceEntryMetaRecord,
   type WorkspaceEntryRecord,
@@ -31,7 +34,9 @@ import { pathFor } from './paths'
 import { resolveCoverEntry } from './cover'
 import { serializeTree } from './serializer'
 import { remapTree } from './import'
-import { EntryReferencedError, type EntryReferrer } from './errors'
+import { EntryMoveRefusedError, EntryReferencedError, type EntryReferrer } from './errors'
+import { planEntryMove, sameMovePlan, type EntryMovePlan, type EntryMovePlanResult, type EntryMoveReport, type EntryMoveReportRow } from './entryMove'
+import { canonicalizeReferences } from './refs'
 import { hashRecord } from './contentHash'
 import { randomUuid } from '@/utils/randomUuid'
 import { docLoadErrorMessage, loadDocText } from '@/persistence/docSchema'
@@ -122,7 +127,20 @@ export interface WorkspaceStore {
   // (I3); only the display name changes until C4's tree re-parents it.
   renameEntry(workspace: string, entry: string, name: string): Promise<void>
   cloneEntry(workspace: string, entry: string, name?: string): Promise<string>
+  // What moving `entry` from one workspace to another would carry, or why it
+  // cannot: the dialog's confirm step reads this before anything is written.
+  planMove(from: string, entry: string, to: string): Promise<EntryMovePlanResult>
+  // Library management, like Duplicate and Delete: no document undo entry. The
+  // entry keeps its id, an assembly's parts and every STEP file go with it (a
+  // part another source entry still uses is copied), and the source drops the
+  // moved rows for good rather than to its trash, since the data now lives in
+  // the target. Throws EntryMoveRefusedError with the plan's reason. With
+  // `confirmed` (the plan the user approved) it refuses a plan that has since
+  // changed instead of moving a different list.
+  moveEntry(from: string, entry: string, to: string, confirmed?: EntryMovePlan): Promise<EntryMoveReport>
 }
+
+export type { EntryMoveReport, EntryMoveReportRow }
 
 export class IdbWorkspaceStore implements WorkspaceStore {
   private readonly carriers = new Map<string, IdbCarrier>()
@@ -448,6 +466,147 @@ export class IdbWorkspaceStore implements WorkspaceStore {
     await copyPreview(workspace, entry, workspace, cloneId)
     bumpWorkspaceStoreRevision()
     return cloneId
+  }
+
+  async planMove(from: string, entry: string, to: string): Promise<EntryMovePlanResult> {
+    if (from === to) return { ok: false, refused: 'The entry is already in this workspace.' }
+    const sourceMeta = await this.requireMeta(from)
+    const targetMeta = await this.requireMeta(to)
+    if (targetMeta.trashedAt !== undefined) {
+      return { ok: false, refused: `${targetMeta.name} is in the trash; recover it first.` }
+    }
+    return planEntryMove(
+      {
+        entries: await workspaceEntryMetas(from),
+        trash: sourceMeta.trash,
+        references: sourceMeta.references,
+        savedReferences: sourceMeta.savedReferences,
+      },
+      entry,
+      { name: targetMeta.name, entries: await workspaceEntryMetas(to), trash: targetMeta.trash },
+    )
+  }
+
+  async moveEntry(from: string, entry: string, to: string, confirmed?: EntryMovePlan): Promise<EntryMoveReport> {
+    const plan = await this.planMove(from, entry, to)
+    if (!plan.ok) throw new EntryMoveRefusedError(plan.refused)
+    // The user agreed to a list; a workspace that changed under the confirm
+    // step must not move a different one.
+    if (confirmed !== undefined && !sameMovePlan(plan, confirmed)) {
+      throw new EntryMoveRefusedError('The workspace changed since the move was confirmed; pick the target again.')
+    }
+    const sourceMeta = await this.requireMeta(from)
+    const targetMeta = await this.requireMeta(to)
+    const present = new Set(plan.present)
+    const written = [...plan.move, ...plan.copy].filter(id => !present.has(id))
+    const working = new Map((await workspaceEntryRecords(from)).map(record => [record.id, record]))
+    const saved = new Map((await savedEntryRecords(from)).map(record => [record.id, record]))
+    // Paths are display and must be unique per workspace, so each row gets a
+    // free one in the target; identity is the id, which does not change.
+    const takenPaths = new Set((await workspaceEntryMetas(to)).map(meta => meta.path))
+    const targetWorking: WorkspaceEntryRecord[] = []
+    const targetSaved: WorkspaceEntryRecord[] = []
+    for (const id of written) {
+      const record = working.get(id)
+      if (!record) throw new Error(`Entry not found: ${id}`)
+      const path = pathFor(record.kind, record.name, candidate => takenPaths.has(candidate))
+      takenPaths.add(path)
+      // Revs and hashes travel unchanged, so a row that was ahead of its
+      // checkpoint in the source is still ahead in the target, and one that was
+      // saved is still saved: the move neither saves nor discards an edit.
+      targetWorking.push({ ...record, workspace: to, path })
+      const checkpoint = saved.get(id)
+      if (checkpoint) targetSaved.push({ ...checkpoint, workspace: to, path })
+    }
+    const moved = new Set(plan.move)
+    const now = Date.now()
+    // The edges the target receives come from the source meta read above, the
+    // one the plan was made from, so they describe exactly the rows that travel.
+    // They are copied verbatim, dangling ones included: an edge to a row the
+    // source could not resolve either is a legal format state, and the target
+    // fails the same loud way the source would have.
+    try {
+      await this.writeMove(from, to, targetWorking, targetSaved, written, plan.move, sourceMeta, moved, now)
+    } catch (err) {
+      // A row the target gained after the plan was read refuses the whole unit
+      // at its `add`; that is the plan's collision refusal, said by name.
+      if (typeof err === 'object' && err !== null && (err as { name?: unknown }).name === 'ConstraintError') {
+        throw new EntryMoveRefusedError(`${targetMeta.name} gained one of these entries since the move was planned; pick the target again.`)
+      }
+      throw err
+    }
+    // Previews are derived data and follow best-effort: the target rows look
+    // like the source ones from the first paint, and the source forgets the
+    // thumbnails of rows it no longer has.
+    for (const id of written) {
+      if (working.get(id)?.kind === 'document') await copyPreview(from, id, to, id)
+    }
+    for (const id of plan.move) {
+      if (working.get(id)?.kind !== 'document') continue
+      try {
+        await getPreviewStore().remove(from, id)
+      } catch {
+        // A stale thumbnail under a row that no longer exists is never read.
+      }
+    }
+    bumpWorkspaceStoreRevision()
+    const row = (id: string): EntryMoveReportRow => {
+      const record = working.get(id)
+      return { id, name: record?.name ?? id, kind: record?.kind ?? 'document' }
+    }
+    return { target: targetMeta.name, moved: plan.move.map(row), copied: plan.copy.map(row) }
+  }
+
+  private async writeMove(
+    from: string, to: string,
+    targetWorking: WorkspaceEntryRecord[], targetSaved: WorkspaceEntryRecord[],
+    written: string[], drop: string[], sourceMeta: WorkspaceMetaRecord, moved: Set<string>, now: number,
+  ): Promise<void> {
+    await moveEntryRows({
+      from,
+      to,
+      working: targetWorking,
+      saved: targetSaved,
+      drop,
+      editTarget: meta => {
+        const next: WorkspaceMetaRecord = { ...meta, updatedAt: now }
+        const references = { ...meta.references }
+        for (const id of written) {
+          const targets = sourceMeta.references[id]
+          if (targets !== undefined) references[id] = [...targets]
+        }
+        next.references = canonicalizeReferences(references)
+        if (meta.savedReferences !== undefined) {
+          const savedReferences = { ...meta.savedReferences }
+          for (const record of targetSaved) {
+            const targets = sourceMeta.savedReferences?.[record.id]
+            if (targets !== undefined) savedReferences[record.id] = [...targets]
+          }
+          next.savedReferences = canonicalizeReferences(savedReferences)
+        }
+        if (meta.savedRevs !== undefined) {
+          const savedRevs = { ...meta.savedRevs }
+          for (const record of targetSaved) savedRevs[record.id] = record.rev
+          next.savedRevs = savedRevs
+        }
+        return next
+      },
+      editSource: meta => {
+        const next: WorkspaceMetaRecord = { ...meta, updatedAt: now }
+        const keep = (id: string): boolean => !moved.has(id)
+        next.references = Object.fromEntries(Object.entries(meta.references).filter(([id]) => keep(id)))
+        if (meta.savedReferences !== undefined) {
+          next.savedReferences = Object.fromEntries(Object.entries(meta.savedReferences).filter(([id]) => keep(id)))
+        }
+        if (meta.savedRevs !== undefined) {
+          next.savedRevs = Object.fromEntries(Object.entries(meta.savedRevs).filter(([id]) => keep(id)))
+        }
+        if (meta.savedTrash !== undefined) next.savedTrash = meta.savedTrash.filter(keep)
+        next.trash = meta.trash.filter(keep)
+        if (meta.cover !== undefined && !keep(meta.cover)) delete next.cover
+        return next
+      },
+    })
   }
 
   private carrier(workspace: string): IdbCarrier {

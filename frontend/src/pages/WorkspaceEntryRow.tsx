@@ -21,6 +21,7 @@ interface EntryRowProps {
   onOpen: (entry: EntryMeta) => void
   onRename: (entry: EntryMeta) => void
   onDuplicate: (entry: EntryMeta) => void
+  onMove: (entry: EntryMeta) => void
   onExport: (entry: EntryMeta) => void
   onDelete: (entry: EntryMeta) => void
   onReplace: (entry: EntryMeta, chosen: File) => void
@@ -32,7 +33,7 @@ interface EntryRowProps {
 export default function EntryRow({
   entry, workspace, dirty, deleting, duplicating, replacing, exporting, usedBy,
   isCover, coverExplicit, onSetCover,
-  onOpen, onRename, onDuplicate, onExport, onDelete, onReplace,
+  onOpen, onRename, onDuplicate, onMove, onExport, onDelete, onReplace,
 }: EntryRowProps) {
   const openable = entry.kind === 'document'
   const meta = entry.kind === 'file'
@@ -150,6 +151,18 @@ export default function EntryRow({
         >
           <span className="material-icons">{duplicating ? 'hourglass_empty' : 'content_copy'}</span>
         </button>
+        {/* A file never moves on its own: it travels with the documents that
+            import it, so only a document row offers the move. */}
+        {entry.kind === 'document' && (
+          <button
+            className="btn btn-tile-action"
+            aria-label={`Move ${entry.name} to workspace`}
+            title="Move to workspace..."
+            onClick={() => onMove(entry)}
+          >
+            <span className="material-icons">drive_file_move</span>
+          </button>
+        )}
         <button
           className="btn btn-tile-action"
           aria-label={`Export ${entry.name}`}

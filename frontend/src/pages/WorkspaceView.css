@@ -402,7 +402,7 @@ button.workspace-entry-open:focus-visible {
   }
 }
 
-@media (max-width: 560px) {
+@media (max-width: 600px) {
   :root {
     --ws-row-height: 84px;
   }
@@ -413,8 +413,8 @@ button.workspace-entry-open:focus-visible {
     display: none;
   }
 
-  /* A document row carries five 40px controls (cover, rename, duplicate, export,
-     delete): 200px of actions. One line above this width still leaves the name
+  /* A document row carries six 40px controls (cover, rename, duplicate, move,
+     export, delete): 240px of actions. One line above this width still leaves the name
      about 84px, so the controls take their own line under the face instead; the
      face keeps the row height, which is what keeps the thumb the tile's ratio. */
   .workspace-entry-row {
