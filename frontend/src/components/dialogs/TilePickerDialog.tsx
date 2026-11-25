@@ -55,6 +55,9 @@ interface TilePickerDialogProps {
   onPick: (item: TilePickerItem) => void
   // Told whenever the selection changes, so an owner can clear a stale notice.
   onSelect?: (id: string) => void
+  // A rebind opens with its current document already selected, so Replace is a
+  // real choice rather than a second browse from nothing. Other callers omit it.
+  initialSelectedId?: string | null
 }
 
 // The shared shell of the pick-one-tile dialogs (insert a part, move to a
@@ -65,15 +68,15 @@ interface TilePickerDialogProps {
 export default function TilePickerDialog({
   isOpen, title, icon, confirmLabel, searchPlaceholder, emptyText, itemNoun, items, groups,
   loading, error = null, notice = null, busy = false, onClose, onPick, onSelect,
+  initialSelectedId = null,
 }: TilePickerDialogProps) {
-  const [selected, setSelected] = useState<string | null>(null)
+  const [selected, setSelected] = useState<string | null>(initialSelectedId)
   const [searchQuery, setSearchQuery] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
 
-  // Each open starts fresh: empty search, nothing selected. The reset runs on
-  // CLOSE (the dialog stays mounted, only isOpen toggles) so reopening never
-  // paints or double-click-picks the previous session's stale selection.
-  // Deferred a microtask to satisfy the no-sync-setState-in-effect rule.
+  // Search and selection are reset on CLOSE, never on open: a deferred reset
+  // on open can land after the user's first keystroke and erase it. The reset
+  // uses the owner's seeded pick so the next open starts from ITS current doc.
   useEffect(() => {
     if (isOpen) return
     let cancelled = false
@@ -81,10 +84,22 @@ export default function TilePickerDialog({
       if (cancelled) return
       setSearchQuery('')
       setDebouncedSearch('')
-      setSelected(null)
+      setSelected(initialSelectedId)
     })
     return () => { cancelled = true }
-  }, [isOpen])
+  }, [isOpen, initialSelectedId])
+
+  // A rebind seeds its current doc as the starting selection. Only the
+  // selection is seeded here; the search box belongs to the user from open.
+  useEffect(() => {
+    if (!isOpen || initialSelectedId === null) return
+    let cancelled = false
+    queueMicrotask(() => {
+      if (cancelled) return
+      setSelected(initialSelectedId)
+    })
+    return () => { cancelled = true }
+  }, [isOpen, initialSelectedId])
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(searchQuery), 300)
@@ -116,11 +131,14 @@ export default function TilePickerDialog({
 
   const tile = (item: TilePickerItem) => {
     const reason = item.disabledReason
+    // Selection is otherwise only a CSS class; aria-pressed is what a screen
+    // reader reads when the owner seeds a current document.
     return (
       <button
         type="button"
         key={item.id}
         className={`doc-tile doc-browser-tile${selected === item.id ? ' selected' : ''}${reason !== undefined ? ' disabled' : ''}`}
+        aria-pressed={selected === item.id}
         onClick={() => { if (reason === undefined) select(item.id) }}
         onDoubleClick={() => pick(item)}
         disabled={reason !== undefined}

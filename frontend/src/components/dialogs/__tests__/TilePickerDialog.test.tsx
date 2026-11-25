@@ -92,6 +92,14 @@ describe('TilePickerDialog', () => {
     renderTiles({ items: [] })
     expect(screen.getByText('Nothing here.')).toBeInTheDocument()
   })
+
+  it('starts with the named item selected so a rebind can mark its current doc', () => {
+    renderTiles({ initialSelectedId: 'c' })
+    const current = screen.getByText('Carrot').closest('button') as HTMLButtonElement
+    expect(current).toHaveClass('selected')
+    expect(current).toHaveAttribute('aria-pressed', 'true')
+    expect(confirmButton('Take')).toBeEnabled()
+  })
 })
 
 const summary = (workspace: string, name: string, extra: Partial<WorkspaceSummary> = {}): WorkspaceSummary => ({

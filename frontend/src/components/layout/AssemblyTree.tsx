@@ -102,6 +102,9 @@ export interface AssemblyTreeProps {
   onToggleFixed: (handle: string, fixed: boolean) => void
   onToggleBuiltinVisible: (id: string, visible: boolean) => void
   onEditInstance: (handle: string) => void
+  // The failed row's repair goes straight to the picker instead of opening the
+  // card first; a dangling part has no other useful edit.
+  onRebindInstance?: (handle: string) => void
   onCommitInstance: () => void
   onCancelInstance: () => void
   onSelectMate?: (featureId: string) => void
@@ -151,6 +154,7 @@ export function AssemblyTree({
   onToggleFixed,
   onToggleBuiltinVisible,
   onEditInstance,
+  onRebindInstance,
   onCommitInstance,
   onCancelInstance,
   onSelectMate,
@@ -399,10 +403,17 @@ export function AssemblyTree({
             const failMark = partFailure(inst.handle, status ?? null)
             const menuItems: ContextMenuItem[] = [
               // A failed part is the one row with a repair action of its own:
-              // its editor holds the Part picker, which waits on the missing
-              // doc_id as soon as the row opens.
+              // it opens the shared picker directly, without asking the user
+              // to open an editor whose other fields cannot fix the reference.
               ...(failMark.failed
-                ? [{ label: 'Rebind part', icon: featurePartIcon, onClick: () => onEditInstance(inst.handle) }]
+                ? [{
+                    label: 'Rebind part',
+                    icon: featurePartIcon,
+                    onClick: () => {
+                      if (onRebindInstance) onRebindInstance(inst.handle)
+                      else onEditInstance(inst.handle)
+                    },
+                  }]
                 : []),
               { label: 'Open in new tab', icon: featurePartIcon, onClick: () => onOpenPartNewTab(inst.handle, inst.doc_id) },
               { label: 'Duplicate', icon: contextDuplicateIcon, onClick: () => onDuplicateInstance(inst.handle) },

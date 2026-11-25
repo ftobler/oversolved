@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { forwardRef, useImperativeHandle, type ReactNode } from 'react'
-import { screen, fireEvent, act, waitFor } from '@testing-library/react'
+import { screen, fireEvent, act, waitFor, within } from '@testing-library/react'
 import { useAssemblyStore, DEFAULT_ASSEMBLY_EDITOR_DATA } from '@/stores/assemblyStore'
 import { DEFAULT_SECTION_STATE, useSectionStore } from '@/stores/sectionStore'
 
@@ -468,6 +468,20 @@ describe('AssemblyEditor (Stage 6b)', () => {
     expect(instances[0].doc_rev).toBe(5)
   })
 
+  // A missing doc is the one case where opening the editor goes straight to the
+  // picker: the card's other controls cannot repair a dangling reference.
+  it('opens Replace part as soon as a dangling instance editor opens', async () => {
+    h.loadContent = DANGLING_ASSEMBLY
+    await renderLoaded()
+    fireEvent.click(screen.getByLabelText('Edit part instance'))
+    await waitFor(() => expect(pickerItem('Bracket')).toBeTruthy())
+
+    expect(screen.getByRole('heading', { name: 'Replace part' })).toBeTruthy()
+    expect(screen.getByLabelText(/Part document/)).toHaveTextContent('ghost (missing)')
+    // The assembly itself is in the workspace list but is not rebindable.
+    expect(pickerItem('My Assembly')).toBeUndefined()
+  })
+
   // The repair for a partial import: the instance names a part the workspace
   // does not hold, so the picker offers the live parts (minus the assembly) and
   // a pick dispatches set_part_doc with the instance handle and that doc id.
@@ -482,15 +496,12 @@ describe('AssemblyEditor (Stage 6b)', () => {
     ]
     await renderLoaded()
     fireEvent.click(screen.getByLabelText('Edit part instance'))
+    await waitFor(() => expect(pickerItem('Bracket')).toBeTruthy())
 
-    const picker = screen.getByLabelText('Part document') as HTMLSelectElement
-    expect([...picker.options].map(option => option.textContent)).toEqual([
-      'ghost (missing)', 'Bolt', 'Bracket',
-    ])
-    expect([...picker.options].map(option => option.value)).not.toContain('asm-1')
-
-    fireEvent.change(picker, { target: { value: 'part-1' } })
+    fireEvent.click(pickerItem('Bracket')!)
+    fireEvent.click(screen.getByRole('button', { name: 'Replace' }))
     await tick()
+    expect(screen.queryByRole('heading', { name: 'Replace part' })).toBeNull()
     expect(useAssemblyStore.getState().instances[0].doc_id).toBe('part-1')
     // The pick folds into the open editor, so it owns no entry until OK.
     expect(useAssemblyStore.getState().undoStack).toHaveLength(0)
@@ -505,15 +516,17 @@ describe('AssemblyEditor (Stage 6b)', () => {
     expect(useAssemblyStore.getState().instances[0].doc_id).toBe('ghost')
   })
 
-  // The picker sits in the instance editor, and that editor's Cancel promises
-  // to revert its own edits; a rebind must join the session rather than land as
-  // its own step the Cancel cannot reach.
+  // The picker sits behind the instance editor, and that editor's Cancel
+  // promises to revert its own edits; a rebind must join the session rather
+  // than land as its own step the Cancel cannot reach.
   it('Cancel reverts a rebind like the editor\'s other edits', async () => {
     h.loadContent = DANGLING_ASSEMBLY
     await renderLoaded()
     fireEvent.click(screen.getByLabelText('Edit part instance'))
+    await waitFor(() => expect(pickerItem('Bolt')).toBeTruthy())
 
-    fireEvent.change(screen.getByLabelText('Part document'), { target: { value: 'part-2' } })
+    fireEvent.click(pickerItem('Bolt')!)
+    fireEvent.click(screen.getByRole('button', { name: 'Replace' }))
     await tick()
     expect(useAssemblyStore.getState().instances[0].doc_id).toBe('part-2')
 
@@ -526,17 +539,201 @@ describe('AssemblyEditor (Stage 6b)', () => {
   // A part deleted in another tab is still in the mount-time list. Opening the
   // editor re-reads the workspace, so the option is gone before it can be
   // picked (and the operation guard would refuse it by name if it were not).
-  it('refreshes the rebind options when the instance editor opens', async () => {
+  it('refreshes the rebind tiles when the instance editor opens', async () => {
     h.loadContent = DANGLING_ASSEMBLY
     await renderLoaded()
     h.list = h.list.filter(entry => entry.uuid !== 'part-2')
 
     fireEvent.click(screen.getByLabelText('Edit part instance'))
+    await waitFor(() => expect(pickerItem('Bracket')).toBeTruthy())
+    expect(screen.queryByText('Bolt')).toBeNull()
+  })
+
+  // A healthy part keeps its pose card; repicking is a deliberate field click,
+  // not a modal that would bury Fixed, position and rotation on every edit.
+  it('opens Replace part from the Part field and rebinds in one undo step', async () => {
+    await renderLoaded()
+    await insertPart('Bracket')
+    fireEvent.click(screen.getByLabelText('Edit part instance'))
+    expect(screen.queryByRole('heading', { name: 'Replace part' })).toBeNull()
+
+    fireEvent.click(screen.getByLabelText(/Part document/))
+    await waitFor(() => expect(pickerItem('Bracket')).toBeTruthy())
+    expect(screen.getByRole('heading', { name: 'Replace part' })).toBeTruthy()
+    const current = pickerItem('Bracket')!.closest('button')!
+    expect(current).toHaveClass('selected')
+    expect(current).not.toBeDisabled()
+
+    fireEvent.click(pickerItem('Bolt')!)
+    fireEvent.click(screen.getByRole('button', { name: 'Replace' }))
     await tick()
+    expect(screen.queryByRole('heading', { name: 'Replace part' })).toBeNull()
+    expect(useAssemblyStore.getState().instances[0].doc_id).toBe('part-2')
+    // The insert is one step; the rebind folds into the open editor until OK.
+    expect(useAssemblyStore.getState().undoStack).toHaveLength(1)
+
+    fireEvent.click(cardAction('OK'))
+    await tick()
+    expect(useAssemblyStore.getState().undoStack).toHaveLength(2)
+    expect(useAssemblyStore.getState().undoStack[1].label).toBe('Set part document')
+    act(() => { executeCommand('undo') })
+    await tick()
+    expect(useAssemblyStore.getState().instances[0].doc_id).toBe('part-1')
+  })
+
+  it('leaves the document alone when the Replace dialog is cancelled', async () => {
+    await renderLoaded()
+    await insertPart('Bracket')
+    fireEvent.click(screen.getByLabelText('Edit part instance'))
+    fireEvent.click(screen.getByLabelText(/Part document/))
+    await waitFor(() => expect(pickerItem('Bolt')).toBeTruthy())
+
+    fireEvent.click(pickerItem('Bolt')!)
+    const dialog = document.querySelector('.dialog-component') as HTMLElement
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    await tick()
+    expect(screen.queryByRole('heading', { name: 'Replace part' })).toBeNull()
+    expect(useAssemblyStore.getState().instances[0].doc_id).toBe('part-1')
+    // Only the insert step remains: the cancelled pick wrote nothing.
+    expect(useAssemblyStore.getState().undoStack).toHaveLength(1)
+  })
+
+  // The failed row's repair opens the picker without first opening the card:
+  // a dangling part has no other useful edit.
+  it('opens Replace part directly from the failed row menu', async () => {
+    h.loadContent = DANGLING_ASSEMBLY
+    await renderLoaded()
+    act(() => {
+      useAssemblyStore.setState({
+        solveStatus: {
+          verdict: 'none', residualNorm: 0, rank: 0, dof: 0, iters: 0,
+          mates: {}, parts: { left: { failed: true, error: 'part doc not found: ghost' } },
+        },
+      })
+    })
+
+    const row = screen.getByText('ghost').closest('.feature-item') as HTMLElement
+    fireEvent.click(row.querySelector('[aria-label="Part options"]')!)
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Rebind part' }))
+    await waitFor(() => expect(pickerItem('Bracket')).toBeTruthy())
+    expect(screen.getByRole('heading', { name: 'Replace part' })).toBeTruthy()
+    expect(useAssemblyStore.getState().editingSubject.kind).toBe('none')
+  })
+
+  it('rebinds from the failed row menu in one undo step without opening the card', async () => {
+    h.loadContent = DANGLING_ASSEMBLY
+    await renderLoaded()
+    act(() => {
+      useAssemblyStore.setState({
+        solveStatus: {
+          verdict: 'none', residualNorm: 0, rank: 0, dof: 0, iters: 0,
+          mates: {}, parts: { left: { failed: true, error: 'part doc not found: ghost' } },
+        },
+      })
+    })
+
+    const row = screen.getByText('ghost').closest('.feature-item') as HTMLElement
+    fireEvent.click(row.querySelector('[aria-label="Part options"]')!)
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Rebind part' }))
+    await waitFor(() => expect(pickerItem('Bolt')).toBeTruthy())
+    fireEvent.click(pickerItem('Bolt')!)
+    fireEvent.click(screen.getByRole('button', { name: 'Replace' }))
     await tick()
 
-    const picker = screen.getByLabelText('Part document') as HTMLSelectElement
-    expect([...picker.options].map(option => option.value)).not.toContain('part-2')
+    expect(useAssemblyStore.getState().editingSubject.kind).toBe('none')
+    expect(useAssemblyStore.getState().instances[0].doc_id).toBe('part-2')
+    expect(useAssemblyStore.getState().undoStack).toHaveLength(1)
+    expect(useAssemblyStore.getState().undoStack[0].label).toBe('Set part document')
+    act(() => { executeCommand('undo') })
+    await tick()
+    expect(useAssemblyStore.getState().instances[0].doc_id).toBe('ghost')
+  })
+
+  // The editor opens its picker from the list the open refresh lands, not from
+  // the snapshot it started with: a part deleted in another tab still gets its
+  // one useful action instead of a healthy-looking chip.
+  it('opens the picker when the bound part vanished since the last list read', async () => {
+    h.loadContent = [
+      'kind: assembly',
+      'features:',
+      '  - id: inst_present',
+      '    kind: part_instance',
+      '    instance:',
+      '      handle: present',
+      '      doc_id: part-1',
+      '      doc_rev: 5',
+      '      transform: { tx: 0, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 }',
+      '',
+    ].join('\n')
+    await renderLoaded()
+    h.list = h.list.filter(entry => entry.uuid !== 'part-1')
+
+    fireEvent.click(screen.getByLabelText('Edit part instance'))
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Replace part' })).toBeTruthy())
+    expect(screen.getByLabelText(/Part document/)).toHaveTextContent(/\(missing\)/)
+    expect(screen.queryByText('Bracket')).toBeNull()
+  })
+
+  // An explicit cancel retires the pending auto-open: the refresh it was
+  // waiting on must not raise the same dialog again once it lands.
+  it('does not reopen Replace part after a cancel when the pending refresh lands', async () => {
+    h.loadContent = [
+      'kind: assembly',
+      'features:',
+      '  - id: inst_present',
+      '    kind: part_instance',
+      '    instance:',
+      '      handle: present',
+      '      doc_id: part-1',
+      '      doc_rev: 5',
+      '      transform: { tx: 0, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 }',
+      '',
+    ].join('\n')
+    const session = gatedSession([BRACKET, BOLT])
+    await renderLoaded()
+    session.hold()
+
+    fireEvent.click(screen.getByLabelText('Edit part instance'))
+    expect(screen.queryByRole('heading', { name: 'Replace part' })).toBeNull()
+    fireEvent.click(screen.getByLabelText(/Part document/))
+    expect(screen.getByRole('heading', { name: 'Replace part' })).toBeTruthy()
+    const dialog = document.querySelector('.dialog-component') as HTMLElement
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    await tick()
+
+    await act(async () => { session.resolveHeld([BOLT]) })
+    await waitFor(() => expect(screen.getByLabelText(/Part document/)).toHaveTextContent(/\(missing\)/))
+    expect(screen.queryByRole('heading', { name: 'Replace part' })).toBeNull()
+  })
+
+  // set_part_doc's cycle refusal is shown before any write, the same disabled
+  // tile the insert path uses, so the two paths cannot disagree.
+  it('disables a cycle-forming assembly in the rebind dialog with its reason', async () => {
+    h.loadContent = DANGLING_ASSEMBLY
+    h.list = [
+      { uuid: 'part-1', name: 'Bracket', kind: 'part', meta: { rev: 5 } },
+      { uuid: 'sub', name: 'Gripper', kind: 'assembly', meta: { rev: 1 } },
+      { uuid: 'free', name: 'Stand', kind: 'assembly', meta: { rev: 1 } },
+    ]
+    installSessionFromList(h, { sub: ['asm-1'] })
+    await renderLoaded()
+    fireEvent.click(screen.getByLabelText('Edit part instance'))
+    await waitFor(() => expect(pickerItem('Gripper')).toBeTruthy())
+
+    const gripper = pickerItem('Gripper')!.closest('button')!
+    expect(gripper).toBeDisabled()
+    expect(gripper.getAttribute('title')).toBe(
+      'Adding Gripper would make a circular assembly: Gripper > this assembly',
+    )
+    // An assembly that does not cycle stays rebindable: an instance may change
+    // kind, so no refusal is invented here and the write is not refused later.
+    const stand = pickerItem('Stand')!.closest('button')!
+    expect(stand).not.toBeDisabled()
+    fireEvent.click(stand)
+    fireEvent.click(screen.getByRole('button', { name: 'Replace' }))
+    await tick()
+    expect(useAssemblyStore.getState().instances[0].doc_id).toBe('free')
+    expect(screen.queryByText(/Part is not a live entry/)).toBeNull()
   })
 
   it('lists the origin always shown and the three planes hidden by default, toggles one visible', async () => {
@@ -1021,11 +1218,11 @@ describe('AssemblyEditor (Stage 6b)', () => {
     await tick()
     await tick()  // the refresh the import asks for
 
-    // The dangling row is first; the imported instance follows it.
+    // The dangling row is first; the imported instance follows it. Its editor
+    // opens straight into the picker, which lists the new part as a repair.
     fireEvent.click(screen.getAllByLabelText('Edit part instance')[0])
-    const picker = screen.getByLabelText('Part document') as HTMLSelectElement
-    expect([...picker.options].map(option => option.value)).toContain('step-part')
-    expect([...picker.options].map(option => option.textContent)).toContain('Housing')
+    await waitFor(() => expect(pickerItem('Housing')).toBeTruthy())
+    expect(screen.getByRole('heading', { name: 'Replace part' })).toBeTruthy()
   })
 
   it('rejects an oversize STEP before reading it', async () => {

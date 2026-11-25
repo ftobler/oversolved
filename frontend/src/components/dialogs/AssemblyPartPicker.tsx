@@ -4,8 +4,18 @@ import type { WorkspaceSession } from '@/workspace/session'
 import type { EntryMeta } from '@/workspace/types'
 import { interpretEntry } from '@/workspace/kinds'
 
+export type AssemblyPartPickerMode =
+  | { kind: 'insert' }
+  | { kind: 'rebind'; handle: string; currentDocId: string }
+
+const INSERT_MODE: AssemblyPartPickerMode = { kind: 'insert' }
+
 interface AssemblyPartPickerProps {
   isOpen: boolean
+  // One dialog, two modes. Rebind names the instance whose doc is replaced and
+  // starts from its current document; insert writes add_part. Both draw from
+  // the same `entries`, so the two paths cannot disagree about what is legal.
+  mode?: AssemblyPartPickerMode
   // The current assembly's own uuid, filtered out of the pick list.
   selfUuid: string
   // The open workspace session. It names the workspace for the tile previews
@@ -54,11 +64,11 @@ function insertableKind(entry: EntryMeta): InsertableKind | null {
   return interpreted.docKind === 'part' || interpreted.docKind === 'assembly' ? interpreted.docKind : null
 }
 
-// Picks a PartDoc or an AssemblyDoc to instance into the assembly, presented as
-// a document browser (search + preview tiles) on the shared tile picker. It
-// browses the open workspace's documents, minus the assembly itself, and
-// carries no tile verbs (duplicate/export/delete): this dialog only browses and
-// picks.
+// Picks a PartDoc or an AssemblyDoc to place into or rebind onto an instance,
+// presented as a document browser (search + preview tiles) on the shared tile
+// picker. It browses the open workspace's documents, minus the assembly itself,
+// and carries no tile verbs (duplicate/export/delete): this dialog only browses
+// and picks.
 //
 // The rows arrive from the editor instead of being fetched here. The editor's
 // list is also where the add_part guard's live set comes from, so a tile the
@@ -66,8 +76,9 @@ function insertableKind(entry: EntryMeta): InsertableKind | null {
 // fetch could list a part the guard had not learned about and turn Insert into
 // a silent refusal.
 export default function AssemblyPartPicker({
-  isOpen, selfUuid, session, entries, refreshing, listError, onRefresh, cycleReasonFor, onClose, onPick,
+  isOpen, mode = INSERT_MODE, selfUuid, session, entries, refreshing, listError, onRefresh, cycleReasonFor, onClose, onPick,
 }: AssemblyPartPickerProps) {
+  const rebind = mode.kind === 'rebind' ? mode : null
   // The one fetch on this path is the editor's, freshened when the dialog
   // opens so the tiles and the guard both learn about a part added since mount.
   useEffect(() => {
@@ -76,6 +87,12 @@ export default function AssemblyPartPicker({
 
   const revs = useMemo(() => new Map((entries ?? []).map(entry => [entry.id, entry.rev ?? 0])), [entries])
 
+  // Every tile id comes from the editor's shared list, which is also the live
+  // set set_part_doc's link guard checks, so its "not a live entry" refusal is
+  // unreachable from here and a picked id can never fail silently. A tile with
+  // an empty id cannot come from a workspace entry either. That leaves the
+  // cycle rule as the only refusal a tile can carry, in both modes; an assembly
+  // is a legal rebind target because setInstancePartDoc changes only doc_id.
   const items = useMemo((): TilePickerItem[] => (entries ?? [])
     .flatMap(entry => {
       const kind = entry.id === selfUuid ? null : insertableKind(entry)
@@ -102,9 +119,12 @@ export default function AssemblyPartPicker({
   return (
     <TilePickerDialog
       isOpen={isOpen}
-      title="Insert part"
+      title={rebind ? 'Replace part' : 'Insert part'}
       icon="library_add"
-      confirmLabel="Insert"
+      confirmLabel={rebind ? 'Replace' : 'Insert'}
+      // The current doc is a legal pick (an instance may keep its doc), so it
+      // is highlighted rather than disabled; another tile replaces the choice.
+      initialSelectedId={rebind?.currentDocId}
       searchPlaceholder="Search documents..."
       emptyText="No parts or assemblies available."
       itemNoun="documents"

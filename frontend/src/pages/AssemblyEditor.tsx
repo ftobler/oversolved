@@ -49,8 +49,8 @@ import { AssemblyEditPanel } from '@/components/layout/AssemblyEditPanel'
 import { MATE_KIND_ICONS } from '@/components/layout/mateKindIcons'
 import { PanelsToggle } from '@/components/layout/PanelsToggle'
 import { MateEditor } from '@/components/layout/MateEditor'
-import { PartInstanceEditor, type PartOption } from '@/components/layout/PartInstanceEditor'
-import AssemblyPartPicker from '@/components/dialogs/AssemblyPartPicker'
+import { PartInstanceEditor } from '@/components/layout/PartInstanceEditor'
+import AssemblyPartPicker, { type AssemblyPartPickerMode } from '@/components/dialogs/AssemblyPartPicker'
 import RenameDialog from '@/components/dialogs/RenameDialog'
 import RawDocumentDialog from '@/components/dialogs/RawDocumentDialog'
 import AssemblyExport, { type AssemblyExportHandle } from '@/pages/AssemblyExport'
@@ -95,7 +95,11 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
     cloneDoc,
   } = useAssemblyDoc(uuid, workspaceId)
   const navigate = useNavigate()
-  const [pickerOpen, setPickerOpen] = useState(false)
+  // One mounted dialog serves both gestures. Rebind carries the handle and the
+  // doc it binds, so the picker can mark the current tile and the confirm knows
+  // what to write; insert carries neither.
+  const [picker, setPicker] = useState<AssemblyPartPickerMode | null>(null)
+  const pickerOpen = picker !== null
   // The mate the tridot menu asked to rename, with the name the row was showing
   // so the dialog opens pre-filled even when the mate has no explicit label.
   const [renameMateTarget, setRenameMateTarget] = useState<{ id: string; currentName: string } | null>(null)
@@ -278,43 +282,51 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
     return `Adding ${candidate} would make a circular assembly: ${names.join(' > ')}`
   }, [effectiveReferences, uuid, docNames])
 
-  // The picker and the instance editor's rebind list share this split: parts
-  // first, then assemblies, each with the cycle refusal the operation guard will
-  // also apply. A disabled assembly stays listed so the user can see why.
-  const listOptions = useMemo(() => {
-    const parts: PartOption[] = []
-    const assemblies: PartOption[] = []
+  // The live entries the picker tiles are also the ids a rebind may name. One
+  // set keeps the current-part chip, the tiles and the add_part guard from
+  // disagreeing about which documents exist; a part whose id is not here is
+  // dangling and the editor says so.
+  const rebindTargets = useMemo(() => {
+    const ids = new Set<string>()
+    const assemblies = new Set<string>()
     for (const entry of partList?.entries ?? []) {
       if (entry.id === uuid) continue
       const interpreted = interpretEntry({ kind: entry.kind, name: entry.name, docKind: entry.docKind })
       if (!interpreted.ok) continue
-      if (interpreted.docKind === 'part') {
-        parts.push({ id: entry.id, name: entry.name, kind: 'part' })
-      } else if (interpreted.docKind === 'assembly') {
-        const reason = cycleReasonFor(entry.id)
-        assemblies.push({
-          id: entry.id,
-          name: entry.name,
-          kind: 'assembly',
-          ...(reason !== undefined && { disabledReason: reason }),
-        })
-      }
+      if (interpreted.docKind !== 'part' && interpreted.docKind !== 'assembly') continue
+      ids.add(entry.id)
+      if (interpreted.docKind === 'assembly') assemblies.add(entry.id)
     }
-    const byName = (a: PartOption, b: PartOption) => a.name.localeCompare(b.name)
-    parts.sort(byName)
-    assemblies.sort(byName)
-    return { parts, assemblies }
-  }, [partList, uuid, cycleReasonFor])
+    return { ids, assemblies, landed: partList !== null }
+  }, [partList, uuid])
 
-  const partOptions = useMemo(
-    () => (partList === null ? undefined : [...listOptions.parts, ...listOptions.assemblies]),
-    [partList, listOptions],
-  )
+  const assemblyIdSet = rebindTargets.assemblies
 
-  const assemblyIdSet = useMemo(
-    () => new Set(listOptions.assemblies.map(option => option.id)),
-    [listOptions],
-  )
+  // The editor opens a picker for a dangling doc from the list the open
+  // refresh LANDS, not the snapshot it started with. A part deleted since the
+  // last read would otherwise keep a healthy-looking chip and no repair.
+  const pendingAutoRebind = useRef<string | null>(null)
+  useEffect(() => {
+    const handle = pendingAutoRebind.current
+    if (!handle || !rebindTargets.landed) return
+    pendingAutoRebind.current = null
+    // A different subject (or no editor at all) means this gesture was already
+    // retired; a late answer must not raise a dialog over the new one.
+    if (editingInstanceHandleOf(useAssemblyStore.getState().editingSubject) !== handle) return
+    const doc = docRef.current
+    const inst = doc ? findInstance(doc, handle) : undefined
+    if (inst && !rebindTargets.ids.has(inst.doc_id)) {
+      setPicker({ kind: 'rebind', handle, currentDocId: inst.doc_id })
+    }
+  }, [rebindTargets, docRef])
+
+  // An explicit open or dismiss retires the pending auto-open: a cancel must
+  // not have the refresh raise the same dialog again a moment later.
+  const closePicker = useCallback(() => {
+    pendingAutoRebind.current = null
+    setPicker(null)
+  }, [])
+
   const knownKind = useCallback((docId: string): 'part' | 'assembly' | undefined => {
     if (knownAssemblyIds.current?.has(docId)) return 'assembly'
     if (knownPartIds.current?.has(docId)) return 'part'
@@ -439,7 +451,7 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
     requestSolve()
   }, [doc, requestSolve])
 
-  const openPicker = useCallback(() => setPickerOpen(true), [])
+  const openPicker = useCallback(() => setPicker({ kind: 'insert' }), [])
 
   const exportRef = useRef<AssemblyExportHandle>(null)
   const openExport = useCallback(() => exportRef.current?.openExport(), [])
@@ -559,14 +571,20 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
     if (!result.ok) setError(result.message)
   }, [setError])
 
-  // The picker's commit runs the add_part operation through the registry, the
-  // same one path every other mutation takes. A refused insert (the I8 guard,
-  // a cycle) comes back as a failed Result and is shown: without this the
-  // dialog closed and nothing happened, which is the bug this path was fixed
-  // for.
+  // Both modes commit through the registry, the one path every other mutation
+  // takes. Rebind names the instance the dialog was opened for; confirming the
+  // doc it already binds is a no-op close, not an undo step that changes
+  // nothing. A refused write comes back as a failed Result and reaches the
+  // banner instead of closing the dialog into silence.
   const handlePick = useCallback((docId: string, docRev: number) => {
+    if (picker?.kind === 'rebind') {
+      if (docId !== picker.currentDocId) {
+        runCommand('set_part_doc', { handle: picker.handle, docId })
+      }
+      return
+    }
     runCommand('add_part', { docId, docRev })
-  }, [runCommand])
+  }, [picker, runCommand])
 
   // Import STEP drops a file into the open workspace as its own part document,
   // then instances it through the ordinary add_part command. The store write is
@@ -707,20 +725,45 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
   // edit.
   const handleEditInstance = useCallback((handle: string) => {
     closeOpenEditor()
+    pendingAutoRebind.current = null
     // The picker's source is a view of the workspace, not the document: refresh
     // it on open so a part added or deleted in another tab is pickable, or
     // refused before it can be written.
     refreshPartList()
     useAssemblyStore.getState().openInstanceEditor(handle)
     useAssemblyStore.getState().selectPart(handle)
+    const doc = docRef.current
+    const inst = doc ? findInstance(doc, handle) : undefined
+    // A dangling doc_id has no useful edit in this card: the picker is its only
+    // repair. Decide it in the effect below when the refresh lands, so a part
+    // deleted since the last read opens the picker too.
+    if (inst) {
+      if (rebindTargets.landed && !rebindTargets.ids.has(inst.doc_id)) {
+        setPicker({ kind: 'rebind', handle, currentDocId: inst.doc_id })
+      } else {
+        pendingAutoRebind.current = handle
+      }
+    }
     // Freeze the drawn pose here, before any edit this session can trigger a
     // background solve. Switching instances recaptures it. Falls back to the
     // seed for a part no solve has posed yet, so the basis is never undefined.
-    const doc = docRef.current
     setPoseBasis({
       handle,
-      pose: useAssemblyStore.getState().settledPose(handle) ?? (doc ? findInstance(doc, handle)?.transform : undefined),
+      pose: useAssemblyStore.getState().settledPose(handle) ?? (doc ? inst?.transform : undefined),
     })
+  }, [closeOpenEditor, docRef, refreshPartList, rebindTargets])
+
+  // The failed row's menu action goes straight to the picker: no edit card
+  // opens, so a confirmed rebind owns its own undo step. Any session still open
+  // is committed first, so its edits and this write cannot interleave.
+  const handleRebindInstance = useCallback((handle: string) => {
+    const doc = docRef.current
+    const inst = doc ? findInstance(doc, handle) : undefined
+    if (!inst) return
+    pendingAutoRebind.current = null
+    closeOpenEditor()
+    refreshPartList()
+    setPicker({ kind: 'rebind', handle, currentDocId: inst.doc_id })
   }, [closeOpenEditor, docRef, refreshPartList])
 
   const handleCommitInstance = useCallback(() => {
@@ -915,19 +958,19 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
     <PartInstanceEditor
       instance={inst}
       pose={(poseBasis?.handle === inst.handle ? poseBasis.pose : undefined) ?? inst.transform}
-      partOptions={partOptions}
-      onSetPartDoc={docId => {
-        if (!docId) return  // the missing placeholder is not a choice
-        // The command reports its own refusal (a stale part, the assembly
-        // itself) as a failed Result, so the rebind path shows it the same way
-        // the insert path does.
-        runCommand('set_part_doc', { handle: inst.handle, docId })
+      partName={docNames[inst.doc_id] ?? inst.doc_id}
+      partMissing={rebindTargets.landed && !rebindTargets.ids.has(inst.doc_id)}
+      // The card only opens the shared picker. The picked doc is committed by
+      // handlePick, the same command path the insert mode uses.
+      onOpenRepick={() => {
+        pendingAutoRebind.current = null
+        setPicker({ kind: 'rebind', handle: inst.handle, currentDocId: inst.doc_id })
       }}
       onSetFixed={f => runCommand('set_part_fixed', { handle: inst.handle, fixed: f })}
       onSetPosition={pos => runCommand('set_part_position', { handle: inst.handle, pos })}
       onSetRotation={euler => runCommand('set_part_rotation', { handle: inst.handle, euler })}
     />
-  ), [poseBasis, partOptions, runCommand])
+  ), [poseBasis, docNames, rebindTargets, runCommand])
 
   const renderMateEditor = useCallback((mate: { id: string; mate: MateFeatureDef }) => (
     <MateEditor
@@ -1069,6 +1112,7 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
                 onToggleFixed={(handle, fixed) => runCommand('set_part_fixed_oneshot', { handle, fixed })}
                 onToggleBuiltinVisible={(id, visible) => runCommand('set_builtin_visible', { id, visible })}
                 onEditInstance={handleEditInstance}
+                onRebindInstance={handleRebindInstance}
                 onCommitInstance={handleCommitInstance}
                 onCancelInstance={handleCancelInstance}
                 onSelectMate={handleSelectMate}
@@ -1109,6 +1153,7 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
       </div>
       <AssemblyPartPicker
         isOpen={pickerOpen}
+        mode={picker ?? undefined}
         selfUuid={uuid}
         session={session}
         entries={partList?.entries ?? null}
@@ -1116,7 +1161,7 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
         listError={partListError}
         onRefresh={refreshPartListNow}
         cycleReasonFor={cycleReasonFor}
-        onClose={() => setPickerOpen(false)}
+        onClose={closePicker}
         onPick={handlePick}
       />
       <RenameDialog
