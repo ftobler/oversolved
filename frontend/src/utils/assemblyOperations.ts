@@ -109,11 +109,11 @@ export interface AssemblyOperationDef<I> {
   ) => AssemblyDoc
 }
 
-// The origin and the planes share one operation and one tree eye. The label is
-// therefore the only cell that reads the document, which is where the feature's
-// kind lives; an id naming neither is a stale row whose toggle is a no-op
-// anyway, and gets the generic wording rather than a claim about the wrong
-// reference geometry.
+// One operation covers every built-in, but only the planes still have a tree
+// eye; the origin's write is refused before it can earn an undo entry. The label
+// is the only cell that reads the document, which is where the feature's kind
+// lives; an id naming neither is a stale row whose toggle is a no-op anyway, and
+// gets the generic wording rather than a claim about the wrong geometry.
 function builtinVisibilityLabel(doc: AssemblyDoc, id: string): AssemblyUndoLabel {
   const feature = (doc.features ?? []).find(f => f.id === id)
   if (feature?.kind === 'origin') return ASSEMBLY_UNDO_LABELS.toggleOriginVisibility

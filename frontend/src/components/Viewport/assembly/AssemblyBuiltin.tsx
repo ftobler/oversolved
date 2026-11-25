@@ -5,15 +5,29 @@
 // `buildEntityMateRefs` maps to a `__assembly` reference.
 
 import { Dot } from '@/components/Geometry3D/VertexDots'
-import { COLOR_INACTIVE, RENDER_ORDER_HIGHLIGHT } from '@/components/Geometry3D/constants'
+import {
+  COLOR_HOVER, COLOR_INACTIVE, COLOR_SELECTED, RENDER_ORDER_HIGHLIGHT, highlightState,
+} from '@/components/Geometry3D/constants'
 import { PlaneLabel, PlaneSurface } from '@/components/Viewport/PlaneVisual'
 import { useOriginMarkerIdRegistration, usePlaneIdRegistration } from '@/picking'
+import { useAssemblyStore } from '@/stores/assemblyStore'
 import { assemblyBuiltinEntityKey } from '@/utils/anchorCandidates'
 import { ASSEMBLY_PLANE_SIZE, type AssemblyBuiltinItem } from '@/utils/assemblyRender'
 
+// The origin is a mate target, so it highlights under the assembly's own hover
+// and selection the same way the part editor's OriginMarker does. Both read the
+// entity key their pick id registers, never the part editor's selection stores.
 function AssemblyOriginMarker({ id }: { id: string }) {
-  useOriginMarkerIdRegistration({ selectionId: assemblyBuiltinEntityKey(id) })
-  return <Dot x={0} y={0} px={4} color={COLOR_INACTIVE} billboard renderOrder={RENDER_ORDER_HIGHLIGHT} depthTest={false} />
+  const selId = assemblyBuiltinEntityKey(id)
+  const selected = useAssemblyStore(s => s.entitySelection.has(selId))
+  const hoveredEntity = useAssemblyStore(s => s.hoveredEntity)
+  useOriginMarkerIdRegistration({ selectionId: selId })
+
+  const state = highlightState(selected, hoveredEntity === selId)
+  const color = state === 'selected' ? COLOR_SELECTED
+    : state === 'hovered' ? COLOR_HOVER
+    : COLOR_INACTIVE
+  return <Dot x={0} y={0} px={state === 'hovered' ? 6 : 4} color={color} billboard renderOrder={RENDER_ORDER_HIGHLIGHT} depthTest={false} />
 }
 
 function AssemblyBuiltinPlane({ item }: { item: AssemblyBuiltinItem }) {

@@ -107,7 +107,8 @@ const ASSEMBLY_PARAMS: Readonly<Record<string, unknown>> = {
   duplicate_part: 'handle-1',
   delete_part: 'handle-1',
   set_part_visible: { handle: 'handle-1', visible: true },
-  set_builtin_visible: { id: 'origin', visible: true },
+  // The origin is never toggleable; a plane keeps this fixture's success path.
+  set_builtin_visible: { id: 'AssemblyTop', visible: true },
   set_part_fixed: { handle: 'handle-1', fixed: true },
   set_part_fixed_oneshot: { handle: 'handle-1', fixed: false },
   set_part_position: { handle: 'handle-1', pos: { tx: 0, ty: 0, tz: 0 } },

@@ -60,31 +60,52 @@ export interface AssemblyBuiltinListItem {
 
 /**
  * The assembly's own frame as tree rows, in document order, whatever their
- * visibility. The tree lists them so a hidden plane can be shown again; the
- * viewport draws only the shown ones (getAssemblyBuiltinsToRender).
+ * visibility. The tree lists them so a hidden plane can be shown again. The
+ * origin is the always-drawn datum (the part editor's FEATURE_VISIBILITY_BY_KIND
+ * guarantee), so its row reads visible even if an older document stored false;
+ * the viewport's answer is getAssemblyBuiltinsToRender.
  */
 export function getAssemblyBuiltins(doc: AssemblyDoc | null): AssemblyBuiltinListItem[] {
   const items: AssemblyBuiltinListItem[] = []
   for (const f of doc?.features ?? []) {
     const item = BUILTIN_RENDER[f.id]
     if (item && item.kind === f.kind) {
-      items.push({ id: item.id, kind: item.kind, label: item.label, visible: f.visible === true })
+      items.push({
+        id: item.id,
+        kind: item.kind,
+        label: item.label,
+        visible: item.kind === 'origin' ? true : f.visible === true,
+      })
     }
   }
   return items
 }
 
 /**
- * The assembly's own frame to draw, in document order. Built-ins are hidden by
- * default (they are reference geometry, not part of the model), so only a
- * feature explicitly flagged `visible` renders. Non-builtin features are ignored.
+ * The assembly's own frame to draw, in document order. The split mirrors the
+ * part editor's tree rule: the origin is the world datum every mate pins to, so
+ * it is always drawn, even when the document's features have no origin row
+ * (ASSEMBLY_BUILTIN_ANCHORS still offers it as a mate target). The three planes
+ * are reference geometry and opt in through a feature's `visible` flag.
+ * Non-builtin features are ignored.
  */
 export function getAssemblyBuiltinsToRender(doc: AssemblyDoc | null): AssemblyBuiltinItem[] {
+  if (!doc) return []
   const items: AssemblyBuiltinItem[] = []
-  for (const f of doc?.features ?? []) {
+  let originEmitted = false
+  for (const f of doc.features ?? []) {
     const item = BUILTIN_RENDER[f.id]
-    if (item && item.kind === f.kind && f.visible === true) items.push(item)
+    if (!item || item.kind !== f.kind) continue
+    if (item.kind === 'origin') {
+      // A hand-written doc could carry two origin rows; the datum is one point.
+      if (originEmitted) continue
+      items.push(item)
+      originEmitted = true
+    } else if (f.visible === true) {
+      items.push(item)
+    }
   }
+  if (!originEmitted) items.unshift(BUILTIN_RENDER[ASSEMBLY_ORIGIN_ID])
   return items
 }
 

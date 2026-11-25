@@ -1130,8 +1130,9 @@ export interface AssemblyFeature {
   instance?: PartInstance
   mate?: MateFeatureDef
   definition?: PlaneDef
-  // Origin/plane built-ins only: hidden unless explicitly shown. A part
-  // instance carries its own visibility on `instance.visible` instead.
+  // Built-in planes only: hidden unless explicitly shown. The origin's stored
+  // flag is ignored on load (it is always drawn), and a part instance carries
+  // its own visibility on `instance.visible` instead.
   visible?: boolean
 }
 

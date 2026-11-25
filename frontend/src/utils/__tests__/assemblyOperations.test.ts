@@ -7,7 +7,14 @@ import {
   type AssemblyOperationId,
   type AssemblyOperationInputs,
 } from '@/utils/assemblyOperations'
-import { findInstance, findMate, setInstancePosition } from '@/utils/assemblyMutations'
+import {
+  AssemblyOriginAlwaysVisibleError,
+  findInstance,
+  findMate,
+  setBuiltinVisible,
+  setInstancePosition,
+} from '@/utils/assemblyMutations'
+import { ASSEMBLY_ORIGIN_ID } from '@/utils/assemblyBuiltins'
 import { IDENTITY_TRANSFORM } from '@/utils/transform3d'
 import type { AssemblyDoc } from '@/types/cad'
 
@@ -23,7 +30,7 @@ const EXPECTED: Array<Pick<
   { id: 'duplicate_part', label: 'Duplicate part', bake: true, undo: 'one-shot', solve: 'solve' },
   { id: 'delete_part', label: 'Delete part', bake: true, undo: 'one-shot', solve: 'solve' },
   { id: 'set_part_visible', label: 'Toggle visibility', bake: false, undo: 'one-shot', solve: 'skip' },
-  { id: 'set_builtin_visible', label: 'Toggle origin visibility', bake: false, undo: 'one-shot', solve: 'skip' },
+  { id: 'set_builtin_visible', label: 'Toggle plane visibility', bake: false, undo: 'one-shot', solve: 'skip' },
   { id: 'set_part_fixed', label: 'Fix/unfix part', bake: true, undo: 'fold', solve: 'skip' },
   { id: 'set_part_fixed_oneshot', label: 'Fix/unfix part', bake: true, undo: 'one-shot', solve: 'skip' },
   { id: 'set_part_position', label: 'Set position', bake: true, undo: 'fold', solve: 'solve' },
@@ -59,6 +66,7 @@ function operationDoc(): AssemblyDoc {
     kind: 'assembly',
     features: [
       { id: 'Origin', kind: 'origin' },
+      { id: 'Plane XY', kind: 'plane' },
       instanceFeature('p1', 0),
       instanceFeature('p2', 0),
       { id: 'm1', kind: 'mate', mate: {
@@ -79,7 +87,8 @@ const INPUTS: { [K in AssemblyOperationId]: AssemblyOperationInputs[K] } = {
   duplicate_part: 'p1',
   delete_part: 'p1',
   set_part_visible: { handle: 'p1', visible: false },
-  set_builtin_visible: { id: 'Origin', visible: true },
+  // The origin is never toggleable; the table exercises a plane write.
+  set_builtin_visible: { id: 'Plane XY', visible: true },
   set_part_fixed: { handle: 'p1', fixed: true },
   set_part_fixed_oneshot: { handle: 'p1', fixed: true },
   set_part_position: { handle: 'p1', pos: { tx: 3, ty: 0, tz: 0 } },
@@ -477,5 +486,37 @@ describe('runAssemblyOperation effect dispatch', () => {
         .toThrow(/circular assembly/)
       expect(host.mutateSession).not.toHaveBeenCalled()
     })
+  })
+})
+
+describe('set_builtin_visible refuses the assembly origin', () => {
+  const doc: AssemblyDoc = {
+    kind: 'assembly',
+    features: [
+      { id: ASSEMBLY_ORIGIN_ID, kind: 'origin' },
+      { id: 'AssemblyTop', kind: 'plane' },
+    ],
+  }
+
+  it('throws a named refusal from the pure mutation', () => {
+    expect(() => setBuiltinVisible(doc, ASSEMBLY_ORIGIN_ID, true))
+      .toThrow(AssemblyOriginAlwaysVisibleError)
+    expect(() => setBuiltinVisible(doc, ASSEMBLY_ORIGIN_ID, true))
+      .toThrow('The assembly origin is always shown')
+  })
+
+  it('refuses through the plan builder even when the document has no origin row', () => {
+    const older: AssemblyDoc = { kind: 'assembly', features: [] }
+    expect(() => planAssemblyOperation(
+      'set_builtin_visible', { id: ASSEMBLY_ORIGIN_ID, visible: true }, { doc: older, transforms: {} },
+    )).toThrow(AssemblyOriginAlwaysVisibleError)
+  })
+
+  it('still writes a plane', () => {
+    const plan = planAssemblyOperation(
+      'set_builtin_visible', { id: 'AssemblyTop', visible: true }, { doc, transforms: {} },
+    )!
+    expect(plan.changed).toBe(true)
+    expect(plan.doc.features?.find(f => f.id === 'AssemblyTop')?.visible).toBe(true)
   })
 })

@@ -316,10 +316,12 @@ export const ASSEMBLY_COMMAND_SPECS: readonly AssemblyCommandSpec[] = [
     id: 'set_builtin_visible',
     label: 'Set builtin visibility',
     params: objectParams({ id: Field.string(), visible: Field.boolean() }),
-    run: (ctx, params) => {
-      ctx.runOperation('set_builtin_visible', params)
-      return okResult()
-    },
+    // A plane label resolves locally; the origin's refusal comes from the
+    // operation and must reach the caller as a failed Result.
+    run: (ctx, params) => guardedOperation(
+      () => ctx.runOperation('set_builtin_visible', params),
+      'Failed to change reference geometry visibility',
+    ),
   }),
   spec({
     id: 'set_part_fixed',

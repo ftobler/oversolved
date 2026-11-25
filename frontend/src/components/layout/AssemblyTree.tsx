@@ -22,6 +22,7 @@ import { hintDrivers, relatedHints } from '@/picking/relationHint'
 import { ASSEMBLY_RULES, buildAssemblyRelationCtx } from '@/registry/relationRuleRegistry'
 import { MATE_KIND_LABELS } from '@/utils/mateKinds'
 import { getFeatureIcon } from '@/components/layout/featureIcons'
+import { hasFeatureVisibilityToggle } from '@/components/layout/featureVisibilityKinds'
 import RightClickMenu, { type ContextMenuItem } from '@/components/dialogs/RightClickMenu'
 import { RebuildButton } from '@/components/rebuild/RebuildButton'
 import featurePartIcon from '@/assets/icons/feature-part.svg'
@@ -50,7 +51,7 @@ const EMPTY_FEATURES: PartFeature[] = []
 
 export interface AssemblyTreeProps {
   instances: PartInstance[]
-  // The assembly's own origin and reference planes, hidden by default.
+  // The assembly's own frame: the origin is always visible, the planes start hidden.
   builtins: AssemblyBuiltinListItem[]
   mates: MateFeature[]
   // The whole solve verdict. A failed part or mate renders red on its row.
@@ -368,17 +369,21 @@ export function AssemblyTree({
               <div className="feature-item-title">
                 <img className="feature-icon" src={getFeatureIcon(b.kind)} alt="" />
                 <span className="feature-name">{b.label}</span>
-                <div className="feature-item-actions">
-                  <button
-                    type="button"
-                    className="feature-visibility-btn"
-                    onClick={(e) => { e.stopPropagation(); onToggleBuiltinVisible(b.id, !b.visible) }}
-                    title={b.visible ? 'Hide' : 'Show'}
-                    aria-label={b.visible ? `Hide ${b.label}` : `Show ${b.label}`}
-                  >
-                    <img src={b.visible ? iconEyeIcon : iconEyeOffIcon} alt={b.visible ? 'Visible' : 'Hidden'} />
-                  </button>
-                </div>
+                {/* The origin is the always-drawn datum; the part editor's table
+                    already records why its kind has no eye, so both trees share it. */}
+                {hasFeatureVisibilityToggle(b.kind) && (
+                  <div className="feature-item-actions">
+                    <button
+                      type="button"
+                      className="feature-visibility-btn"
+                      onClick={(e) => { e.stopPropagation(); onToggleBuiltinVisible(b.id, !b.visible) }}
+                      title={b.visible ? 'Hide' : 'Show'}
+                      aria-label={b.visible ? `Hide ${b.label}` : `Show ${b.label}`}
+                    >
+                      <img src={b.visible ? iconEyeIcon : iconEyeOffIcon} alt={b.visible ? 'Visible' : 'Hidden'} />
+                    </button>
+                  </div>
+                )}
               </div>
             </li>
           ))}

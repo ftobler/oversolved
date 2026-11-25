@@ -8,6 +8,7 @@ import type {
 } from '@/types/cad'
 import { randomId } from '@/utils/yamlMutations/helpers'
 import { EMPTY_MATE_REF, MATE_KIND_LABELS } from '@/utils/mateKinds'
+import { ASSEMBLY_ORIGIN_ID } from '@/utils/assemblyBuiltins'
 import { IDENTITY_TRANSFORM, quatFromEulerXyz, quatToEulerXyz } from '@/utils/transform3d'
 
 export { IDENTITY_TRANSFORM }
@@ -327,14 +328,25 @@ export function bakeSolvedTransforms(
   }
 }
 
-// Show or hide one of the assembly's own built-in features (an origin or a
-// plane), keyed by feature id. Reference geometry is hidden by default, so this
-// is what a tree eye toggle writes.
+// The origin is drawn from the static anchors whether or not a feature row
+// exists, so a flag write there would be a lie. Name the refusal so a headless
+// caller gets an answer instead of a silently ignored field.
+export class AssemblyOriginAlwaysVisibleError extends Error {
+  constructor() {
+    super('The assembly origin is always shown')
+    this.name = 'AssemblyOriginAlwaysVisibleError'
+  }
+}
+
+// Show or hide one of the assembly's own planes, keyed by feature id. Planes are
+// reference geometry and hidden by default, so this is what a tree eye writes.
+// The origin is the exception: it has no eye and refuses a write by name.
 export function setBuiltinVisible(doc: AssemblyDoc, id: string, visible: boolean): AssemblyDoc {
+  if (id === ASSEMBLY_ORIGIN_ID) throw new AssemblyOriginAlwaysVisibleError()
   return {
     ...doc,
     features: features(doc).map(f => (
-      f.id === id && (f.kind === 'origin' || f.kind === 'plane') ? { ...f, visible } : f
+      f.id === id && f.kind === 'plane' ? { ...f, visible } : f
     )),
   }
 }

@@ -92,7 +92,10 @@ export function useAssemblyDoc(uuid: string | undefined, workspace?: string) {
         }
         const parsed = loaded.doc
         // An empty assembly gets its own Origin + 3 planes (its coordinate
-        // frame), the assembly-scoped twin of the part empty-doc prepend.
+        // frame), the assembly-scoped twin of the part empty-doc prepend. An
+        // origin row carrying `visible: false` loads unchanged: that field is
+        // ignored for the origin, which is always drawn, so no migration edits
+        // an existing document.
         if (!parsed.features || parsed.features.length === 0) {
           parsed.features = ASSEMBLY_BUILTIN_DEFAULTS.map(f => ({ ...f }))
         }

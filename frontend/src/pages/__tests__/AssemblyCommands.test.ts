@@ -9,9 +9,15 @@ import {
   type AssemblyCommandContext,
   type AssemblyCommandName,
 } from '@/session/assemblyCommandSpecs'
-import { ASSEMBLY_OPERATIONS, type AssemblyOperationId } from '@/utils/assemblyOperations'
+import {
+  ASSEMBLY_OPERATIONS,
+  type AssemblyOperationId,
+  type AssemblyOperationInputs,
+} from '@/utils/assemblyOperations'
 import type { CommandRegistry, ErasedCommandSpec } from '@/utils/core/commandSpec'
 import { CommandRegistry as Registry } from '@/utils/core/commandSpec'
+import { ASSEMBLY_ORIGIN_ID } from '@/utils/assemblyBuiltins'
+import { AssemblyOriginAlwaysVisibleError } from '@/utils/assemblyMutations'
 import { assemblyContext, minimalAssemblyParams } from './commandFixtures'
 
 // The page's inputs, with spies for everything but the id mint. Running the
@@ -148,5 +154,24 @@ describe('assembly operation coverage', () => {
     execute('cancel_edit', d.registry)
     expect(d.cancelEdit).toHaveBeenCalledTimes(1)
     expect(d.cancelManipulation).not.toHaveBeenCalled()
+  })
+})
+
+describe('set_builtin_visible command', () => {
+  it('turns the origin refusal into a failed Result instead of an escaped throw', () => {
+    // The real operation throws; the command is the gesture that reports it.
+    const refuse = <K extends AssemblyOperationId>(_id: K, _payload: AssemblyOperationInputs[K]): void => {
+      throw new AssemblyOriginAlwaysVisibleError()
+    }
+    const context = assemblyContext({ runOperation: refuse })
+    const registry = new Registry<AssemblyCommandContext>(() => context)
+    for (const spec of ASSEMBLY_COMMAND_SPECS) registry.register(spec)
+
+    const result = registry.execute('set_builtin_visible', { id: ASSEMBLY_ORIGIN_ID, visible: false })
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.code).toBe('refused')
+      expect(result.message).toBe('The assembly origin is always shown')
+    }
   })
 })
