@@ -9,25 +9,49 @@
 // field closes.
 
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import type { AssemblyDoc } from '@/types/cad'
+import type { AssemblyDoc, PartInstance } from '@/types/cad'
 import { useAssemblyStore, DEFAULT_ASSEMBLY_EDITOR_DATA, setAssemblyCallbacks } from '@/stores/assemblyStore'
 import type { AssemblySolveResult } from '@/stores/assemblyStore'
 import { assemblyEntityKey, type EntityMateRefs } from '@/utils/anchorCandidates'
 import type { AnchorTable } from '@/utils/anchorGizmos'
 import { appendMate, findMate } from '@/utils/assemblyMutations'
+import { instanceLabel } from '@/utils/instanceLabel'
+import { mateRefLabel } from '@/utils/mateKinds'
 import { IDENTITY_TRANSFORM, quatFromEulerXyz } from '@/utils/transform3d'
 
 const PART = 'h1'
 const VERT = assemblyEntityKey(PART, 0, 'vertex', 0)
 const EDGE = assemblyEntityKey(PART, 0, 'edge', 0)
 const FACE_B = assemblyEntityKey('h2', 0, 'face', 0)
+const FACE_A = assemblyEntityKey(PART, 0, 'face', 1)
+// Two instances of one part document offer the same deterministic anchor id:
+// the hash is minted from the part geometry, not from the placement. This is
+// the exact case that made both chips read alike in the report.
+const FACE_TWIN = assemblyEntityKey('h2', 0, 'face', 1)
+const SHARED_ANCHOR = 'a_shared'
 const FREEFORM = assemblyEntityKey(PART, 0, 'face', 9)
 
 const ENTITY_MATE_REFS: EntityMateRefs = {
   [VERT]: [{ part: PART, anchor: 'a_v' }],
   [EDGE]: [{ part: PART, anchor: 'a_e' }],
   [FACE_B]: [{ part: 'h2', anchor: 'b_f' }],
+  [FACE_A]: [{ part: PART, anchor: SHARED_ANCHOR, anchor_descriptor: {
+    geom_hash: '@u|face-a', kind: 'plane', created_by: 'box', point: [0, 0, 0],
+  } }],
+  [FACE_TWIN]: [{ part: 'h2', anchor: SHARED_ANCHOR, anchor_descriptor: {
+    geom_hash: '@u|face-a', kind: 'plane', created_by: 'box', point: [0, 0, 0],
+  } }],
   [FREEFORM]: [],
+}
+
+function instance(handle: string, docId: string): PartInstance {
+  return {
+    handle,
+    doc_id: docId,
+    doc_rev: 0,
+    transform: { ...IDENTITY_TRANSFORM },
+    visible: true,
+  }
 }
 
 const SOLVE_RESULT: AssemblySolveResult = {
@@ -88,9 +112,12 @@ describe('arming a mate reference slot', () => {
     expect(getState().pickCandidates).toHaveLength(2)
   })
 
-  it('clicking the same corner again advances the cycle and rewrites the slot', () => {
+  it('clicking the same corner again advances the cycle and rewrites the armed slot', () => {
+    // The first pick fills A and hands the aim to B. Re-arming A is how the
+    // user cycles the corner behind ref_a rather than re-aiming the new slot.
     getState().setActiveMateField({ featureId: 'm1', field: 'ref_a' })
     getState().pickFromHitsOrCycle(CORNER_HITS)
+    getState().setActiveMateField({ featureId: 'm1', field: 'ref_a' })
     getState().pickFromHitsOrCycle(CORNER_HITS)
     expect(currentMate('m1').ref_a).toEqual({ part: PART, anchor: 'a_e' })
   })
@@ -137,6 +164,80 @@ describe('arming a mate reference slot', () => {
     expect(mate.ref_a).toEqual({ part: PART, anchor: 'a_v' })
     expect(mate.ref_b).toEqual({ part: '', anchor: '' })
     expect(getState().doc).toBe(before)
+  })
+})
+
+// The report: two chips looked identical although the user picked different
+// objects. The write path is correct; an anchor id is derived from the part
+// document, so two placements of one part offer the same id, and the old label
+// used the document name for both. The refs must differ and so must the labels.
+describe('distinct picks read distinctly', () => {
+  it('two instances of one document write different parts and show different labels', () => {
+    const twins = [instance('h1', 'doc-x'), instance('h2', 'doc-x')]
+    const names = { 'doc-x': 'Bracket' }
+    const labelFor = (handle: string) => instanceLabel(twins, names, handle)
+    const kindOf = () => 'plane'
+
+    getState().setActiveMateField({ featureId: 'm1', field: 'ref_a' })
+    getState().pickFromHitsOrCycle([{ entityKey: FACE_A }])
+    getState().setActiveMateField({ featureId: 'm1', field: 'ref_b' })
+    getState().pickFromHitsOrCycle([{ entityKey: FACE_TWIN }])
+
+    const mate = currentMate('m1')
+    expect(mate.ref_a.part).not.toBe(mate.ref_b.part)
+    expect(mate.ref_a.anchor).toBe(mate.ref_b.anchor)  // same geometry, different placement
+    const labelA = mateRefLabel(mate.ref_a, labelFor, kindOf)
+    const labelB = mateRefLabel(mate.ref_b, labelFor, kindOf)
+    expect(labelA).toBe('Face of Bracket')
+    expect(labelB).toBe('Face of Bracket (2)')
+    expect(labelA).not.toBe(labelB)
+  })
+
+  it('two different documents also write and read as two references for fixed', () => {
+    const parts = [instance('h1', 'doc-a'), instance('h2', 'doc-b')]
+    const names = { 'doc-a': 'Alpha', 'doc-b': 'Beta' }
+    const labelFor = (handle: string) => instanceLabel(parts, names, handle)
+    const kindOf = () => 'plane'
+
+    getState().setActiveMateField({ featureId: 'm1', field: 'ref_a' })
+    getState().pickFromHitsOrCycle([{ entityKey: FACE_A }])
+    getState().setActiveMateField({ featureId: 'm1', field: 'ref_b' })
+    getState().pickFromHitsOrCycle([{ entityKey: FACE_TWIN }])
+
+    const mate = currentMate('m1')
+    expect(mate.ref_a.part).not.toBe(mate.ref_b.part)
+    expect(mateRefLabel(mate.ref_a, labelFor, kindOf)).toBe('Face of Alpha')
+    expect(mateRefLabel(mate.ref_b, labelFor, kindOf)).toBe('Face of Beta')
+  })
+})
+
+// The natural "click one object, click the other" gesture: a pick into an
+// empty slot while the sibling is empty also hands the aim to that sibling.
+// A pick into a filled slot still re-aims/cycles the slot the user armed.
+describe('auto-advance after a pick', () => {
+  it('a pick into an empty pair arms the other slot', () => {
+    getState().setActiveMateField({ featureId: 'm1', field: 'ref_a' })
+    getState().pickFromHitsOrCycle([{ entityKey: VERT }])
+    expect(currentMate('m1').ref_a).toEqual({ part: PART, anchor: 'a_v' })
+    expect(getState().activeMateField).toEqual({ featureId: 'm1', field: 'ref_b' })
+  })
+
+  it('a pick into a filled slot keeps that slot armed', () => {
+    getState().setActiveMateField({ featureId: 'm1', field: 'ref_a' })
+    getState().pickFromHitsOrCycle(CORNER_HITS)
+    getState().setActiveMateField({ featureId: 'm1', field: 'ref_a' })
+    getState().pickFromHitsOrCycle(CORNER_HITS)  // same corner cycles to the edge behind the vertex
+    expect(currentMate('m1').ref_a).toEqual({ part: PART, anchor: 'a_e' })
+    expect(getState().activeMateField).toEqual({ featureId: 'm1', field: 'ref_a' })
+  })
+
+  it('a refused same-part pick does not advance and writes nothing', () => {
+    getState().setActiveMateField({ featureId: 'm1', field: 'ref_a' })
+    getState().pickFromHitsOrCycle([{ entityKey: VERT }])
+    const before = getState().doc
+    getState().pickFromHitsOrCycle([{ entityKey: EDGE }])  // EDGE is on PART, already in ref_a
+    expect(getState().doc).toBe(before)
+    expect(getState().activeMateField).toEqual({ featureId: 'm1', field: 'ref_b' })
   })
 })
 
@@ -297,6 +398,7 @@ describe('pose capture on pick', () => {
     getState().setActiveMateField({ featureId: 'm1', field: 'ref_a' })
     getState().pickFromHitsOrCycle(CORNER_HITS)  // aims a_v: opposed to b_f
     expect(currentMate('m1').flip).toBe(true)
+    getState().setActiveMateField({ featureId: 'm1', field: 'ref_a' })
     getState().pickFromHitsOrCycle(CORNER_HITS)  // cycles to a_e: same side as b_f
     expect(currentMate('m1').ref_a).toEqual({ part: PART, anchor: 'a_e' })
     expect('flip' in currentMate('m1')).toBe(false)
@@ -371,6 +473,7 @@ describe('requestSolveOrDefer', () => {
     getState().pickFromHitsOrCycle(CORNER_HITS)
     getState().requestSolveOrDefer()
     expect(getState().pickCandidates).toHaveLength(2)
+    getState().setActiveMateField({ featureId: 'm1', field: 'ref_a' })
     getState().pickFromHitsOrCycle(CORNER_HITS)
     expect(currentMate('m1').ref_a).toEqual({ part: PART, anchor: 'a_e' })
   })

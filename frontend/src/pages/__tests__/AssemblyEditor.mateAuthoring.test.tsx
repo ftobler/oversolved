@@ -162,10 +162,8 @@ describe('AssemblyEditor mate authoring (Stage 8)', () => {
     pick(VERT_A)
     await tick()
 
-    // ref_a now names its pick, so the only prompting chip left is ref_b. Clicking
-    // it arms that slot; the ID buffer emits globally unique keys, so the pick can
-    // land on a different part without any selection-id change.
-    fireEvent.click(screen.getByText('Pick a reference'))
+    // Filling an empty A hands the aim to B, so the natural "click one part,
+    // click the other" gesture needs no chip click in between.
     expect(useAssemblyStore.getState().activeMateField).toEqual({ featureId: mateId(), field: 'ref_b' })
     pick(VERT_B)
     await tick()

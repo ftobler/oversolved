@@ -15,6 +15,7 @@ import type { AssemblySubject } from '@/utils/assemblySelection'
 import { runAssemblyOperation } from '@/utils/assemblyOperations'
 import { ASSEMBLY_UNDO_LABELS, type AssemblyUndoLabel } from '@/utils/core/assemblyUndoLabels'
 import { captureMateOrientationPatch } from '@/utils/mateCapture'
+import { isMateRefEmpty } from '@/utils/mateKinds'
 import type { AssemblyPickPart } from '@/utils/assemblyPick'
 import type { GizmoDragState } from '@/types/drag'
 import { composeTransforms, IDENTITY_TRANSFORM, transformsEqual, type Vec3 } from '@/utils/transform3d'
@@ -586,6 +587,11 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
     const otherField: MateRefField = activeMateField.field === 'ref_a' ? 'ref_b' : 'ref_a'
     const otherRef = mate?.[otherField]
     if (otherRef && otherRef.part === ref.part) return
+    // A pick into an empty pair is the "click one part, click the other"
+    // gesture: hand the aim to the sibling so the second click fills B instead
+    // of re-aiming A. Once either slot is filled, the armed field is the one the
+    // user chose and re-aim/cycle stays there.
+    const advance = !!mate && isMateRefEmpty(mate[activeMateField.field]) && isMateRefEmpty(otherRef)
     // The pick that completes (or re-aims) the pair freezes the on-screen pose
     // into the mate's authored flip/angle and, for a fixed weld, the translation
     // as its offset -- measured against the solved anchor table and the settled
@@ -617,6 +623,9 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
       requestSolveOrDefer: () => get().requestSolveOrDefer(),
     })
     set({ mateFieldDirty: true })
+    if (advance) {
+      set({ activeMateField: { featureId: activeMateField.featureId, field: otherField } })
+    }
   },
 
   cyclePickCandidate: () => set((prev) => ({
