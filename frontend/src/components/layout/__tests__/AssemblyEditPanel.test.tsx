@@ -52,7 +52,9 @@ function makeProps(overrides: Partial<AssemblyEditPanelProps> = {}): AssemblyEdi
         featureId={mate.id}
         mate={mate.mate}
         activeField={null}
+        kindOf={() => 'plane'}
         onArmField={vi.fn()}
+        onClearRef={vi.fn()}
         onUpdate={vi.fn()}
       />
     ),
@@ -106,7 +108,7 @@ describe('AssemblyEditPanel', () => {
 
     expect(container.querySelector('.card-header-title')!.textContent).toBe('Hinge')
     expect(container.querySelector('.card-header img')!.getAttribute('src')).toBe(mateRotatingIcon)
-    expect(screen.getAllByText('p1 / a1')).toHaveLength(1)
+    expect(screen.getAllByText('Face of p1')).toHaveLength(1)
     expect(container.querySelector('.mate-editor')).not.toBeNull()
   })
 

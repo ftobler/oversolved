@@ -73,4 +73,29 @@ describe('assemblySolveInput', () => {
     expect(mateSpecs(DOC)[0].limit_min).toBeUndefined()
     expect(mateSpecs(DOC)[0].limit_max).toBeUndefined()
   })
+
+  // A freshly added mate and a mate whose last reference was removed both have
+  // two empty slots. Passing one to the solve would hit its "two different
+  // parts" guard and draw a red error row over a mate the user never picked.
+  it('drops a mate with no picks at all', () => {
+    const unpicked: AssemblyDoc = {
+      kind: 'assembly',
+      features: [{ id: 'm1', kind: 'mate', mate: {
+        kind: 'fixed', ref_a: { part: '', anchor: '' }, ref_b: { part: '', anchor: '' },
+      } }],
+    }
+    expect(mateSpecs(unpicked)).toEqual([])
+  })
+
+  it('keeps a half-picked mate so its stale slot is still reported', () => {
+    const half: AssemblyDoc = {
+      kind: 'assembly',
+      features: [{ id: 'm1', kind: 'mate', mate: {
+        kind: 'fixed',
+        ref_a: { part: 'left', anchor: 'a' },
+        ref_b: { part: '', anchor: '' },
+      } }],
+    }
+    expect(mateSpecs(half)).toHaveLength(1)
+  })
 })

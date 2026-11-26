@@ -367,11 +367,13 @@ The assembly editor's document operations are one declarative table,
 `ASSEMBLY_OPERATIONS` (`frontend/src/utils/assemblyOperations.ts`), not command
 ids: each row states `bake`/`undo`/`solve` and a pure `apply`. Commands call
 `runOperation(id, input)`; the drive calls the same table through
-`planAssemblyOperation`. `set_mate_ref` is the one row with no command of its
-own: the store's `commitAimToMateField` calls `runAssemblyOperation('set_mate_ref',
-{ id, field, ref, patch })` when a mate chip commits a pick, so the ref and the
-captured pose params land in one fold step. The drive's `set_mate_ref` mutation
-is the same cell.
+`planAssemblyOperation`. Two rows have no command of their own: the store's
+`commitAimToMateField` calls `runAssemblyOperation('set_mate_ref', { id, field,
+ref, patch })` when a mate chip commits a pick, so the ref and the captured pose
+params land in one fold step, and the mate editor's Remove calls
+`runAssemblyOperation('clear_mate_ref', { id, field })` to release one slot as
+its own undo step. The drive's `set_mate_ref` and `clear_mate_ref` mutations are
+the same cells.
 
 ## Keybindings
 

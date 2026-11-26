@@ -33,7 +33,13 @@ interface MateEditorProps {
   result?: MateResult
   activeField: MateFieldTarget | null
   labelFor?: (handle: string) => string | undefined
+  // The geometry class behind an anchor id, read from the solve's tables by the
+  // page. Without it a picked ref can only be labelled "missing".
+  kindOf?: (ref: MateRef) => string | undefined
   onArmField: (target: MateFieldTarget | null) => void
+  // Clearing a picked slot is a document mutation, so the panel reports which
+  // field to release and re-arms it; the page only runs the clear operation.
+  onClearRef: (field: MateRefField) => void
   onUpdate: (patch: MateParamPatch) => void
 }
 
@@ -41,8 +47,8 @@ const REF_FIELDS: readonly MateRefField[] = ['ref_a', 'ref_b']
 const REF_TITLES: Record<MateRefField, string> = { ref_a: 'Reference A', ref_b: 'Reference B' }
 
 // Wears the part editor's pick-chip classes so the two look identical; the
-// mate-ref-chip class carries only the button reset and the `stale` state, which
-// the part chip has no equivalent for.
+// mate-ref-chip class carries the sibling arming/remove layout and the `stale`
+// state, which the part chip has no equivalent for.
 function chipClass(ref: MateRef, stale: boolean, picking: boolean): string {
   const parts = ['feature-pick-chip', 'mate-ref-chip']
   if (isMateRefEmpty(ref)) parts.push('empty')
@@ -86,7 +92,7 @@ function offsetFromText(text: Triple): MateOffsetVec | undefined {
 }
 
 export function MateEditor({
-  featureId, mate, result, activeField, labelFor, onArmField, onUpdate,
+  featureId, mate, result, activeField, labelFor, kindOf, onArmField, onClearRef, onUpdate,
 }: MateEditorProps) {
   const staleRefs = new Set(result?.staleRefs ?? [])
   // The box's own text, not `mate.angle` directly: a half-typed keystroke ('-',
@@ -417,27 +423,48 @@ export function MateEditor({
           // wider than the 80px label column leaves room for.
           <div key={field} className="feature-field-row feature-field-row--stacked">
             <span className="feature-field-label">{REF_TITLES[field]}</span>
-            <button
-              type="button"
-              className={chipClass(mate[field], staleRefs.has(field) || !!result?.error, picking)}
-              aria-pressed={picking}
-              onClick={() => onArmField(picking ? null : { featureId, field })}
-            >
-              {/* Same two shapes the part editor's PickChip renders: italic
-                  placeholder text when empty, a pink pill once picked. Spans,
-                  not divs, because the chip itself is a button here. */}
+            {/* Two sibling buttons inside an unlabelled shell: the arming
+                button fills the pill and the Remove button sits beside it. A
+                button cannot contain another interactive control, and a
+                role="button" wrapper would hide its descendants from the
+                accessibility tree for the same reason. */}
+            <div className={chipClass(mate[field], staleRefs.has(field) || !!result?.error, picking)}>
               {empty ? (
-                <span className="feature-pick-chip-empty-text">
-                  {mateRefLabel(mate[field], labelFor)}
-                </span>
+                <button
+                  type="button"
+                  className="feature-pick-chip-empty-text mate-ref-arm"
+                  aria-pressed={picking}
+                  onClick={() => onArmField(picking ? null : { featureId, field })}
+                >
+                  {mateRefLabel(mate[field], labelFor, kindOf)}
+                </button>
               ) : (
                 <span className="feature-pick-chip-item">
-                  <span className="feature-pick-chip-item-text">
-                    {mateRefLabel(mate[field], labelFor)}
-                  </span>
+                  <button
+                    type="button"
+                    className="feature-pick-chip-item-text mate-ref-arm"
+                    aria-pressed={picking}
+                    onClick={() => onArmField(picking ? null : { featureId, field })}
+                  >
+                    {mateRefLabel(mate[field], labelFor, kindOf)}
+                  </button>
+                  {/* The same remove affordance as PickChip. It clears first
+                      and then arms this slot, so the next click picks again;
+                      stopping the click keeps the sibling button from toggling
+                      the field it just armed. */}
+                  <button
+                    type="button"
+                    className="feature-pick-chip-item-remove"
+                    title="Remove"
+                    onClick={e => {
+                      e.stopPropagation()
+                      onClearRef(field)
+                      onArmField({ featureId, field })
+                    }}
+                  >×</button>
                 </span>
               )}
-            </button>
+            </div>
           </div>
         )
       })}

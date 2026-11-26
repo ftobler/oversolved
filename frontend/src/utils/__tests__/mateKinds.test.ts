@@ -24,7 +24,10 @@ import {
   normalizeMateLimitDeg,
   unresolvedMateParams,
 } from '@/utils/mateKinds'
-import { ASSEMBLY_HANDLE } from '@/utils/assemblyBuiltins'
+import {
+  ASSEMBLY_HANDLE, ASSEMBLY_FRONT_ID, ASSEMBLY_ORIGIN_ID, ASSEMBLY_RIGHT_ID, ASSEMBLY_TOP_ID,
+} from '@/utils/assemblyBuiltins'
+import { partFrameAnchorId } from '@/kernel/partBundle'
 import type { Vec3 } from '@/utils/transform3d'
 
 describe('MATE_KINDS', () => {
@@ -264,34 +267,116 @@ describe('isMateRefEmpty', () => {
 })
 
 describe('mateRefLabel', () => {
+  const owner = () => 'Part 1'
+  // A real minted id: the whole point of this label is that none of its hex
+  // reaches the screen, whether it came from a face or a built-in frame.
+  const ANCHOR = 'a_5fc87abc1234def'
+
   it('prompts when nothing is picked', () => {
     expect(mateRefLabel(EMPTY_MATE_REF)).toBe('Pick a reference')
   })
 
-  it('names the part through the label lookup', () => {
-    expect(mateRefLabel({ part: 'h1', anchor: 'a1' }, () => 'Bracket')).toBe('Bracket / a1')
+  // One row per kind the anchor table can carry, plus the stale case. The
+  // geometry class, not the id, is what a human picking a mate needs to read.
+  it('names the geometry class for every element kind', () => {
+    const rows: readonly (readonly [string, string])[] = [
+      ['plane', 'Face of Part 1'],
+      ['cylinder', 'Face of Part 1'],
+      ['cone', 'Face of Part 1'],
+      ['sphere', 'Face of Part 1'],
+      ['torus', 'Face of Part 1'],
+      ['line', 'Edge of Part 1'],
+      ['circle', 'Edge of Part 1'],
+      ['point', 'Vertex of Part 1'],
+      ['not_a_kind', 'Missing reference of Part 1'],
+    ]
+    for (const [kind, expected] of rows) {
+      const label = mateRefLabel({ part: 'h1', anchor: ANCHOR }, owner, () => kind)
+      expect(label, kind).toBe(expected)
+      expect(label, kind).not.toMatch(/a_[0-9a-f]/)
+    }
+  })
+
+  it('names a stale anchor when the table has no kind for it', () => {
+    const label = mateRefLabel({ part: 'h1', anchor: ANCHOR }, owner)
+    expect(label).toBe('Missing reference of Part 1')
+    expect(label).not.toMatch(/a_[0-9a-f]/)
   })
 
   it('falls back to the raw handle when the part is unknown', () => {
-    expect(mateRefLabel({ part: 'h9', anchor: 'a1' }, () => undefined)).toBe('h9 / a1')
+    expect(mateRefLabel({ part: 'h9', anchor: ANCHOR }, () => undefined, () => 'plane'))
+      .toBe('Face of h9')
+  })
+
+  // A part's origin and built-in planes are planes to the solver, but "Face of
+  // Part 1" would hide which datum the user actually picked.
+  it('names a part frame anchor by its built-in name', () => {
+    const rows: readonly (readonly [string, string])[] = [
+      ['Origin', 'Origin of Part 1'],
+      ['Front', 'Front plane of Part 1'],
+      ['Top', 'Top plane of Part 1'],
+      ['Right', 'Right plane of Part 1'],
+    ]
+    for (const [name, expected] of rows) {
+      const anchor = partFrameAnchorId(name)!
+      const label = mateRefLabel({ part: 'h1', anchor }, owner, () => 'plane')
+      expect(label, name).toBe(expected)
+      expect(label, name).not.toMatch(/a_[0-9a-f]/)
+    }
   })
 
   // The reserved handle belongs to no PartInstance, so labelFor can never
-  // resolve it; the assembly's own frame has to be named directly.
-  it('names the assembly frame for the reserved handle', () => {
-    expect(mateRefLabel({ part: ASSEMBLY_HANDLE, anchor: 'AssemblyTop' })).toBe('Assembly / AssemblyTop')
+  // resolve it; the assembly's own frame has to be named directly, with no owner.
+  it('names the assembly frame without an owner', () => {
+    const rows: readonly (readonly [string, string])[] = [
+      [ASSEMBLY_ORIGIN_ID, 'Origin'],
+      [ASSEMBLY_FRONT_ID, 'Front plane'],
+      [ASSEMBLY_TOP_ID, 'Top plane'],
+      [ASSEMBLY_RIGHT_ID, 'Right plane'],
+    ]
+    for (const [anchor, expected] of rows) {
+      const label = mateRefLabel({ part: ASSEMBLY_HANDLE, anchor }, owner, () => 'plane')
+      expect(label, anchor).toBe(expected)
+      expect(label, anchor).not.toMatch(/a_[0-9a-f]/)
+    }
+  })
+
+  it('names a sub-assembly leaf frame anchor by its built-in name', () => {
+    // A child part's frame anchor reaches the parent with a leaf-path prefix;
+    // it is still the child's Front plane, not an anonymous face.
+    const ref = {
+      part: 'h1',
+      anchor: `child/${partFrameAnchorId('Front')}`,
+      anchor_descriptor: {
+        geom_hash: 'part-frame/front', kind: 'plane', created_by: '', point: [0, 0, 0] as [number, number, number],
+      },
+    }
+    const label = mateRefLabel(ref, owner, () => 'plane')
+    expect(label).toBe('Front plane of Part 1')
+    expect(label).not.toMatch(/a_[0-9a-f]/)
+  })
+
+  it('names an unknown assembly anchor as missing', () => {
+    expect(mateRefLabel({ part: ASSEMBLY_HANDLE, anchor: ANCHOR }, owner, () => 'plane'))
+      .toBe('Missing reference of Assembly')
   })
 })
 
 describe('mateSummary', () => {
-  it('reads as kind plus both references', () => {
-    const s = mateSummary('fixed', { part: 'h1', anchor: 'a1' }, { part: 'h2', anchor: 'b2' })
-    expect(s).toBe('Fixed: h1 / a1 to h2 / b2')
+  const labelFor = (handle: string) => (handle === 'h1' ? 'Part 1' : 'Part 2')
+  const kindOf = () => 'plane'
+
+  it('reads as kind plus both named references', () => {
+    const s = mateSummary(
+      'fixed', { part: 'h1', anchor: 'a1' }, { part: 'h2', anchor: 'b2' }, labelFor, kindOf,
+    )
+    expect(s).toBe('Fixed: Face of Part 1 to Face of Part 2')
+    expect(s).not.toMatch(/a_[0-9a-f]/)
   })
 
   it('shows the unpicked half of a half-authored mate', () => {
-    const s = mateSummary('spherical', { part: 'h1', anchor: 'a1' }, EMPTY_MATE_REF)
-    expect(s).toBe('Spherical: h1 / a1 to Pick a reference')
+    const s = mateSummary('spherical', { part: 'h1', anchor: 'a1' }, EMPTY_MATE_REF, labelFor, kindOf)
+    expect(s).toBe('Spherical: Face of Part 1 to Pick a reference')
   })
 })
 

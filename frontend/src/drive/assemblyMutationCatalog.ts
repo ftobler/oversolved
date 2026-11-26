@@ -83,6 +83,7 @@ export type AssemblyWireMutation =
     capture?: boolean
   }
   | { type: 'set_mate_ref'; featureId: string; field: MateRefField; ref: DriveMateRef; capture?: boolean }
+  | { type: 'clear_mate_ref'; featureId: string; field: string }
   | {
     type: 'update_mate'
     featureId: string
@@ -125,6 +126,7 @@ export const ASSEMBLY_OPERATION_BY_MUTATION: Readonly<Record<Exclude<AssemblyWir
   set_builtin_visible: 'set_builtin_visible',
   add_mate: 'add_mate',
   set_mate_ref: 'set_mate_ref',
+  clear_mate_ref: 'clear_mate_ref',
   update_mate: 'update_mate',
   rename_mate: 'rename_mate',
   delete_mate: 'delete_mate',
@@ -384,6 +386,16 @@ export const ASSEMBLY_MUTATION_CATALOG = {
       capture: optBool(CAPTURE_NOTE),
     },
   },
+  clear_mate_ref: {
+    summary: 'Release one mate reference back to its unpicked state.',
+    note: 'The other reference and every parameter are left alone. A half-empty mate is treated '
+      + 'as unpicked by the solve, so the parts it used to bind settle freely on the next solve. '
+      + 'The step is its own undo entry and arms no pick; re-pick with set_mate_ref.',
+    fields: {
+      featureId: str(),
+      field: str('ref_a or ref_b.'),
+    },
+  },
   update_mate: {
     summary: 'Patch a mate\'s parameters; a null value deletes the key.',
     note: MATE_PARAM_NOTE + ' A null deletes the key rather than storing it; at least one field must be present.',
@@ -432,6 +444,7 @@ export const ASSEMBLY_MUTATION_FAMILY: Record<AssemblyWireType, AssemblyMutation
   set_builtin_visible: 'parts',
   add_mate: 'mates',
   set_mate_ref: 'mates',
+  clear_mate_ref: 'mates',
   update_mate: 'mates',
   rename_mate: 'mates',
   delete_mate: 'mates',
@@ -1022,6 +1035,20 @@ function validateValues(
         ok: true,
         operation: 'set_mate_ref',
         input: { id: featureId, field: field as MateRefField, ref: resolved.ref },
+      }
+    }
+    case 'clear_mate_ref': {
+      const featureId = raw.featureId as string
+      const missing = mateProblem(doc, featureId)
+      if (missing !== null) return fail('unknown-target', missing)
+      const field = raw.field as string
+      if (field !== 'ref_a' && field !== 'ref_b') {
+        return fail('invalid-mutation', `field must be "ref_a" or "ref_b", got ${json(field)}`)
+      }
+      return {
+        ok: true,
+        operation: 'clear_mate_ref',
+        input: { id: featureId, field: field as MateRefField },
       }
     }
     case 'update_mate': {

@@ -94,6 +94,15 @@ describe('ASSEMBLY_MUTATION_CATALOG', () => {
     expect(ASSEMBLY_OPERATIONS.add_mate.bake).toBe(false)
     expect(ASSEMBLY_OPERATIONS.set_mate_ref.bake).toBe(false)
   })
+
+  it('maps clear_mate_ref onto its own operation and checks its target', () => {
+    expect(validate({ type: 'clear_mate_ref', featureId: 'm1', field: 'ref_b' }))
+      .toMatchObject({ ok: true, operation: 'clear_mate_ref', input: { id: 'm1', field: 'ref_b' } })
+    expect(validate({ type: 'clear_mate_ref', featureId: 'missing', field: 'ref_b' }))
+      .toMatchObject({ ok: false, error: { code: 'unknown-target' } })
+    expect(validate({ type: 'clear_mate_ref', featureId: 'm1', field: 'ref_c' }))
+      .toMatchObject({ ok: false, error: { code: 'invalid-mutation' } })
+  })
 })
 
 describe('validateAssemblyMutation refusals', () => {

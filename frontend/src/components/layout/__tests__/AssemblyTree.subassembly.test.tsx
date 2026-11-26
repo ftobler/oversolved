@@ -3,6 +3,7 @@ import { fireEvent, render } from '@testing-library/react'
 import { AssemblyTree } from '@/components/layout/AssemblyTree'
 import type { AssemblyDoc, PartInstance } from '@/types/cad'
 import { IDENTITY_TRANSFORM } from '@/utils/transform3d'
+import { instanceLabel } from '@/utils/instanceLabel'
 
 function instance(handle: string, docId: string): PartInstance {
   return { handle, doc_id: docId, doc_rev: 0, transform: { ...IDENTITY_TRANSFORM }, visible: true }
@@ -17,19 +18,23 @@ const childDoc: AssemblyDoc = {
 }
 
 const instances = [instance('sub', 'asm-sub'), instance('bracket', 'part-b')]
+const docNames = {
+  'asm-sub': 'Gripper', 'part-bolt': 'Bolt', 'part-nut': 'Nut', 'part-b': 'Bracket',
+}
 
 const noop = () => {}
 
 function renderTree(props: Partial<React.ComponentProps<typeof AssemblyTree>> = {}) {
+  const shown = props.instances ?? instances
   return render(
     <AssemblyTree
-      instances={instances}
+      instances={shown}
       builtins={[]}
       mates={[]}
-      labelFor={handle => ({ sub: 'Gripper', bracket: 'Bracket' })[handle]}
+      labelFor={handle => instanceLabel(shown, docNames, handle)}
       subassemblies={{ 'asm-sub': childDoc }}
       docKindOf={docId => (docId === 'asm-sub' ? 'assembly' : 'part')}
-      docNames={{ 'part-bolt': 'Bolt', 'part-nut': 'Nut', 'part-b': 'Bracket' }}
+      docNames={docNames}
       onOpenPartNewTab={noop}
       onDuplicateInstance={noop}
       onDeleteInstance={noop}
@@ -64,6 +69,13 @@ function chevronFor(container: HTMLElement, name: string, expanded: boolean): HT
 }
 
 describe('AssemblyTree sub-assemblies', () => {
+  it('shows authored ordinals when two rows share one part document', () => {
+    const twins = [instance('one', 'part-b'), instance('two', 'part-b')]
+    const { container } = renderTree({ instances: twins })
+    expect([...container.querySelectorAll('.feature-name')].map(node => node.textContent))
+      .toEqual(['Bracket', 'Bracket (2)'])
+  })
+
   it('starts folded, then a chevron reveals indented child rows', () => {
     const { container } = renderTree()
     expect(rowByName(container, 'Gripper')).toBeTruthy()

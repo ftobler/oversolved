@@ -6,6 +6,7 @@
 import type { AssemblyDoc, AssemblyFeature } from '@/types/cad'
 import type { MateSpec } from '@/kernel/solveAssembly'
 import type { PartInputSpec } from '@/kernel/worker/solverProtocol'
+import { isMateRefEmpty } from '@/utils/mateKinds'
 
 export function partSpecs(doc: AssemblyDoc): PartInputSpec[] {
   return (doc.features ?? [])
@@ -22,6 +23,10 @@ export function partSpecs(doc: AssemblyDoc): PartInputSpec[] {
 export function mateSpecs(doc: AssemblyDoc): MateSpec[] {
   return (doc.features ?? [])
     .filter((f): f is AssemblyFeature => f.kind === 'mate' && !!f.mate)
+    // A mate with no picks at all is not a constraint, just an empty editor.
+    // The solve's own "a mate needs two different parts" guard would otherwise
+    // give a freshly added (or fully released) mate a false error row.
+    .filter(f => !(isMateRefEmpty(f.mate!.ref_a) && isMateRefEmpty(f.mate!.ref_b)))
     .map(f => ({
       id: f.id,
       kind: f.mate!.kind,

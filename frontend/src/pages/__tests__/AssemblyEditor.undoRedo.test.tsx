@@ -821,7 +821,7 @@ describe('AssemblyEditor undo/redo', () => {
     const before = useAssemblyStore.getState().instances.map(i => i.handle)
     expect(undoStack()).toHaveLength(2)
 
-    const rows = screen.getAllByText('Bracket').map(n => n.closest('li')!)
+    const rows = [screen.getByText('Bracket'), screen.getByText('Bracket (2)')].map(n => n.closest('li')!)
     fireEvent.dragStart(rows[1], { dataTransfer: { effectAllowed: 'move' } })
     fireEvent.dragOver(rows[0], { dataTransfer: { effectAllowed: 'move' } })
     fireEvent.drop(rows[0], { dataTransfer: { effectAllowed: 'move' } })

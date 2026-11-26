@@ -1329,8 +1329,9 @@ describe('AssemblyEditor (Stage 6b)', () => {
     expect(insts).toHaveLength(2)
     expect(insts[1].doc_id).toBe(original.doc_id)
     expect(insts[1].handle).not.toBe(original.handle)
-    // Both rows read the same name: an instance has no label of its own, it is
-    // named after the document it references.
-    expect(screen.getAllByText('Bracket')).toHaveLength(2)
+    // The copy gets an authored-order ordinal so the tree can tell the two
+    // placements of one document apart, which is also what the mate chips use.
+    expect(screen.getByText('Bracket')).toBeTruthy()
+    expect(screen.getByText('Bracket (2)')).toBeTruthy()
   })
 })
