@@ -63,10 +63,11 @@ describe('MateEditor reference removal', () => {
     expect(screen.queryByTitle('Remove')).toBeNull()
   })
 
-  it('arms a chip from the keyboard as well as a click', () => {
+  it('arms through the chip button, not through the Remove sibling', () => {
     const { onArmField } = renderEditor(mateWith(PICKED, EMPTY))
-    const chip = document.querySelector('.mate-ref-chip') as HTMLElement
-    fireEvent.keyDown(chip, { key: 'Enter' })
+    const arm = document.querySelector('.mate-ref-chip .mate-ref-arm') as HTMLElement
+    fireEvent.click(arm)
+    expect(onArmField).toHaveBeenCalledTimes(1)
     expect(onArmField).toHaveBeenCalledWith({ featureId: 'm1', field: 'ref_a' })
   })
 })

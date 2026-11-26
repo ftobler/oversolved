@@ -85,11 +85,32 @@
    cannot reuse PickChip itself -- that component drives sketchEditorStore's
    selection and resolves labels through queryLabel, neither of which the
    assembly has -- so only what the part chip cannot express is set here: the
-   button reset, and `stale`. */
+   two sibling buttons, and `stale`. */
 .mate-ref-chip {
   font: inherit;
   text-align: left;
   width: 100%;
+}
+
+/* The arming button fills the pill; Remove is its sibling, never its child. */
+.mate-ref-arm {
+  background: none;
+  border: none;
+  color: inherit;
+  font-family: inherit;
+  font-size: inherit;
+  text-align: left;
+  cursor: pointer;
+  padding: 0;
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+}
+
+.mate-ref-chip.empty .mate-ref-arm {
+  display: block;
+  width: 100%;
+  font-style: italic;
 }
 
 /* "The geometry this named is gone." No part-editor counterpart: a part pick is

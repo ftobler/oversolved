@@ -341,6 +341,21 @@ describe('mateRefLabel', () => {
     }
   })
 
+  it('names a sub-assembly leaf frame anchor by its built-in name', () => {
+    // A child part's frame anchor reaches the parent with a leaf-path prefix;
+    // it is still the child's Front plane, not an anonymous face.
+    const ref = {
+      part: 'h1',
+      anchor: `child/${partFrameAnchorId('Front')}`,
+      anchor_descriptor: {
+        geom_hash: 'part-frame/front', kind: 'plane', created_by: '', point: [0, 0, 0] as [number, number, number],
+      },
+    }
+    const label = mateRefLabel(ref, owner, () => 'plane')
+    expect(label).toBe('Front plane of Part 1')
+    expect(label).not.toMatch(/a_[0-9a-f]/)
+  })
+
   it('names an unknown assembly anchor as missing', () => {
     expect(mateRefLabel({ part: ASSEMBLY_HANDLE, anchor: ANCHOR }, owner, () => 'plane'))
       .toBe('Missing reference of Assembly')

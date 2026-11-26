@@ -69,5 +69,18 @@ describe('a mate with one cleared reference', () => {
     // never handed to the solver and the part stays where its seed puts it.
     expect(releasedCapture.captured.input).toBeUndefined()
     expect(released.transforms.p2).toEqual(seedB)
+
+    // Clearing the last reference leaves a mate with no picks. It must not hit
+    // the solve's "a mate needs two different parts" guard: an unpicked mate
+    // is the shape a fresh add_mate starts in, not an error.
+    const bothCleared = planAssemblyOperation('clear_mate_ref', { id: 'm1', field: 'ref_a' }, {
+      doc: plan.doc, transforms: {},
+    })!
+    const emptyCapture = makeCaptureSolver()
+    const empty = await solveAssembly(
+      parts, { 'doc-a': '1', 'doc-b': '1' }, mateSpecs(bothCleared.doc), relay, emptyCapture.solver,
+    )
+    expect(empty.status.mates.m1).toBeUndefined()
+    expect(emptyCapture.captured.input).toBeUndefined()
   })
 })

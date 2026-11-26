@@ -341,11 +341,17 @@ const ASSEMBLY_FRAME_LABELS: Readonly<Record<string, string>> = {
 }
 
 // A part's own frame is minted as planes at its origin, so the anchor kind alone
-// would call the Origin "Face of Part 1". Matching the deterministic id against
-// partFrameAnchorId is what distinguishes a built-in datum from a picked face.
-function partFrameName(anchor: string): string | undefined {
+// would call the Origin "Face of Part 1". The deterministic id distinguishes a
+// built-in datum from a picked face; a child of a sub-assembly carries a leaf
+// prefix (`<handle>/<id>`), and its durable descriptor still names the frame.
+function partFrameName(ref: MateRef): string | undefined {
+  const bare = ref.anchor.slice(ref.anchor.lastIndexOf('/') + 1)
+  const hash = ref.anchor_descriptor?.geom_hash
   for (const feature of BUILTIN_FEATURE_DEFAULTS) {
-    if (partFrameAnchorId(feature.id) === anchor) return feature.id
+    const id = partFrameAnchorId(feature.id)
+    if (id === ref.anchor || id === bare || hash === `part-frame/${feature.id.toLowerCase()}`) {
+      return feature.id
+    }
   }
   return undefined
 }
@@ -372,7 +378,7 @@ export function mateRefLabel(
     return ASSEMBLY_FRAME_LABELS[anchor] ?? 'Missing reference of Assembly'
   }
   const owner = labelFor?.(part) || part
-  const frame = partFrameName(anchor)
+  const frame = partFrameName(ref!)
   if (frame !== undefined) return `${frameLabel(frame)} of ${owner}`
   switch (kindOf?.(ref!)) {
     case 'plane':
