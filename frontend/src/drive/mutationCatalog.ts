@@ -804,6 +804,22 @@ const OFFSET_SIDE_NOTE =
   'and a joint the sources already meet tangentially keeps the same coincident plus a tangent between the two ' +
   'curves, the pair fillet_corners writes. A sharp joint whose offset curves do not meet is left open.'
 
+// The split's piece and constraint-carry contract; the rules are pinned in
+// utils/geometry/sketchPieces.ts and yamlMutations.splitEntity.test.ts.
+const SPLIT_ENTITY_NOTE =
+  'A line, arc or cubic spline splits at one or more points; a circle needs at least two and becomes arcs. ' +
+  'The first piece keeps the entity id (a circle\'s turns into an arc), so refs to the start vertex and ' +
+  'carrier relations (horizontal, parallel, radius, tangent to a circle) stay put; a ref to the end vertex ' +
+  'moves to the last piece, as does a tangent whose other curve meets the end. Adjacent pieces are tied by a ' +
+  'coincident joint plus colinear (line), concentric (arc, circle) or tangent (spline), and each joint is ' +
+  'pinned by one dimension (the length of the piece before a line joint, a chord for an arc or circle joint, ' +
+  'and a circle\'s first cut by its axis offset from the centre), so a fully constrained sketch stays fully ' +
+  'constrained; a spline joint has no such pin. A `length` on a split line becomes a `point_distance` ' +
+  'between the outer ends with the same id and value. Construction pieces stay construction. Refused, by ' +
+  'constraint id: a group or projection holding the entity, a fixed on the whole entity, an equal_length on a line ' +
+  '(on an arc or circle it is an equal radius and stays), a midpoint on it, an n-gon member, and a ref to a spline handle. An ellipse, fit spline or point cannot be ' +
+  'split. Example: { "type": "split_entity", "featureId": "sk", "entityId": "l1", "at": [[40, 0]] }.'
+
 // The fillet's authored-arc contract is what an author cannot infer from the
 // mutation shape; the rules are pinned in yamlMutations/sketchFillet.ts and its
 // test.
@@ -1596,6 +1612,15 @@ export const MUTATION_CATALOG = {
       featureId: str(),
       radius: num('The fillet radius, strictly less than both side lengths at every corner.'),
       corners: arr('Non-empty list of { a, aVertex, b, bVertex, side? }: bare entity ids of two line entities in the featureId sketch, each with the endpoint key that meets at the corner; side is convex or concave and skips the material probe.'),
+    },
+  },
+  split_entity: {
+    summary: 'Split one sketch curve at one or more points into entities meeting there; the shape does not change.',
+    note: SPLIT_ENTITY_NOTE,
+    fields: {
+      featureId: str(),
+      entityId: str('Bare id of the line, arc, circle or cubic spline to split.'),
+      at: arr('Non-empty list of [x, y] sketch-plane points, each within 0.001 of the curve, inside its span, off its ends and distinct; a circle needs at least two.'),
     },
   },
   pattern_entities: {
@@ -2461,6 +2486,7 @@ export const MUTATION_FAMILY: Record<Mutation['type'], MutationFamily> = {
   apply_offset: 'sketch',
   mirror_entities: 'sketch',
   fillet_corners: 'sketch',
+  split_entity: 'sketch',
   pattern_entities: 'sketch',
   paste_sketch_entities: 'sketch',
   toggle_construction: 'sketch',

@@ -451,6 +451,14 @@ exports[`drive CLI (real OCC + Rust solver) > lists the command registry with it
     },
     {
       "enabled": true,
+      "id": "set_tool_split",
+      "label": "Split tool",
+      "params": [],
+      "shortcut": "shift+s",
+      "undoable": false,
+    },
+    {
+      "enabled": true,
       "id": "toggle_construction",
       "label": "Toggle construction",
       "params": [],

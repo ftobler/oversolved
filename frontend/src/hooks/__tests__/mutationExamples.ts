@@ -364,6 +364,10 @@ export const MUTATION_EXAMPLES: Record<Mutation['type'], MutationExample> = {
       corners: [{ a: 'l1', aVertex: 'end', b: 'l2', bVertex: 'start' }],
     },
   },
+  split_entity: {
+    makeDoc: sketchDoc,
+    mutation: { type: 'split_entity', featureId: 'sk1', entityId: 'l1', at: [[4, 0]] },
+  },
   pattern_entities: {
     makeDoc: sketchDoc,
     mutation: { type: 'pattern_entities', featureId: 'sk1', sourceIds: ['l1', 'l2'], mode: 'linear', count: 2, pitch: 20 },

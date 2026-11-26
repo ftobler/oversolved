@@ -1135,6 +1135,17 @@ banner on stdout, so a client config must use the direct node invocation.
   or projected side, a mixed construction corner,
   a `fixed`/dimension on a trimmed endpoint, or a radius that would consume a
   side is refused by name, and one step is one undo entry;
+  `split_entity` takes `entityId` and a non-empty `at` list of `[x, y]` points
+  (each within 0.001 of the curve, off its ends, distinct; a circle needs two)
+  and cuts a line, arc, circle or cubic spline into pieces meeting there
+  without changing the shape: the first piece keeps the id, end-vertex refs
+  move to the last piece, a `length` becomes the end-to-end `point_distance`,
+  adjacent pieces get a coincident plus a colinear/concentric/tangent tie and
+  one pinning dimension per line or arc joint, so a fully constrained sketch
+  stays fully constrained (a spline joint has no pin); a group, projection,
+  whole-entity fixed, line equal_length or midpoint on the entity is refused
+  by constraint id, and an
+  ellipse, fit spline or point by name;
   `apply_offset` takes `sourceIds` and a signed `distance` and clones each
   source; a connected chain (coincident or coordinate-joined) is refitted corner
   to corner, every rebuilt joint carrying a coincident on the two copy vertices,

@@ -14,7 +14,7 @@ export type NumberOrExpr = number | string
 // activeTool === null (the dispatchSketchClick fallback), so the union is
 // exactly the registry key type minus null (see toolRegistry.ts ToolId).
 // mirror/offset are forward-compat placeholders with no registered tool.
-export type ActiveTool = 'dimension' | 'line' | 'rect' | 'center_rect' | 'circle' | 'arc' | 'ellipse' | 'spline' | 'fit_spline' | 'point' | 'ngon' | 'project' | 'drag' | 'mirror' | 'offset' | null
+export type ActiveTool = 'dimension' | 'line' | 'rect' | 'center_rect' | 'circle' | 'arc' | 'ellipse' | 'spline' | 'fit_spline' | 'point' | 'ngon' | 'project' | 'drag' | 'split' | 'mirror' | 'offset' | null
 
 // Which geometric space the current selection lives in.
 export type SelectionDomain = 'sketch_2d' | 'body_3d' | 'plane_3d' | 'mixed'
@@ -1683,6 +1683,9 @@ export type Mutation =
   | { type: 'apply_offset'; featureId: string; sourceIds: string[]; distance: number }
   | { type: 'mirror_entities'; featureId: string; sourceIds: string[]; line: string }
   | { type: 'fillet_corners'; featureId: string; radius: number; corners: FilletCorner[] }
+  // Cut one curve at sketch-plane points into entities meeting there; the
+  // points are stored explicitly so replay never needs a pick or WASM.
+  | { type: 'split_entity'; featureId: string; entityId: string; at: Point[] }
   | {
       type: 'pattern_entities'; featureId: string; sourceIds: string[]; mode: SketchPatternMode
       count?: number; count2?: number; pitch?: number; pitch2?: number; direction?: Point; direction2?: Point

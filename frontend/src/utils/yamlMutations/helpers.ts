@@ -315,6 +315,13 @@ export function parseFitPointRef(ref: string, eid: string): number | null {
   return fitPointIndex(ref.slice(prefix.length))
 }
 
+/** The host-local constraint operand `$<eid>` or, with a key, `$<eid><key>`:
+ *  the stored spelling a sketch writer uses when it rewrites an operand in
+ *  place (the split's carried refs). */
+export function localEntityRef(eid: string, key = ''): string {
+  return `$${eid}${key}`
+}
+
 /** True when `ref` is the host-local vertex ref `$<eid><key>`. */
 export function isVertexKeyRef(ref: string, eid: string, key: string): boolean {
   return ref === `$${eid}${key}`

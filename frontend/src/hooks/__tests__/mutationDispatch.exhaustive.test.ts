@@ -27,6 +27,7 @@ const ALL_MUTATION_TYPES = [
   'apply_offset',
   'mirror_entities',
   'fillet_corners',
+  'split_entity',
   'pattern_entities',
   'paste_sketch_entities',
   'toggle_construction',

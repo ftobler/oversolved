@@ -38,6 +38,7 @@ const SAMPLES: { [K in Mutation['type']]: Extract<Mutation, { type: K }> } = {
   apply_offset: { type: 'apply_offset', featureId: 'sk1', sourceIds: ['a', 'b'], distance: 10 },
   mirror_entities: { type: 'mirror_entities', featureId: 'sk1', sourceIds: ['a', 'b'], line: 'c' },
   fillet_corners: { type: 'fillet_corners', featureId: 'sk1', radius: 5, corners: [{ a: 'a', aVertex: 'end', b: 'b', bVertex: 'start' }] },
+  split_entity: { type: 'split_entity', featureId: 'sk1', entityId: 'a', at: [[1, 2]] },
   pattern_entities: { type: 'pattern_entities', featureId: 'sk1', sourceIds: ['a', 'b'], mode: 'linear', count: 4, pitch: 10 },
   paste_sketch_entities: {
     type: 'paste_sketch_entities', featureId: 'sk1',
@@ -179,6 +180,7 @@ const EXPECTED: Record<Mutation['type'], string> = {
   apply_offset: 'offset 2 entity(ies) by 10 in sk1',
   mirror_entities: 'mirror 2 entity(ies) about c in sk1',
   fillet_corners: 'fillet 1 corner(s) at radius 5 in sk1',
+  split_entity: 'split a at 1 point(s) in sk1',
   pattern_entities: 'linear pattern of 2 entity(ies) in sk1',
   paste_sketch_entities: 'paste 2 entities in sk1',
   toggle_construction: 'toggle construction on 2 element(s)',

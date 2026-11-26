@@ -67,10 +67,11 @@ export function usesSettledSketchGeometry(raw: unknown, doc?: PartDoc | null): b
     case 'move_sketch_group':
     case 'resize_circle':
       return true
-    // The mirror, offset, fillet and pattern plans are built from the current params.
+    // The mirror, offset, fillet, split and pattern plans are built from the current params.
     case 'mirror_entities':
     case 'apply_offset':
     case 'fillet_corners':
+    case 'split_entity':
     case 'pattern_entities':
       return true
     // Fit-spline editors decode the positional params they are editing.

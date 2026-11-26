@@ -22,6 +22,7 @@ import {
   applyAddOffset,
   applyMirrorEntities,
   applyFilletCorners,
+  applySplitEntity,
   applyPatternEntities,
   applyPasteSketchEntities,
   applySetConstraintValue,
@@ -329,6 +330,8 @@ export const mutationHandlers: MutationHandlers = {
     applyMirrorEntities(next, m.featureId, m.sourceIds, m.line),
   fillet_corners: (next, m) =>
     applyFilletCorners(next, m.featureId, m.radius, m.corners),
+  split_entity: (next, m) =>
+    applySplitEntity(next, m.featureId, m.entityId, m.at),
   pattern_entities: (next, m) =>
     applyPatternEntities(next, m),
   paste_sketch_entities: (next, m) =>

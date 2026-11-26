@@ -260,6 +260,8 @@ const COMPACT_CREATED_TYPES = new Set<Mutation['type']>([
   // carries the clip's whole constraint set; the reply keeps the entity order
   // and collapses those to a count like a rect.
   'mirror_entities', 'pattern_entities', 'paste_sketch_entities', 'fillet_corners',
+  // A split names its new pieces and counts the joint ties it authored.
+  'split_entity',
 ])
 
 function contentIds(doc: PartDoc): Set<string> {

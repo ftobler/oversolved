@@ -144,6 +144,9 @@ export const IDEMPOTENT_MUTATION = {
   // fillet_corners mints an arc every dispatch, so it can never be a value
   // no-op even when the corners were already rounded.
   fillet_corners: false,
+  // split_entity mints a piece every dispatch; the same point a second time
+  // splits the first piece again elsewhere or is refused as an end point.
+  split_entity: false,
   // pattern_entities mints a fresh block of copies every dispatch.
   pattern_entities: false,
   // paste_sketch_entities mints fresh entity and constraint ids every dispatch.

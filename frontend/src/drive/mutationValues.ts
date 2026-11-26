@@ -24,6 +24,7 @@ import { CONSTRAINT_BY_KIND, isDrivableConstraintKind } from '@/registry/constra
 import { BUILTIN_PLANES, resolveBarePlaneId } from '@/kernel/solverConstants'
 import { mirrorAxisFromLineParams, mirrorsToItself } from '@/utils/geometry/mirrorSketch'
 import { planFilletCorners } from '@/utils/yamlMutations/sketchFillet'
+import { planSplitEntity } from '@/utils/yamlMutations/sketchSplit'
 import { planPatternEntities, type PatternEntitiesStep } from '@/utils/yamlMutations/sketchPattern'
 import { validateClip } from '@/utils/clipboard/sketchClipboard'
 import { instanceTransforms } from '@/utils/geometry/sketchPattern'
@@ -1264,6 +1265,32 @@ function filletCorners(raw: RawStep, ctx: ValueContext): ValueViolation | null {
   const plan = planFilletCorners(sketch, raw.radius as number, corners)
   if ('reason' in plan) {
     const message = `fillet_corners: ${plan.reason}`
+    return plan.code === 'unknown-target' ? unknownTarget(message) : invalid(message)
+  }
+  return null
+}
+
+// split_entity: the point list's shape here, then the applier's own plan
+// (kind, pick tolerance, span, ends, merged points, blocking constraints), so
+// the boundary and the applier refuse with the same words.
+function splitEntity(raw: RawStep, ctx: ValueContext): ValueViolation | null {
+  if (typeof raw.entityId !== 'string' || raw.entityId.length === 0) {
+    return invalid(`entityId must be a non-empty entity id, got ${json(raw.entityId)}`)
+  }
+  if (!Array.isArray(raw.at) || raw.at.length === 0) {
+    return invalid(`at must be a non-empty list of [x, y] points, got ${json(raw.at)}`)
+  }
+  for (let i = 0; i < raw.at.length; i++) {
+    const problem = finitePointProblem(raw.at[i], `at[${i}]`)
+    if (problem !== null) return invalid(problem)
+  }
+  const featureId = raw.featureId
+  if (ctx.doc === null || typeof featureId !== 'string') return null
+  const sketch = sketchOf(ctx.doc, featureId)
+  if (sketch === undefined) return unknownTarget('split_entity names no sketch feature in this document')
+  const plan = planSplitEntity(sketch, raw.entityId, raw.at as [number, number][])
+  if ('reason' in plan) {
+    const message = `split_entity: ${plan.reason}`
     return plan.code === 'unknown-target' ? unknownTarget(message) : invalid(message)
   }
   return null
@@ -2861,6 +2888,7 @@ export const MUTATION_VALUE_RULES = {
   apply_offset: applyOffset,
   mirror_entities: mirrorEntities,
   fillet_corners: filletCorners,
+  split_entity: splitEntity,
   pattern_entities: patternEntities,
   paste_sketch_entities: pasteSketchEntities,
   toggle_construction: toggleConstructionRule,
