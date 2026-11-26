@@ -15,6 +15,7 @@ import type { AssemblySolveResult } from '@/stores/assemblyStore'
 import { assemblyEntityKey, type EntityMateRefs } from '@/utils/anchorCandidates'
 import type { AnchorTable } from '@/utils/anchorGizmos'
 import { appendMate, findMate } from '@/utils/assemblyMutations'
+import { runAssemblyOperation } from '@/utils/assemblyOperations'
 import { instanceLabel } from '@/utils/instanceLabel'
 import { mateRefLabel } from '@/utils/mateKinds'
 import { IDENTITY_TRANSFORM, quatFromEulerXyz } from '@/utils/transform3d'
@@ -238,6 +239,34 @@ describe('auto-advance after a pick', () => {
     getState().pickFromHitsOrCycle([{ entityKey: EDGE }])  // EDGE is on PART, already in ref_a
     expect(getState().doc).toBe(before)
     expect(getState().activeMateField).toEqual({ featureId: 'm1', field: 'ref_b' })
+  })
+
+  it('removing a filled ref arms that slot for the next pick', () => {
+    getState().setActiveMateField({ featureId: 'm1', field: 'ref_a' })
+    getState().pickFromHitsOrCycle([{ entityKey: VERT }])  // A: h1
+    getState().pickFromHitsOrCycle([{ entityKey: FACE_B }])  // B: h2
+    expect(currentMate('m1').ref_b).toEqual({ part: 'h2', anchor: 'b_f' })
+
+    // The page runs the clear operation and then arms the slot, exactly as the
+    // chip's Remove button does.
+    runAssemblyOperation('clear_mate_ref', { id: 'm1', field: 'ref_b' }, {
+      doc: getState().doc,
+      transforms: getState().settledPoses(),
+      mutateSession: mutateDoc,
+      mutateOneShot: mutateDoc,
+      requestSolve,
+      requestSolveOrDefer: () => getState().requestSolveOrDefer(),
+    })
+    getState().setActiveMateField({ featureId: 'm1', field: 'ref_b' })
+    expect(currentMate('m1').ref_a).toEqual({ part: PART, anchor: 'a_v' })
+    expect(currentMate('m1').ref_b).toEqual({ part: '', anchor: '' })
+    expect(getState().activeMateField).toEqual({ featureId: 'm1', field: 'ref_b' })
+
+    getState().pickFromHitsOrCycle([{ entityKey: FACE_TWIN }])  // a different h2 pick
+    const mate = currentMate('m1')
+    expect(mate.ref_b.part).toBe('h2')
+    expect(mate.ref_b.anchor).toBe(SHARED_ANCHOR)
+    expect(mate.ref_b.anchor_descriptor).toBeDefined()
   })
 })
 

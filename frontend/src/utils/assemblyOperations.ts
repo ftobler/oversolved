@@ -19,6 +19,7 @@ import {
   appendPartInstance,
   assemblyDocEquals,
   bakeSolvedTransforms,
+  clearMateRef,
   duplicateInstance,
   moveInstance,
   moveMate,
@@ -77,6 +78,8 @@ export interface AssemblyOperationInputs {
   }
   // The one ref write the editor's aim commit and the drive share (D9).
   set_mate_ref: { id: string; field: MateRefField; ref: MateRef; patch?: MateParamPatch }
+  // The chip's Remove: release one slot without touching its sibling or params.
+  clear_mate_ref: { id: string; field: MateRefField }
   delete_mate: string
   update_mate: { id: string; patch: MateParamPatch }
   reorder_part: { movingHandle: string; beforeHandle: string | null }
@@ -231,6 +234,14 @@ export const ASSEMBLY_OPERATIONS: {
       const withRef = setMateRef(doc, input.id, input.field, input.ref)
       return input.patch ? updateMate(withRef, input.id, input.patch) : withRef
     },
+  },
+  clear_mate_ref: {
+    // A released slot leaves a half-empty mate, which the solve treats like a
+    // freshly added one: stale but not an error, with no constraint to apply.
+    // Re-solving settles the part the mate used to bind instead of leaving it
+    // parked where the dead constraint last put it.
+    id: 'clear_mate_ref', label: ASSEMBLY_UNDO_LABELS.clearMateRef, bake: false, undo: 'one-shot', solve: 'solve',
+    apply: (doc, input) => clearMateRef(doc, input.id, input.field),
   },
   delete_mate: {
     id: 'delete_mate', label: ASSEMBLY_UNDO_LABELS.deleteMate, bake: true, undo: 'one-shot', solve: 'solve',

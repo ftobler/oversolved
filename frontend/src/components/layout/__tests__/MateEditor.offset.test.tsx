@@ -27,6 +27,7 @@ function editor(m: MateFeatureDef, onUpdate = vi.fn(), featureId = 'm1') {
       mate={m}
       activeField={null}
       onArmField={vi.fn()}
+      onClearRef={vi.fn()}
       onUpdate={onUpdate}
     />
   )

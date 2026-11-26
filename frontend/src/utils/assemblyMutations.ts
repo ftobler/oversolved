@@ -594,6 +594,19 @@ export function setMateRef(
 }
 
 /**
+ * Release one slot back to its freshly-authored state. The mate keeps its other
+ * reference and its parameters: only the named pick goes away, so a re-solve
+ * simply stops constraining with this half and the user can pick a new one.
+ */
+export function clearMateRef(
+  doc: AssemblyDoc,
+  featureId: string,
+  field: MateRefField,
+): AssemblyDoc {
+  return setMateRef(doc, featureId, field, EMPTY_MATE_REF)
+}
+
+/**
  * The tunable half of a mate: `kind` and the two refs have their own setters.
  * Bounded by what `encodeMateInput` puts on the wire (see utils/mateKinds.ts).
  */

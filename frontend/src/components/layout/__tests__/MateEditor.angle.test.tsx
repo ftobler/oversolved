@@ -26,6 +26,7 @@ function renderEditor(m: MateFeatureDef, onUpdate = vi.fn()) {
       mate={m}
       activeField={null}
       onArmField={vi.fn()}
+      onClearRef={vi.fn()}
       onUpdate={onUpdate}
     />
   )

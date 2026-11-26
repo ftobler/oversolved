@@ -96,6 +96,9 @@ describe('assembly operation coverage', () => {
     // mate chip commits a pick), not a command: the command table inserts the
     // mate and opens its editor, and the pick is what writes the reference.
     invoked.add('set_mate_ref')
+    // clear_mate_ref is the mate chip's Remove, reached from the editor's
+    // onClearRef callback rather than from a command.
+    invoked.add('clear_mate_ref')
     // add_parts is the split STEP import's batch: the Import STEP gesture calls
     // runOperation directly (one undo entry for one part per solid), so no
     // command reaches it.

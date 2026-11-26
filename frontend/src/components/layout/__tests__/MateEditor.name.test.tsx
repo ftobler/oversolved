@@ -23,6 +23,7 @@ function renderEditor() {
       mate={mate}
       activeField={null}
       onArmField={vi.fn()}
+      onClearRef={vi.fn()}
       onUpdate={vi.fn()}
     />
   )

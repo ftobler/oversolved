@@ -9,6 +9,7 @@ const ALL_ASSEMBLY_UNDO_LABELS = [
   'Add mate',
   'Add part',
   'Add part pattern',
+  'Clear mate reference',
   'Delete mate',
   'Delete part',
   'Duplicate part',

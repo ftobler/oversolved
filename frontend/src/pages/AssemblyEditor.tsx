@@ -949,9 +949,10 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
       labelFor={labelFor}
       kindOf={kindOf}
       onArmField={handleArmMateField}
+      onClearRef={field => runOperation('clear_mate_ref', { id: mate.id, field })}
       onUpdate={patch => runCommand('update_mate', { id: mate.id, patch })}
     />
-  ), [solveStatus, activeMateField, labelFor, kindOf, handleArmMateField, runCommand])
+  ), [solveStatus, activeMateField, labelFor, kindOf, handleArmMateField, runOperation, runCommand])
 
   // The banner names the unsatisfiable mates by their authored label when they
   // have one, falling back to the feature id.

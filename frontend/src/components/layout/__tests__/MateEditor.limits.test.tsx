@@ -18,7 +18,7 @@ function mate(kind: MateFeatureDef['kind'], overrides: Partial<MateFeatureDef> =
 function renderEditor(m: MateFeatureDef) {
   const onUpdate = vi.fn()
   render(
-    <MateEditor featureId="m1" mate={m} activeField={null} onArmField={vi.fn()} onUpdate={onUpdate} />,
+    <MateEditor featureId="m1" mate={m} activeField={null} onArmField={vi.fn()} onClearRef={vi.fn()} onUpdate={onUpdate} />,
   )
   return onUpdate
 }

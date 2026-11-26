@@ -147,7 +147,8 @@ describe('AssemblyEditor pose ownership', () => {
     await tick()
     expect(useAssemblyStore.getState().settlingOffsets[h1]).toBeTruthy()
 
-    await waitFor(() => expect(screen.getAllByText('Bracket').length).toBeGreaterThanOrEqual(2))
+    // Two placements of one part document now read "Bracket" and "Bracket (2)".
+    await waitFor(() => expect(screen.getByText('Bracket (2)')).toBeTruthy())
     fireEvent.click(screen.getAllByLabelText('Part options')[0])  // h1's row
     fireEvent.click(screen.getByText('Duplicate'))
     await tick()

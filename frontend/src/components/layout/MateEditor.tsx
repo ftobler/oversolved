@@ -37,6 +37,9 @@ interface MateEditorProps {
   // page. Without it a picked ref can only be labelled "missing".
   kindOf?: (ref: MateRef) => string | undefined
   onArmField: (target: MateFieldTarget | null) => void
+  // Clearing a picked slot is a document mutation, so the panel only reports
+  // which field to release; the page runs the clear operation and re-arms it.
+  onClearRef: (field: MateRefField) => void
   onUpdate: (patch: MateParamPatch) => void
 }
 
@@ -89,7 +92,7 @@ function offsetFromText(text: Triple): MateOffsetVec | undefined {
 }
 
 export function MateEditor({
-  featureId, mate, result, activeField, labelFor, kindOf, onArmField, onUpdate,
+  featureId, mate, result, activeField, labelFor, kindOf, onArmField, onClearRef, onUpdate,
 }: MateEditorProps) {
   const staleRefs = new Set(result?.staleRefs ?? [])
   // The box's own text, not `mate.angle` directly: a half-typed keystroke ('-',
@@ -420,15 +423,22 @@ export function MateEditor({
           // wider than the 80px label column leaves room for.
           <div key={field} className="feature-field-row feature-field-row--stacked">
             <span className="feature-field-label">{REF_TITLES[field]}</span>
-            <button
-              type="button"
+            {/* A div, not a button: the filled pill carries its own Remove
+                button, and nesting buttons is invalid HTML. Enter/Space keep
+                the keyboard-arming the button used to give for free. */}
+            <div
               className={chipClass(mate[field], staleRefs.has(field) || !!result?.error, picking)}
+              role="button"
+              tabIndex={0}
               aria-pressed={picking}
               onClick={() => onArmField(picking ? null : { featureId, field })}
+              onKeyDown={e => {
+                if (e.target !== e.currentTarget || (e.key !== 'Enter' && e.key !== ' ')) return
+                e.preventDefault()
+                e.stopPropagation()
+                onArmField(picking ? null : { featureId, field })
+              }}
             >
-              {/* Same two shapes the part editor's PickChip renders: italic
-                  placeholder text when empty, a pink pill once picked. Spans,
-                  not divs, because the chip itself is a button here. */}
               {empty ? (
                 <span className="feature-pick-chip-empty-text">
                   {mateRefLabel(mate[field], labelFor, kindOf)}
@@ -438,9 +448,23 @@ export function MateEditor({
                   <span className="feature-pick-chip-item-text">
                     {mateRefLabel(mate[field], labelFor, kindOf)}
                   </span>
+                  {/* The same remove affordance as PickChip. Stopping both the
+                      click and the key from bubbling keeps the outer div from
+                      toggling the field it just armed for the next pick. */}
+                  <button
+                    type="button"
+                    className="feature-pick-chip-item-remove"
+                    title="Remove"
+                    onClick={e => {
+                      e.stopPropagation()
+                      onClearRef(field)
+                      onArmField({ featureId, field })
+                    }}
+                    onKeyDown={e => e.stopPropagation()}
+                  >×</button>
                 </span>
               )}
-            </button>
+            </div>
           </div>
         )
       })}

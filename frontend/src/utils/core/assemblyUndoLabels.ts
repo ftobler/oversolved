@@ -18,6 +18,7 @@ export const ASSEMBLY_UNDO_LABELS = {
   setRotation: 'Set rotation',
   editMate: 'Edit mate',
   pickMateReference: 'Pick mate reference',
+  clearMateRef: 'Clear mate reference',
   deleteMate: 'Delete mate',
   reorderPart: 'Reorder part',
   reorderMate: 'Reorder mate',
