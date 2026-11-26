@@ -265,7 +265,7 @@ export const CONSTRAINTS: readonly ConstraintDef[] = [
   {
     kind: 'tangent',
     label: 'Tangent',
-    description: 'Forces two curves to be tangent: a line to a circle, arc, ellipse or spline, or a circle, arc or spline end to another at their shared point.',
+    description: 'Forces two curves to be tangent: a line to a circle, arc or ellipse, a line to a spline where a coincident joins them, or a circle, arc or spline end to another at their shared point.',
     category: 'geometric',
     hasValue: false,
     refPattern: 'a_b',

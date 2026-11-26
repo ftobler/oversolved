@@ -11,4 +11,5 @@ mod fd_scale;
 mod filtering;
 mod fit_spline;
 mod group;
+mod line_spline_tangent;
 mod midpoint_spline_jacobian;

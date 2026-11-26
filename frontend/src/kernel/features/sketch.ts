@@ -26,7 +26,7 @@ import type { PartSolid } from '../types3d'
 import { partDocToSketches, type DroppedConstraint } from '@/wasm-kernel/partDocToSketches'
 import { lowerSketch, ORIGIN_ID, type EntityLayout } from '@/wasm-kernel/lowerSketch'
 import {
-  encodeInput, decodeOutput, STATUS_NAME, Status, CONSTRAINT_FLAG, ConstraintKindCode, Sel,
+  encodeInput, decodeOutput, STATUS_NAME, Status, CONSTRAINT_FLAG, ConstraintKindCode, Role, Sel,
   type FlatConstraint, type FlatDragAnchor, type FlatInput, type SolverOutput,
 } from '@/wasm-kernel/codec'
 import type { DragMember } from '@/types/drag'
@@ -36,6 +36,7 @@ import { ellipseAxisDrag, isEllipseAxisKey, type EllipseAxisKey } from '@/utils/
 import { ignoredConstraintWarning, weakConstraintNoun, weakConstraintWarning } from '@/utils/constraintProblems'
 import { constraintDisplayName, entityDisplayName, featureDisplayName, featureRows, sketchDisplayName } from '@/utils/core/displayNames'
 import {
+  lineSplineTangentNeedsContactReason,
   tangentKindsAdmitted,
   tangentNeedsSharedEndpointReason,
 } from '@/utils/constraintApplicability'
@@ -764,7 +765,9 @@ const CONSTRAINT_KIND_NAME: Readonly<Record<number, string>> = Object.fromEntrie
 
 /** True when a coincident pins a contact between the two tangent operands in
  *  the same shape the solver reads: two endpoints, or one endpoint against the
- *  other side's locus (`Absent`). A spline side must be its start or end. */
+ *  other side's locus (`Absent`). A spline side must be its start or end,
+ *  except against a line, whose endpoint may sit on the spline locus.
+ *  Mirrors `spline_contact_ok` in sketch-solver/src/residuals/mod.rs. */
 function tangentHasContact(
   input: FlatInput,
   layout: EntityLayout[],
@@ -795,8 +798,15 @@ function tangentHasContact(
     const linked = (firstEnd && (secondEnd || secondRef.point === Sel.absent))
       || (secondEnd && firstRef.point === Sel.absent)
     if (!linked) return false
-    // The solver's contact must pin every spline side by an end, and at least
-    // one spline end must be the contact.
+    // Against a line every contact shape places the row: a line endpoint on
+    // the spline locus is interior tangency, read at its projection.
+    const firstKind = layout[first]?.kind
+    const secondKind = layout[second]?.kind
+    if ((firstKind === 'line' && isSpline(secondKind)) || (secondKind === 'line' && isSpline(firstKind))) {
+      return true
+    }
+    // Against a curve the solver's contact must pin every spline side by an
+    // end, and at least one spline end must be the contact.
     const firstOk = !isSpline(layout[first]?.kind) || firstEnd
     const secondOk = !isSpline(layout[second]?.kind) || secondEnd
     const namesSplineEnd = (isSpline(layout[first]?.kind) && firstEnd)
@@ -819,13 +829,21 @@ function splineTangentDropReason(
   const firstKind = layout[a.index]?.kind
   const secondKind = layout[b.index]?.kind
   if (firstKind === undefined || secondKind === undefined) return null
-  // A line/spline tangent has a free body form, so a drop there is not the
-  // shared-endpoint rule.
-  if (firstKind === 'line' || secondKind === 'line') return null
   const isSpline = (kind: string) => kind === 'spline' || kind === 'fit_spline'
   if (!isSpline(firstKind) && !isSpline(secondKind)) return null
   if (!tangentKindsAdmitted(firstKind, secondKind)) return null
   if (tangentHasContact(input, layout, a.index, b.index)) return null
+  if (firstKind === 'line' || secondKind === 'line') {
+    // A line/spline tangent has no free form either, but an end named on the
+    // tangent itself places it; only a row with neither is this drop.
+    const lineIndex = firstKind === 'line' ? 0 : 1
+    const splineRef = lineIndex === 0 ? b : a
+    // Explicit roles that put the spline in the line slot are a kind drop the
+    // solver refuses outright; no coincident would revive them.
+    if (constraint.refs[1 - lineIndex].role === Role.line) return null
+    if (splineRef.point === Sel.start || splineRef.point === Sel.end) return null
+    return lineSplineTangentNeedsContactReason()
+  }
   const partner = isSpline(firstKind) && isSpline(secondKind)
     ? 'spline'
     : isSpline(firstKind) ? secondKind : firstKind

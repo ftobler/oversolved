@@ -762,19 +762,21 @@ mod tests {
             ),
         ));
         // The builder arms the class walk mirrors: line/spline,
-        // line/fit-spline, line/ellipse and a pinned curve/curve contact.
+        // line/fit-spline, line/ellipse and a pinned curve/curve contact. A
+        // spline side names its end: without one or a coincident contact the
+        // survivors gate drops a line/spline tangent.
         v.push((
             ConstraintKind::Tangent,
             cons(
                 ConstraintKind::Tangent,
-                ab(line0, e_ref(5, PointSelector::Absent)),
+                ab(line0, e_ref(5, PointSelector::End)),
             ),
         ));
         v.push((
             ConstraintKind::Tangent,
             cons(
                 ConstraintKind::Tangent,
-                ab(line0, e_ref(6, PointSelector::Absent)),
+                ab(line0, e_ref(6, PointSelector::End)),
             ),
         ));
         v.push((
@@ -1062,12 +1064,12 @@ mod tests {
         let tangent = |b: Ref| cons(ConstraintKind::Tangent, ab(line0, b));
         // Line/spline and line/fit-spline are direction rows over their own
         // seed length; line/ellipse is the body-distance form, positional.
-        let spline = classes_of(&problem, &tangent(e_ref(5, PointSelector::Absent)));
+        let spline = classes_of(&problem, &tangent(e_ref(5, PointSelector::End)));
         assert!(matches!(
             spline[0],
             RowClass::Angular { seed_len } if (seed_len - problem.line_len0(0)).abs() < f64::EPSILON
         ));
-        let fit = classes_of(&problem, &tangent(e_ref(6, PointSelector::Absent)));
+        let fit = classes_of(&problem, &tangent(e_ref(6, PointSelector::End)));
         assert!(matches!(
             fit[0],
             RowClass::Angular { seed_len } if (seed_len - problem.fit_len0(6)).abs() < f64::EPSILON

@@ -1014,7 +1014,10 @@ banner on stdout, so a client config must use the direct node invocation.
   with a circle, arc or spline, or a spline with another spline. A spline with a
   circle, arc or another spline needs a coincident at the spline's start or end:
   without one the tangent is ignored, because the solver has no free spline
-  tangent form there. A line with a spline keeps the free body form.
+  tangent form there. A line with a spline needs a coincident where they touch:
+  a line endpoint on the spline (the tangency is read at that point) or the
+  spline's start or end, unless the tangent itself names the spline's start or
+  end; without one the tangent is ignored.
   Guidance that a field list cannot carry lives in the row note: `hole` lists
   its required fields (`sketch`, `diameter`, `depth_mode`) and its optional ones
   (`depth`, `direction`, `target`, `thread`, `style`, `cb_diameter`, `cb_depth`,

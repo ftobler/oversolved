@@ -1,4 +1,4 @@
-use super::geom::{bezier_deriv, is_spline};
+use super::geom::{bezier_closest_t, bezier_deriv, is_spline};
 use super::{Problem, TangentContact, P2};
 use crate::constraints::{Constraint, PointSelector, Ref, RefRole};
 use crate::Kind;
@@ -68,6 +68,64 @@ impl Problem<'_> {
         };
         let n = (d[0] * d[0] + d[1] * d[1]).sqrt().max(1e-12);
         [d[0] / n, d[1] / n]
+    }
+
+    /// The spline tangent direction a line must be parallel to.
+    ///
+    /// An end named on the tangent itself wins: it is what the author picked,
+    /// and a line closing a spline has a coincident at both ends, of which the
+    /// contact map keeps only the first. Otherwise the pinned contact decides:
+    /// a spline end it names reads that end's tangent; a line endpoint it pins
+    /// onto the spline locus is projected onto the spline and the tangent read
+    /// at that closest parameter, which is the interior tangency. The survivors
+    /// gate drops a row with neither, so the midpoint (Bezier) or line-start
+    /// projection (fit) left below only keeps the row count for a row that
+    /// reaches here some other way. `None` when the fit spline cannot be
+    /// rebuilt for an interior read (no row, as before).
+    fn line_spline_tangent(
+        &self,
+        x: &[f64],
+        line_idx: u32,
+        spline_idx: u32,
+        arc_pt: PointSelector,
+        contact: Option<&TangentContact>,
+    ) -> Option<P2> {
+        let end = |sel| matches!(sel, PointSelector::Start | PointSelector::End);
+        if end(arc_pt) {
+            return Some(self.spline_end_tangent(x, spline_idx, arc_pt));
+        }
+        let mut pinned = None;
+        if let Some(contact) = contact {
+            let sel = contact_selector(contact, 1);
+            if end(sel) {
+                return Some(self.spline_end_tangent(x, spline_idx, sel));
+            }
+            // A locus spline side means the owner is the line endpoint.
+            if contact.owner == 0 {
+                pinned = Some(self.point(
+                    x,
+                    Ref::Entity {
+                        index: line_idx,
+                        point: contact.selector,
+                    },
+                ));
+            }
+        }
+        let fit = match self.kind_of(spline_idx) {
+            Kind::FitSpline => Some(self.fit_spline(x, spline_idx)?),
+            _ => None,
+        };
+        let sp = self.params(x, spline_idx);
+        let line_start = || {
+            let ep = self.params(x, line_idx);
+            [ep[0], ep[1]]
+        };
+        Some(match (fit, pinned) {
+            (Some(fit), Some(p)) => fit.deriv(fit.closest(p).u),
+            (None, Some(p)) => bezier_deriv(sp, bezier_closest_t(sp, p)),
+            (Some(fit), None) => fit.deriv(fit.closest(line_start()).u),
+            (None, None) => bezier_deriv(sp, 0.5),
+        })
     }
 
     /// One residual row per tangent.
@@ -184,38 +242,21 @@ impl Problem<'_> {
         line_dir[0] /= norm;
         line_dir[1] /= norm;
 
-        if self.kind_of(arc_idx) == Kind::Spline {
-            // Line tangent to a spline endpoint: the line direction is parallel
-            // to the Bezier tangent there, so the cross product is zero.
-            let sp = self.params(x, arc_idx);
-            let tan = match arc_pt {
-                PointSelector::End => bezier_deriv(sp, 1.0),
-                PointSelector::Start => bezier_deriv(sp, 0.0),
-                _ => bezier_deriv(sp, 0.5),
-            };
-            let tn = (tan[0] * tan[0] + tan[1] * tan[1]).sqrt().max(1e-12);
-            let (tx, ty) = (tan[0] / tn, tan[1] / tn);
-            // sin(angle) times the line's seed length (see `scale.rs`).
-            r.push(self.line_len0(line_idx) * (line_dir[0] * ty - line_dir[1] * tx));
-        } else if self.kind_of(arc_idx) == Kind::FitSpline {
-            // Line tangent to a fit spline: the end derivative is the stored
-            // handle's direction when the end has one, and the Lagrange end
-            // derivative otherwise (the authoring sugar adds the handle before
-            // it writes this constraint, so the solved case usually has one).
-            let Some(fit) = self.fit_spline(x, arc_idx) else {
+        if is_spline(self.kind_of(arc_idx)) {
+            // Line tangent to a spline: the line direction is parallel to the
+            // spline tangent at the contact, so the cross product is zero.
+            let Some(tan) = self.line_spline_tangent(x, line_idx, arc_idx, arc_pt, contact) else {
                 return;
             };
-            let tan = match arc_pt {
-                PointSelector::End => fit.derivative(fit.point_count() - 1),
-                PointSelector::Start => fit.derivative(0),
-                _ => {
-                    let closest = fit.closest([line_ep[0], line_ep[1]]);
-                    fit.deriv(closest.u)
-                }
-            };
             let tn = (tan[0] * tan[0] + tan[1] * tan[1]).sqrt().max(1e-12);
             let (tx, ty) = (tan[0] / tn, tan[1] / tn);
-            r.push(self.fit_len0(arc_idx) * (line_dir[0] * ty - line_dir[1] * tx));
+            // sin(angle) times a seed length (see `scale.rs`).
+            let len0 = if self.kind_of(arc_idx) == Kind::Spline {
+                self.line_len0(line_idx)
+            } else {
+                self.fit_len0(arc_idx)
+            };
+            r.push(len0 * (line_dir[0] * ty - line_dir[1] * tx));
         } else if matches!(self.kind_of(arc_idx), Kind::Circle | Kind::Arc) {
             // Line tangent to a circle or arc (identical math: an arc reuses its
             // underlying circle). When a coincident pins an endpoint of either

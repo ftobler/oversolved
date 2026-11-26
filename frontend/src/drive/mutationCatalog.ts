@@ -727,7 +727,9 @@ export const TANGENT_PAIR_NOTE =
   '`tangent` takes a line with a circle, arc, ellipse or spline, a circle or arc with a circle, arc or ' +
   'spline, or a spline with another spline. A spline with a circle, arc or another spline needs a ' +
   'coincident at the spline\'s start or end: without one the tangent is ignored, because the solver has ' +
-  'no free spline tangent form there. A line with a spline keeps the free body form.'
+  'no free spline tangent form there. A line with a spline needs a coincident where they touch: a line ' +
+  'endpoint on the spline (the tangency is read at that point) or the spline\'s start or end, unless the ' +
+  'tangent itself names the spline\'s start or end; without one the tangent is ignored.'
 
 const ANGLE_VALUE_NOTE =
   'An `angle` value is the corner the label shows, the angle between the two lines as drawn. ' +

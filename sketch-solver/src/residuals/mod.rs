@@ -212,8 +212,9 @@ impl<'a> Problem<'a> {
     /// judge a spline tangent by the same contact shape the residual reads. The
     /// gate sees the raw input constraints and the builder the surviving ones;
     /// a coincident naming a dropped row pins nothing either way.
-    /// A spline side must be its `Start` or `End`; a circle contributes its
-    /// locus, an arc an endpoint or its locus.
+    /// A spline side must be its `Start` or `End`, or its locus against a line
+    /// endpoint (`spline_contact_ok` judges which shape a pair accepts); a
+    /// circle contributes its locus, an arc an endpoint or its locus.
     fn tangent_contact_between<'c>(
         entities: &[Entity],
         constraints: impl IntoIterator<Item = &'c Constraint>,
@@ -274,8 +275,12 @@ impl<'a> Problem<'a> {
         })
     }
 
-    /// True when a contact actually pins a spline END. A pair with two splines
-    /// needs both ends; a circle or arc partner may be a locus or an endpoint.
+    /// True when a contact places a spline tangent row. A pair with two
+    /// splines needs both ends; a circle or arc partner may be a locus or an
+    /// endpoint, and the contact must name the spline's end, because the curve
+    /// branch reads the spline's END tangent. A line partner also takes a line
+    /// endpoint on the spline locus: the line branch projects that point onto
+    /// the spline, which is interior tangency.
     fn spline_contact_ok(first: Kind, second: Kind, contact: &TangentContact) -> bool {
         let sel_first = if contact.owner == 0 {
             contact.selector
@@ -288,6 +293,14 @@ impl<'a> Problem<'a> {
             contact.selector
         };
         let end = |sel| matches!(sel, PointSelector::Start | PointSelector::End);
+        if (first == Kind::Line && is_spline(second)) || (second == Kind::Line && is_spline(first))
+        {
+            // Every contact shape between a line and a spline places the row:
+            // two ends, a spline end on the line body, or a line end on the
+            // spline locus. `tangent_contact_between` already refused a
+            // spline fit point or handle, and every contact names an end.
+            return true;
+        }
         let first_ok = !is_spline(first) || end(sel_first);
         let second_ok = !is_spline(second) || end(sel_second);
         let names_spline_end =
@@ -395,10 +408,32 @@ impl<'a> Problem<'a> {
                     },
                 };
                 match pair {
-                    // A leading line takes the endpoint-tangency paths, which
-                    // gate the second operand's kind themselves and never
-                    // index past it.
-                    Some((lr, _)) if ref_kind(input, &lr) == Some(Kind::Line) => true,
+                    // A leading line takes the line paths, which gate the
+                    // second operand's kind themselves and never index past
+                    // it. A spline there has no free form: the row needs an
+                    // end named on the tangent or a coincident contact (an
+                    // end, or a line endpoint on the spline locus), otherwise
+                    // nothing says where the line meets the curve.
+                    Some((lr, ar)) if ref_kind(input, &lr) == Some(Kind::Line) => {
+                        let Some(kb) = ref_kind(input, &ar).filter(|&k| is_spline(k)) else {
+                            return true;
+                        };
+                        let (Ref::Entity { index: a, .. }, Ref::Entity { index: b, point }) =
+                            (&lr, &ar)
+                        else {
+                            return false;
+                        };
+                        matches!(point, PointSelector::Start | PointSelector::End)
+                            || Self::tangent_contact_between(
+                                &input.entities,
+                                input.constraints.iter(),
+                                *a,
+                                *b,
+                            )
+                            .is_some_and(|contact| {
+                                Self::spline_contact_ok(Kind::Line, kb, &contact)
+                            })
+                    }
                     // Otherwise both operands feed the centers/radii curve
                     // branch, which reads each radius at slot 2. An ellipse or
                     // spline has that slot but it is not a radius.

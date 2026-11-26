@@ -39,9 +39,10 @@ export interface ConstraintKindOperand {
  * The operand-kind pairs a tangent admits, in either order: a line against a
  * circle, arc, ellipse or spline; a circle or arc against another circle, arc
  * or spline; and a spline against another spline. The pair alone is not enough
- * for a spline: it also needs a coincident pinning its end, which the solver
- * judges once the row exists (the coincident may be authored after the
- * tangent). Keep this table in step with `tangent_pair_kinds_admitted` in
+ * for a spline: it also needs a coincident pinning its end (or, against a
+ * line, a line endpoint onto the spline), which the solver judges once the row
+ * exists (the coincident may be authored after the tangent). Keep this table
+ * in step with `tangent_pair_kinds_admitted` in
  * sketch-solver/src/residuals/geom.rs.
  */
 export const TANGENT_KIND_PAIRS: readonly (readonly [string, string])[] = [
@@ -93,6 +94,17 @@ export function tangentNeedsSharedEndpointReason(partner: string): string {
   const article = partner === 'arc' || partner === 'ellipse' ? 'an' : 'a'
   return `tangent between ${article} ${partner} and a spline needs a shared endpoint `
     + "(a coincident at the spline's start or end)"
+}
+
+/**
+ * The dropped-constraint reason for a line/spline tangent the solve ignored: a
+ * spline has no closed-form distance, so nothing places the row until a
+ * coincident pins where the two touch. Unlike a curve partner, a line endpoint
+ * on the spline itself is enough (the tangency is then read at that point).
+ */
+export function lineSplineTangentNeedsContactReason(): string {
+  return 'tangent between a line and a spline needs a coincident where they touch '
+    + "(a line endpoint on the spline, or the spline's start or end)"
 }
 
 /**

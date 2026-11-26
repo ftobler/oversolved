@@ -309,6 +309,71 @@ describe.skipIf(solveBytes === null)('sketch constraint warning (real solver)', 
     ])
   })
 
+  it('names the missing contact for a line/spline tangent the solve ignored', () => {
+    // Nothing says where the line touches the spline. The row used to be read
+    // at the Bezier midpoint (or the point nearest the line start) and solved
+    // to a wrong shape; it is now dropped with a reason that names the fix.
+    for (const [kind, params] of [
+      ['spline', [0, 0, 1, 2, 3, 2, 4, 0]],
+      ['fit_spline', [0, 0, 2, 2, 4, 0]],
+    ] as const) {
+      const feature = emptySketch('Flank')
+      const doc = docOf(feature)
+      applyAddEntity(doc, 'sk1', kind, [...params], 's1')
+      applyAddEntity(doc, 'sk1', 'line', [0, 3, 4, 3], 'l1')
+      applyAddConstraint(doc, 'sk1', 'tangent', ['entity:sk1:l1', 'entity:sk1:s1'])
+
+      const reason = 'tangent between a line and a spline needs a coincident where they touch '
+        + "(a line endpoint on the spline, or the spline's start or end)"
+      const out = solve(feature)
+      expect(out.solver_warning).toContain(reason)
+      expect(out.dropped_constraints).toEqual([
+        expect.objectContaining({ kind: 'tangent', reason }),
+      ])
+    }
+  })
+
+  it('still names the missing contact when the coincident lands on a fit point', () => {
+    // A fit point is a vertex, not the locus or an end: the solver reads no
+    // contact there, so the tangent stays dropped and the reason must say so.
+    const feature = emptySketch('Flank')
+    const doc = docOf(feature)
+    applyAddEntity(doc, 'sk1', 'fit_spline', [0, 0, 2, 2, 4, 0], 's1')
+    applyAddEntity(doc, 'sk1', 'line', [2, 2, 5, 2], 'l1')
+    applyAddConstraint(doc, 'sk1', 'coincident', ['vertex:sk1:l1:start', 'vertex:sk1:s1:fit1'])
+    applyAddConstraint(doc, 'sk1', 'tangent', ['entity:sk1:l1', 'entity:sk1:s1'])
+
+    const out = solve(feature)
+    expect(out.dropped_constraints).toEqual([
+      expect.objectContaining({
+        kind: 'tangent',
+        reason: expect.stringContaining('tangent between a line and a spline needs a coincident'),
+      }),
+    ])
+  })
+
+  it('keeps a line tangent to a spline whose endpoint a coincident puts on the spline', () => {
+    // The interior case: the line start sits on the spline locus, so the
+    // tangency is read at that point and the row is live. This guards the new
+    // drop against over-reach; the solved geometry is checked in
+    // lineSplineTangentSolve.test.ts.
+    for (const [kind, params] of [
+      ['spline', [0, 0, 1, 2, 3, 2, 4, 0]],
+      ['fit_spline', [0, 0, 2, 2, 4, 0]],
+    ] as const) {
+      const feature = emptySketch('Flank')
+      const doc = docOf(feature)
+      applyAddEntity(doc, 'sk1', kind, [...params], 's1')
+      applyAddEntity(doc, 'sk1', 'line', [1, 1.2, 4, 3], 'l1')
+      applyAddConstraint(doc, 'sk1', 'coincident', ['vertex:sk1:l1:start', 'entity:sk1:s1'])
+      applyAddConstraint(doc, 'sk1', 'tangent', ['entity:sk1:l1', 'entity:sk1:s1'])
+
+      const out = solve(feature)
+      expect(out.dropped_constraints ?? []).toEqual([])
+      expect(out.solver_warning ?? '').not.toContain('needs a coincident')
+    }
+  })
+
   it('keeps the underconstrained and dropped warnings together', () => {
     const feature = emptySketch()
     const doc = docOf(feature)

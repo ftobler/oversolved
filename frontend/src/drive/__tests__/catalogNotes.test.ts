@@ -593,7 +593,8 @@ describe('practice doc cases: fit_spline magnitude and helix sweep path', () => 
     expect(mutationInfoOf('add_constraint').note).toContain(TANGENT_PAIR_NOTE)
     expect(TANGENT_PAIR_NOTE).toContain('line with a circle, arc, ellipse or spline')
     expect(TANGENT_PAIR_NOTE).toContain('a coincident at the spline\'s start or end')
-    expect(TANGENT_PAIR_NOTE).toContain('A line with a spline keeps the free body form')
+    expect(TANGENT_PAIR_NOTE).toContain('A line with a spline needs a coincident where they touch')
+    expect(TANGENT_PAIR_NOTE).not.toContain('free body form')
   })
 
   it('names the helix path form and both limits on both pathQuery fields', () => {
