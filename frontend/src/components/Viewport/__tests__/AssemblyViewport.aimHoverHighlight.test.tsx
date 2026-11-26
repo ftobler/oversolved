@@ -90,8 +90,8 @@ beforeEach(() => {
     entityMateRefs: { [FACE]: [REF], [OTHER_FACE]: [OTHER_REF] },
     anchors: {
       p1: {
-        a1: { point: [0, 0, 0], axis: [0, 0, 1] },
-        a2: { point: [1, 0, 0], axis: [0, 0, 1] },
+        a1: { kind: 'plane', point: [0, 0, 0], axis: [0, 0, 1] },
+        a2: { kind: 'plane', point: [1, 0, 0], axis: [0, 0, 1] },
       },
     },
   })
