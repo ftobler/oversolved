@@ -46,6 +46,7 @@ export const COMMAND_NAMES = [
   'set_tool_center_rect',
   'set_tool_ngon',
   'set_tool_dimension',
+  'set_tool_split',
 
   // Constraints: apply_<kind>, one per CONSTRAINTS entry.
   'apply_horizontal',

@@ -2,6 +2,7 @@ import { toolRegistry } from '@/registry/toolRegistry'
 import { createDrawingTool } from '@/tools/DrawingTool'
 import { createDimensionTool } from '@/tools/DimensionTool'
 import { createDragTool } from '@/tools/DragTool'
+import { createSplitTool } from '@/tools/SplitTool'
 import { ENTITIES } from '@/registry/entityRegistry'
 
 export function initializeTools(): void {
@@ -26,6 +27,7 @@ export function initializeTools(): void {
 
   toolRegistry.register(createDimensionTool())
   toolRegistry.register(createDragTool())
+  toolRegistry.register(createSplitTool())
 
   // Unconditional: a dangling union member must fail everywhere (test, build,
   // prod startup), not just under dev. initializeTools runs at app startup and

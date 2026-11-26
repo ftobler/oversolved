@@ -7,6 +7,7 @@ import type { FreezeProjectionMode } from '@/utils/yamlMutations/freezeProjectio
 import type { SnapKind, DimensionPick } from '@/registry'
 import type { SnapTarget } from '@/utils/geometry/snapDetection'
 import type { FilletCornerMap } from '@/utils/geometry/filletCorner'
+import type { SplitPending, SplitPreview } from '@/tools/SplitTool'
 
 // A selected sketch vertex's fillet partner, published by Geometry3D next to
 // entityKindMap. The map and its verdict live with the corner math so the gate,
@@ -350,6 +351,11 @@ export interface SketchEditorState {
   // `pos` on the new constraint so the dim lands at the press point instead of
   // the renderer's default offset.
   dimensionCursorWorld: [number, number] | null
+  // The split tool's aim under the cursor, resolved by its marker from the
+  // hover and read by its click (tools/SplitTool.ts). Transient, no undo.
+  splitPreview: SplitPreview | null
+  // A circle's first split point, held until the second click.
+  splitPending: SplitPending | null
   activePickField: ActivePickField | null
   chipOwnedSelection: Set<string>
   syncChipSelection: (values: string[]) => void
@@ -385,6 +391,8 @@ export interface SketchEditorState {
   addBrepDimensionPick: (query: string, opts: { isVertexPick: boolean; sourceKind?: string | null }) => void
   clearDimensionPicks: () => void
   setDimensionCursorWorld: (p: [number, number] | null) => void
+  setSplitPreview: (preview: SplitPreview | null) => void
+  setSplitPending: (pending: SplitPending | null) => void
   finalizeDimensionPlacement: (clientPos: [number, number]) => void
   setActivePickField: (field: ActivePickField | null) => void
 }

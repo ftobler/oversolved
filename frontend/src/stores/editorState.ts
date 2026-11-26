@@ -232,6 +232,8 @@ export const editorState = createStore<EditorState>((set, get) => ({
   pendingBrepProjectionIds: [],
   pendingPlacementConstraintId: null,
   dimensionCursorWorld: null,
+  splitPreview: null,
+  splitPending: null,
   modeStack: [],
   activePickField: null,
   chipOwnedSelection: new Set(),
@@ -488,6 +490,8 @@ export const editorState = createStore<EditorState>((set, get) => ({
       // first click in any tool starts a fresh gesture.
       updates.dimensionPicks = []
       updates.dimensionCursorWorld = null
+      updates.splitPreview = null
+      updates.splitPending = null
       // Leaving project unregisters the inactive sketches it made pickable, so
       // the hover it left on one has no rendered target any more. Clear the whole
       // hover bundle, vertex and face fields included: a hovered endpoint is the
@@ -1125,6 +1129,8 @@ export const editorState = createStore<EditorState>((set, get) => ({
   }),
 
   setDimensionCursorWorld: (p) => set({ dimensionCursorWorld: p }),
+  setSplitPreview: (preview) => set({ splitPreview: preview }),
+  setSplitPending: (pending) => set({ splitPending: pending }),
 
   finalizeDimensionPlacement: (clientPos) => {
     const { activeFeatureId, dimensionCursorWorld, activeOriginLocal } = get()
@@ -1508,6 +1514,8 @@ export const editorState = createStore<EditorState>((set, get) => ({
       drawSnapRefs: [],
       dimensionPicks: [],
       dimensionCursorWorld: null,
+      splitPreview: null,
+      splitPending: null,
       pendingBrepProjectionIds: [],
       pendingPlacementConstraintId: null,
       // Derived from the open document, so it belongs to the wipe for the same

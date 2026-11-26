@@ -127,6 +127,8 @@ export default function SketchToolbar({ onResetViewport, onImportDxf, canImportD
         handle="toolbar:fillet_corners"
       />
 
+      <ToolItem def={TOOL_DEFS.split} />
+
       <ToolbarButton
         title={patternKey ? `Pattern entities along X (${patternKey})` : 'Pattern entities along X'}
         icon={iconUrl('feature-linear-pattern')}

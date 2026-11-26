@@ -101,7 +101,7 @@ they test without a viewport.
 
 ### Command Tables (`session/partCommandSpecs.ts`, `session/assemblyCommandSpecs.ts`)
 
-`PART_COMMAND_SPECS` (the sketch/part editor, 61 specs) and
+`PART_COMMAND_SPECS` (the sketch/part editor, 62 specs) and
 `ASSEMBLY_COMMAND_SPECS` (the assembly editor, 29 specs) are the single source
 of truth for which commands each editor registers. Both are static data: every
 body reads its inputs from the `CommandContext` it is handed, so the table is
@@ -355,6 +355,7 @@ the three shared names). Regenerate with `npm run docs:commands`;
 | `set_tool_rect` | Rectangle tool | - | no | sketch/part |
 | `set_tool_select` | Select tool | - | no | sketch/part |
 | `set_tool_spline` | Bezier tool | - | no | sketch/part |
+| `set_tool_split` | Split tool | `shift+s` | no | sketch/part |
 | `toggle_construction` | Toggle construction | `q` | yes | sketch/part |
 | `toggle_plane_visibility` | Toggle planes | `p` | yes | sketch/part |
 | `toggle_sketch_plane_visibility` | Toggle reference geometry | `y` | yes | sketch/part |

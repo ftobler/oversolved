@@ -33,6 +33,11 @@ export function dispatchSketchClick(
     hoveredEntityKind: entityKind ?? null,
     dimensionPicks: state.dimensionPicks,
     addDimensionPick: state.addDimensionPick,
+    // The split tool acts on the aim its marker resolved from the hover; the
+    // picked id alone carries no point on the curve.
+    splitPreview: state.splitPreview,
+    splitPending: state.splitPending,
+    setSplitPending: state.setSplitPending,
     pushMode: () => {},
     popMode: () => {},
   }

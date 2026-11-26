@@ -22,6 +22,7 @@ import { DragPlane, DragSnapIndicator } from '@/components/Geometry3D/Dragging'
 
 // Inferred contact points: tangencies + curve-curve intersections (lazy inferred materialization)
 import { InferredContactMarkers } from '@/components/Geometry3D/InferredContactMarkers'
+import { SplitMarker } from '@/components/Geometry3D/SplitMarker'
 import { inferredContactCandidates } from '@/utils/geometry/snapDetection'
 import { buildFilletCornerMap } from '@/utils/geometry/filletCorner'
 
@@ -401,6 +402,7 @@ export default function Geometry3D({ featureId, solved, entities, projectionMemb
       {isEditing && <DragPlane featureId={featureId} sketch={displaySketch} sketchGroupRef={groupRef} otherSketches={otherSketches} constraints={featureDef?.constraints} heldIds={dragHeldIds} topology={stale ? undefined : topology} />}
       {isEditing && <DragSnapIndicator />}
       <DrawPreview featureId={featureId} activeFeatureId={activeFeatureId} sketch={displaySketch} otherSketches={otherSketches} />
+      {isEditing && <SplitMarker featureId={featureId} activeFeatureId={activeFeatureId} feature={featureDef} inferredCandidates={inferredCandidates} />}
       <DrawPlane featureId={featureId} activeFeatureId={activeFeatureId} sketch={displaySketch} sketchGroupRef={groupRef} otherSketches={otherSketches} />
       {isEditing && <DimensionPreview featureId={featureId} activeFeatureId={activeFeatureId} sketch={displaySketch} planeTransform={resolvedPlaneTransform} />}
     </group>

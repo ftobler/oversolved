@@ -285,6 +285,24 @@ def toolbar_offset(ctx):
     ctx.set_dash([])
 
 
+@icon("frontend/src/assets/icons/toolbar-split.svg")
+def toolbar_split(ctx):
+    # One line cut in two: the halves stop short of the split point, which a
+    # perpendicular cut mark crosses.
+    ctx.move_to(0.15, 0.85)
+    ctx.line_to(0.42, 0.58)
+    ctx.move_to(0.58, 0.42)
+    ctx.line_to(0.85, 0.15)
+    stroke(ctx, 2)
+
+    ctx.move_to(0.34, 0.34)
+    ctx.line_to(0.66, 0.66)
+    stroke(ctx, 1.5)
+
+    ctx.arc(0.5, 0.5, px(2), 0, 2 * math.pi)
+    ctx.fill()
+
+
 @icon("frontend/src/assets/icons/toolbar-import-dxf.svg")
 def toolbar_import_dxf(ctx):
     """Import DXF: a picture, a framed image with mountains and a sun."""

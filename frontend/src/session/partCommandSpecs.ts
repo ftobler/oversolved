@@ -341,6 +341,9 @@ const rectToolSpec = toolSpec('set_tool_rect', 'Rectangle tool', 'rect')
 const centerRectToolSpec = toolSpec('set_tool_center_rect', 'Center rectangle tool', 'center_rect')
 const ngonToolSpec = toolSpec('set_tool_ngon', 'N-gon tool', 'ngon')
 const dimensionToolSpec = toolSpec('set_tool_dimension', 'Dimension tool', 'dimension')
+// Split is a selection tool with no ENTITIES entry: it cuts the curve it is
+// clicked on rather than drawing one.
+const splitToolSpec = toolSpec('set_tool_split', 'Split tool', 'split')
 
 const toggleConstructionSpec: PartCommandSpec = {
   id: 'toggle_construction',
@@ -646,6 +649,7 @@ export const PART_COMMAND_SPECS: readonly ErasedCommandSpec<PartCommandContext>[
   centerRectToolSpec,
   ngonToolSpec,
   dimensionToolSpec,
+  splitToolSpec,
   toggleConstructionSpec,
   freezeProjectionSpec,
   ...constraintSpecs,

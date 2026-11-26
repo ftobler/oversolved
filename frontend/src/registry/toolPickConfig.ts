@@ -99,6 +99,14 @@ const SKETCH_DRAW: ToolPickConfig = {
   allowedLayers: allExcept(SKETCH_DRAW_EXCLUDED), clearsSelectionOnEnter: false, staysArmedAfterCommit: true,
   picksInactiveSketches: false,
 }
+// Split tool: aims at the edited sketch's curves and the vertices and
+// inferred contacts that snap the cut, the same layers a drawing tool reads.
+// It gathers its own target, so a standing selection is dropped on enter, and
+// it stays armed so the user can cut curve after curve.
+const SPLIT_PICK: ToolPickConfig = {
+  allowedLayers: allExcept(SKETCH_DRAW_EXCLUDED), clearsSelectionOnEnter: true, staysArmedAfterCommit: true,
+  picksInactiveSketches: false,
+}
 const PROJECT_PICK: ToolPickConfig = {
   allowedLayers: allExcept(PROJECT_EXCLUDED), clearsSelectionOnEnter: false, staysArmedAfterCommit: true,
   picksInactiveSketches: true,
@@ -115,6 +123,7 @@ export const TOOL_PICK_CONFIG: Record<NonNullable<ActiveTool>, ToolPickConfig> =
   drag: FULL_PICK,
   dimension: DIMENSION_PICK,
   project: PROJECT_PICK,
+  split: SPLIT_PICK,
   offset: FULL_PICK,
   line: SKETCH_DRAW,
   rect: SKETCH_DRAW,

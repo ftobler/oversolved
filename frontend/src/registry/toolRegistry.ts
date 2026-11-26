@@ -21,6 +21,7 @@ export type ToolId =
   | 'ngon'
   | 'project'
   | 'drag'
+  | 'split'
   | 'mirror'
   | 'offset'
 
@@ -30,7 +31,7 @@ export type ToolId =
 // deliberately absent here.
 export const ACTIVATABLE_TOOL_IDS = [
   'dimension', 'line', 'rect', 'center_rect', 'circle', 'arc', 'ellipse',
-  'spline', 'fit_spline', 'point', 'ngon', 'project', 'drag',
+  'spline', 'fit_spline', 'point', 'ngon', 'project', 'drag', 'split',
 ] as const satisfies readonly ToolId[]
 
 // The id union covered by ACTIVATABLE_TOOL_IDS.

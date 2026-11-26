@@ -62,6 +62,8 @@ export function deactivateTool(
     drawSnapRefs: [],
     dimensionPicks: [],
     dimensionCursorWorld: null,
+    splitPreview: null,
+    splitPending: null,
   })
   const tool = toolRegistry.get(toolId)
   if (tool === null) {
