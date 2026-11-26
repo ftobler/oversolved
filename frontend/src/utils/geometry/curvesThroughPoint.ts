@@ -21,12 +21,15 @@ function pointOnArcSpan(a: Arc, px: number, py: number, tol: number): boolean {
 }
 
 /** Sampson point-on-ellipse distance, the same conic-over-gradient form the
- *  solver's `ellipse_point_residual` uses. A collapsed semi-axis has no usable
- *  conic locus, so it is refused before division. */
+ *  solver's `ellipse_point_residual` uses. Squared axes are floored at the same
+ *  MIN_SEMI_AXIS_SQ, so a flat (but non-degenerate) ellipse keeps its locus
+ *  instead of being dropped for being thinner than the candidate tolerance. */
 function pointOnEllipse(e: Ellipse, px: number, py: number, tol: number): boolean {
   const a = e.a
   const b = e.b
-  if (!Number.isFinite(a) || !Number.isFinite(b) || !(a > tol) || !(b > tol)) return false
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return false
+  const aa = Math.max(a * a, 1e-12)
+  const bb = Math.max(b * b, 1e-12)
   const theta = (e.theta * Math.PI) / 180
   const ct = Math.cos(theta)
   const st = Math.sin(theta)
@@ -34,11 +37,9 @@ function pointOnEllipse(e: Ellipse, px: number, py: number, tol: number): boolea
   const dy = py - e.center[1]
   const u = dx * ct + dy * st
   const v = dy * ct - dx * st
-  const aa = a * a
-  const bb = b * b
   const f = (u * u) / aa + (v * v) / bb - 1
   const grad = 2 * Math.hypot(u / aa, v / bb)
-  return Math.abs(f) / Math.max(grad, 2 / Math.max(a, b)) < tol
+  return Math.abs(f) / Math.max(grad, 2 / Math.sqrt(Math.max(aa, bb))) < tol
 }
 
 /** Distance to the finite cubic Bezier segment, via the same closest-point
@@ -51,7 +52,8 @@ function pointOnSpline(s: Spline, px: number, py: number, tol: number): boolean 
 
 /** Distance to the closest Bezier piece of the interpolated chain. A fit spline
  *  interpolation that refuses the point list (coincident points, too many) has
- *  no locus to attribute, the same fallback fitSplinePolyline takes. */
+ *  no locus to attribute and is skipped, just as fitSplinePolyline skips
+ *  interpolation on the same failure. */
 function pointOnFitSpline(f: FitSpline, px: number, py: number, tol: number): boolean {
   let curve: FitSplineCurve
   try {

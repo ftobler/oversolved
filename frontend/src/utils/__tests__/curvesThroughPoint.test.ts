@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import type { Sketch } from '@/types/cad'
+import { interpolateFitSpline, type Pt } from '@/utils/geometry/fitSpline'
 import { curvesThroughPoint } from '@/utils/geometry/curvesThroughPoint'
 
 describe('curvesThroughPoint', () => {
@@ -98,9 +99,32 @@ describe('curvesThroughPoint conic and Bezier loci', () => {
     expect(curvesThroughPoint(sketch, [5, 1], 1e-6)).toEqual(['ln'])
   })
 
+  it('matches a curved cubic by closest distance, not chord projection', () => {
+    const sketch: Sketch = {
+      sp: { p1: [0, 0], p2: [0, 10], p3: [10, 10], p4: [10, 0] } as Sketch[string],
+      ln: { start: [5, -10], end: [5, 10] } as Sketch[string],
+    }
+    // B(0.5) = (5, 7.5); the chord at x=5 sits at y=0, far from the curve.
+    expect(curvesThroughPoint(sketch, [5, 7.5], 1e-6).sort()).toEqual(['ln', 'sp'])
+    expect(curvesThroughPoint(sketch, [5, 0], 1e-6)).toEqual(['ln'])
+  })
+
+  it('attributes a fit spline with end handles at a point on its chain', () => {
+    const points: Pt[] = [[0, 0], [5, 5], [10, 0]]
+    const handleStart: Pt = [2, 6]
+    const handleEnd: Pt = [8, 6]
+    const curve = interpolateFitSpline(points, handleStart, handleEnd)
+    const on = curve.eval(curve.knots[0] + (curve.knots[1] - curve.knots[0]) / 2)
+    const sketch: Sketch = {
+      fit: { points, handleStart, handleEnd } as Sketch[string],
+    }
+    expect(curvesThroughPoint(sketch, on, 1e-6)).toEqual(['fit'])
+    expect(curvesThroughPoint(sketch, [100, 100], 1e-6)).toEqual([])
+  })
+
   it('treats a degenerate fit spline as no curve without throwing', () => {
-    // Coincident fit points are refused by interpolation; membership must treat
-    // that the same way fitSplinePolyline falls back to no curve.
+    // Coincident fit points are refused by interpolation; membership then skips
+    // the spline, where fitSplinePolyline would fall back to its fit-point polyline.
     const sketch: Sketch = { bad: { points: [[2, 2], [2, 2]] } as Sketch[string] }
     expect(curvesThroughPoint(sketch, [2, 2], 1e-6)).toEqual([])
   })
@@ -113,5 +137,16 @@ describe('curvesThroughPoint conic and Bezier loci', () => {
     const on: [number, number] = [5 * Math.cos(Math.PI / 6), 5 * Math.sin(Math.PI / 6)]
     expect(curvesThroughPoint(sketch, on, 1e-6)).toEqual(['ell'])
     expect(curvesThroughPoint(sketch, [0, 0], 1e-6)).toEqual([])  // centre is inside
+  })
+
+  it('keeps a flat ellipse locus at the production candidate tolerance', () => {
+    // A semi-axis thinner than INFERRED_TOL is still a solver-valid locus: the
+    // solver floors squared axes at 1e-12, so a crossing at the major vertex
+    // must still produce a ring.
+    const sketch: Sketch = {
+      flat: { center: [0, 0], a: 5, b: 0.0005, theta: 0 } as Sketch[string],
+    }
+    expect(curvesThroughPoint(sketch, [5, 0], 1e-3)).toEqual(['flat'])
+    expect(curvesThroughPoint(sketch, [6, 0], 1e-3)).toEqual([])
   })
 })

@@ -69,15 +69,17 @@ const fitSplineDistance = (p: number[], flat: number[]): number => {
 }
 const ellipseSampson = (p: number[], e: number[]): number => {
   const [cx, cy, a, b, theta] = e
+  const aa = Math.max(a * a, 1e-12)
+  const bb = Math.max(b * b, 1e-12)
   const ct = Math.cos((theta * Math.PI) / 180)
   const st = Math.sin((theta * Math.PI) / 180)
   const dx = p[0] - cx
   const dy = p[1] - cy
   const u = dx * ct + dy * st
   const v = dy * ct - dx * st
-  const f = (u * u) / (a * a) + (v * v) / (b * b) - 1
-  const grad = 2 * Math.hypot(u / (a * a), v / (b * b))
-  return Math.abs(f) / Math.max(grad, 2 / a)
+  const f = (u * u) / aa + (v * v) / bb - 1
+  const grad = 2 * Math.hypot(u / aa, v / bb)
+  return Math.abs(f) / Math.max(grad, 2 / Math.sqrt(Math.max(aa, bb)))
 }
 
 // Each fixture pins the curve so a later line move has one crossing. The line

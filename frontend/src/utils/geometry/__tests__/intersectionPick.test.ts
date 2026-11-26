@@ -87,6 +87,19 @@ describe('sketchToIntersectionCandidates', () => {
     expect(cands[0].id).toContain('ln')
     expect(cands[0].id).toContain('ell')
   })
+
+  it('honours the 1e-3 inferred candidate tolerance at the ellipse boundary', () => {
+    // Both points sit on the line; only the one within 1e-3 of the ellipse
+    // locus is a two-curve crossing and produces a handle.
+    const sketch: Sketch = {
+      ln: { start: [-10, 0], end: [10, 0] } as Sketch[string],
+      ell: { center: [0, 0], a: 5, b: 3, theta: 0 } as Sketch[string],
+    }
+    const inside = sketchToIntersectionCandidates(sketch, topo({ a: { x: 5.0005, y: 0 } }), FEATURE, 'active_sketch')
+    const outside = sketchToIntersectionCandidates(sketch, topo({ a: { x: 5.002, y: 0 } }), FEATURE, 'active_sketch')
+    expect(inside).toHaveLength(1)
+    expect(outside).toHaveLength(0)
+  })
 })
 
 describe('reconcileMaterializedContacts (slice 4: topology leans on the materialized point)', () => {
