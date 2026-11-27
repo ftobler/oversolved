@@ -133,7 +133,7 @@ export function createMatrixHarness(spec: PartDoc, solver: MatrixSolver): Matrix
   }
   const handleMutation = (mutation: Mutation): Result => record(session.execute(mutation))
   const handleMutationBatch = (mutations: Mutation[]): Result => record(session.executeGroup(mutations))
-  setSketchCallback('onMutation', m => { handleMutation(m) })
+  setSketchCallback('onMutation', handleMutation)
   setSketchCallback('onMutationBatch', ms => { handleMutationBatch(ms) })
   setSketchCallback('onRebuild', () => {})
   setSketchCallback('onExitSketch', () => {})

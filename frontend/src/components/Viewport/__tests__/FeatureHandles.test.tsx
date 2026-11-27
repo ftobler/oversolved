@@ -127,6 +127,7 @@ beforeEach(() => {
   seams.camera.position.set(20, 20, 100)
   seams.camera.updateProjectionMatrix()
   setSketchCallback('onMutation', null)
+  setSketchCallback('awaitSolveIdle', null)
   setSketchCallback('isEditSessionOpen', null)
   useEditorState.setState({
     drag: null,
@@ -440,12 +441,14 @@ describe('FeatureHandles live rebuild while dragging', () => {
 
   it('keeps one solve in flight and sends only the newest value', async () => {
     const gates: Array<ReturnType<typeof deferred>> = []
-    const onMutation = vi.fn(() => {
+    const onMutation = vi.fn()
+    setSketchCallback('onMutation', onMutation)
+    // The pump waits on the solve, not on the sink's Result.
+    setSketchCallback('awaitSolveIdle', () => {
       const gate = deferred()
       gates.push(gate)
       return gate.promise
     })
-    setSketchCallback('onMutation', onMutation)
 
     render(<FeatureHandles />)
     act(() => seams.callbacks!.onPointerDown(100, 200))
