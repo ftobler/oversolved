@@ -1140,13 +1140,12 @@ export default function Part() {
   }, [docRef, solveResults])
 
   useEffect(() => {
-    // The feature-handle drag pumps live field mutations and waits on the
-    // solve each one requested before sending the next, so the sink hands back
-    // a promise that settles with it. Every other caller ignores the return.
-    setSketchCallback('onMutation', (m) => {
-      handleMutation(m)
-      return session.idle()
-    })
+    // The sink returns the session Result: the dimension placement reads the
+    // ids its insert created and cancels only on a reported refusal. The
+    // feature-handle drag waits on the separate idle port below, because a
+    // Result is not a promise.
+    setSketchCallback('onMutation', handleMutation)
+    setSketchCallback('awaitSolveIdle', () => session.idle())
     setSketchCallback('onMutationBatch', commitMutationGroup)
     setSketchCallback('beginPlacement', beginPlacement)
     setSketchCallback('commitPlacement', commitPlacement)

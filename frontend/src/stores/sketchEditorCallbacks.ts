@@ -16,12 +16,16 @@ import type { DialogState } from './sketchEditorTypes'
 import { devOnly } from './stateInvariants'
 
 export const sketchCallbacks: {
-  // The mutation sink. It may return a promise that settles when the solve the
-  // mutation requested has settled, which the live feature-handle pump uses to
-  // keep one rebuild in flight; every other caller ignores the return, so the
-  // type stays open.
+  // The mutation sink. It returns the session Result (or null with no document)
+  // so an insert can report the ids it created; every caller that does not need
+  // them ignores the return. The live feature-handle pump waits on
+  // `awaitSolveIdle` instead, never on this return.
   onMutation: ((m: Mutation) => unknown) | null
   onMutationBatch: ((ms: Mutation[]) => void) | null
+  // The solve the last mutation requested, for the live feature-handle pump:
+  // it keeps one rebuild in flight by awaiting this. Separate from onMutation
+  // because the Result the sink returns is not a promise.
+  awaitSolveIdle: (() => Promise<void>) | null
   onRebuild: (() => void) | null
   onExitSketch: (() => void) | null
   getSketch: ((featureId: string) => Sketch | null) | null
@@ -77,6 +81,7 @@ export const sketchCallbacks: {
 } = {
   onMutation: null,
   onMutationBatch: null,
+  awaitSolveIdle: null,
   onRebuild: null,
   onExitSketch: null,
   getSketch: null,
@@ -123,6 +128,7 @@ export { CANNOT_APPLY_TITLE } from '@/utils/core/applyTitles'
 
 export function setSketchCallback(key: 'onMutation', cb: ((m: Mutation) => unknown) | null): void
 export function setSketchCallback(key: 'onMutationBatch', cb: ((ms: Mutation[]) => void) | null): void
+export function setSketchCallback(key: 'awaitSolveIdle', cb: (() => Promise<void>) | null): void
 export function setSketchCallback(key: 'onRebuild' | 'onExitSketch', cb: (() => void) | null): void
 export function setSketchCallback(key: 'getSketch', cb: ((featureId: string) => Sketch | null) | null): void
 export function setSketchCallback(key: 'getDoc', cb: (() => PartDoc | null) | null): void
@@ -150,6 +156,7 @@ export function getSketchCallback<K extends keyof typeof sketchCallbacks>(key: K
 const SESSION_CALLBACK_KEYS = [
   'onMutation',
   'onMutationBatch',
+  'awaitSolveIdle',
   'onRebuild',
   'onExitSketch',
   'getSketch',

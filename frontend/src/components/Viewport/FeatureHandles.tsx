@@ -65,9 +65,12 @@ function emitFieldMutation(
 ): unknown {
   const type = FIELD_MUTATION_TYPE[kind]
   if (!type) return
-  return getSketchCallback('onMutation')?.({
+  const result = getSketchCallback('onMutation')?.({
     type, featureId, field, value,
   } as Mutation)
+  // The live pump awaits the returned value to keep one rebuild in flight. The
+  // sink returns the mutation's Result, so the wait has its own port.
+  return getSketchCallback('awaitSolveIdle')?.() ?? result
 }
 
 /**
